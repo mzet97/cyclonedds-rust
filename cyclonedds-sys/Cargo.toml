@@ -1,0 +1,24 @@
+[package]
+name = "cyclonedds-sys"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "FFI bindings for CycloneDDS"
+
+[dependencies]
+libc = "0.2"
+
+[features]
+default = []
+
+[lib]
+name = "cyclonedds_sys"
+crate-type = ["lib"]
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_NetworkManagement", "Win32_Networking_WinSock"] }
+
+# Note: Link to cyclonedds library at runtime or build time
+# For Windows: copy ddsc.dll to exe location or PATH
+# For Linux: link with -lddsc (install libddsc-dev)

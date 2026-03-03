@@ -1,0 +1,13 @@
+[workspace]
+members = ["cyclonedds-sys", "cyclonedds"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Seu Nome"]
+license = "MIT/Apache-2.0"
+
+[workspace.dependencies]
+cyclonedds-sys = { path = "cyclonedds-sys" }
+cyclonedds = { path = "cyclonedds" }
