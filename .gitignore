@@ -53,3 +53,12 @@ book/
 *.onnx
 *.pt
 *.pth
+
+.claude/*
+.codex/*
+.gemini/*
+.omc/*
+.omx/*
+.sisyphus/*
+openspec/*
+GAPS_v1.md
