@@ -1,0 +1,12 @@
+[package]
+name = "cyclonedds-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cyclonedds = { path = "../cyclonedds" }
+cyclonedds-sys = { path = "../cyclonedds-sys" }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ctrlc = "3"

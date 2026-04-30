@@ -1,0 +1,16 @@
+[package]
+name = "cyclonedds-test-suite"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "cyclonedds-test-suite"
+path = "src/main.rs"
+
+[dependencies]
+cyclonedds = { path = "../cyclonedds" }
+cyclonedds-sys = { path = "../cyclonedds-sys" }

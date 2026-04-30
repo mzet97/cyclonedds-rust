@@ -1,0 +1,55 @@
+/target
+/Cargo.lock
+*.rs.bk
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Build artifacts
+vendor/*/build/
+vendor/*/install/
+cmake-build-*/
+build/
+
+# WSL / Windows artifacts
+*.exe
+*.dll
+*.pdb
+
+# DDS runtime
+cyclonedds.xml
+CYCLONEDDS_URI
+
+# Benchmark / test outputs
+benchmark_results/
+results/
+*.csv
+*.json
+
+# Temporary / scratch
+/tmp/
+*.log
+*.bak
+
+# Python (if mixed repo)
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# Documentation build
+docs/_build/
+book/
+
+# Large binary assets
+*.gguf
+*.onnx
+*.pt
+*.pth

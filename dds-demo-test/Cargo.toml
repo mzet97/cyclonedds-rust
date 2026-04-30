@@ -1,0 +1,20 @@
+[package]
+name = "dds-demo-test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "comprehensive_test"
+path = "src/comprehensive_test.rs"
+
+[[bin]]
+name = "publisher"
+path = "src/publisher.rs"
+
+[[bin]]
+name = "subscriber"
+path = "src/subscriber.rs"
+
+[dependencies]
+cyclonedds = { path = "../cyclonedds-rust/cyclonedds" }
+cyclonedds-derive = { path = "../cyclonedds-rust/cyclonedds-derive" }

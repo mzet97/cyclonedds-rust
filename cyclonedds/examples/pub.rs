@@ -1,55 +1,42 @@
-//! Hello World Publisher Example
-//!
-//! Run this example with: cargo run --example pub
-//! Then run sub example in another terminal to receive messages.
-
-use std::time::Duration;
 use cyclonedds::*;
 
-/// Simple message type for demonstration
-#[derive(serde::Serialize, serde::Deserialize)]
+#[repr(C)]
 struct HelloWorld {
     id: i32,
-    message: String,
+    message: [u8; 256],
 }
 
-fn main() {
-    println!("Starting CycloneDDS Publisher...");
-
-    // Create DomainParticipant for domain 0
-    let participant = DomainParticipant::new(0)
-        .expect("Failed to create DomainParticipant");
-
-    // Create a topic
-    let topic: Topic<HelloWorld> = participant
-        .create_topic("HelloWorldTopic")
-        .expect("Failed to create topic");
-
-    // Create Publisher
-    let publisher = participant
-        .create_publisher()
-        .expect("Failed to create publisher");
-
-    // Create DataWriter
-    let writer: DataWriter<HelloWorld> = publisher
-        .create_writer(&topic)
-        .expect("Failed to create writer");
-
-    println!("Publisher ready. Publishing messages...");
-
-    let mut id = 0;
-    loop {
-        let msg = HelloWorld {
-            id,
-            message: format!("Hello, World! #{}", id),
-        };
-
-        match writer.write(&msg) {
-            Ok(_) => println!("Published: {:?}", msg),
-            Err(e) => eprintln!("Failed to write: {:?}", e),
-        }
-
-        id += 1;
-        std::thread::sleep(Duration::from_secs(1));
+impl DdsType for HelloWorld {
+    fn type_name() -> &'static str {
+        "HelloWorld"
     }
+    fn ops() -> Vec<u32> {
+        let mut ops = Vec::new();
+        ops.extend(adr(TYPE_4BY | OP_FLAG_SGN, 0));
+        ops.extend(adr_bst(4, 256));
+        ops
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let participant = DomainParticipant::new(0)?;
+    let publisher = Publisher::new(participant.entity())?;
+    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorldTopic")?;
+    let writer = DataWriter::new(publisher.entity(), topic.entity())?;
+
+    let mut msg = HelloWorld {
+        id: 0,
+        message: [0u8; 256],
+    };
+    let text = b"Hello from Rust DDS!";
+    msg.message[..text.len()].copy_from_slice(text);
+
+    for i in 0..10 {
+        msg.id = i;
+        writer.write(&msg)?;
+        println!("Published: id={}", i);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    Ok(())
 }

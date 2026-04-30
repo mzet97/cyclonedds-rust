@@ -1,104 +1,197 @@
 # cyclonedds-rust
 
-Rust bindings for [CycloneDDS](https://github.com/eclipse-cyclonedds/cyclonedds) - an implementation of the OMG Data Distribution Service (DDS) specification.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE-MIT)
 
-## Overview
+Safe, idiomatic Rust bindings for [Eclipse CycloneDDS](https://github.com/eclipse-cyclonedds/cyclonedds) — a high-performance implementation of the OMG Data Distribution Service (DDS) specification.
 
-This crate provides a safe, idiomatic Rust API for CycloneDDS. It consists of:
+## Highlights
 
-- **cyclonedds-sys**: Low-level FFI bindings to the CycloneDDS C library
-- **cyclonedds**: High-level safe Rust wrappers with RAII types and error handling
+- **Complete DDS entity model** — DomainParticipant, Publisher, Subscriber, Topic, DataWriter, DataReader
+- **26+ QoS policies** via a type-safe `QosBuilder` pattern
+- **13 listener callbacks** via `ListenerBuilder` (data available, matched, liveliness, deadline, etc.)
+- **WaitSet / ReadCondition / QueryCondition / GuardCondition** for event-driven architectures
+- **Derive macros** for topic types: `DdsType`, `DdsEnum`, `DdsUnion`, `DdsBitmask`
+- **CDR serialization** (XCDR1/XCDR2), dynamic types, type discovery (XTypes)
+- **Async Streams** (`read_aiter`, `take_aiter`) with tokio integration
 
-## Requirements
+## Quick Start
 
-### Build Dependencies
-
-- **Rust** (1.70+)
-- **CMake** (3.10+)
-- **Clang** (for bindgen)
-- **C/C++ compiler** (MSVC on Windows, GCC/Clang on Linux)
-
-### Runtime Dependencies
-
-- CycloneDDS is built automatically as part of the crate build process
-
-## Installation
-
-Add this to your `Cargo.toml`:
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 cyclonedds = "0.1"
 ```
 
-## Quick Start
+### Define a Topic Type
 
 ```rust
 use cyclonedds::*;
 
+#[repr(C)]
+struct HelloWorld {
+    id: i32,
+    message: [u8; 256],
+}
+
+impl DdsType for HelloWorld {
+    fn type_name() -> &'static str {
+        "HelloWorld"
+    }
+    fn ops() -> Vec<u32> {
+        let mut ops = Vec::new();
+        ops.extend(adr(TYPE_4BY | OP_FLAG_SGN, 0));
+        ops.extend(adr_bst(4, 256));
+        ops
+    }
+}
+```
+
+### Publisher
+
+```rust
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a DomainParticipant
-    let participant = DomainParticipant::new(0)?;
-
-    // Create a topic
-    let topic: Topic<MyData> = participant.create_topic("my_topic")?;
-
-    // Create a publisher and writer
-    let publisher = participant.create_publisher()?;
-    let writer: DataWriter<MyData> = publisher.create_writer(&topic)?;
-
-    // Publish data
-    writer.write(&MyData { value: 42 })?;
-
+    let dp = DomainParticipant::new(0)?;
+    let pub_ = Publisher::new(dp.entity())?;
+    let topic = Topic::<HelloWorld>::new(dp.entity(), "Hello")?;
+    let writer = DataWriter::new(pub_.entity(), topic.entity())?;
+    let mut msg = HelloWorld { id: 1, message: [0; 256] };
+    msg.message[..5].copy_from_slice(b"hello");
+    writer.write(&msg)?;
     Ok(())
 }
 ```
 
-## Examples
+### Subscriber
 
-Run the publisher example:
-
-```bash
-cargo run --example pub
+```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let dp = DomainParticipant::new(0)?;
+    let sub = Subscriber::new(dp.entity())?;
+    let topic = Topic::<HelloWorld>::new(dp.entity(), "Hello")?;
+    let reader = DataReader::<HelloWorld>::new(sub.entity(), topic.entity())?;
+    loop {
+        for s in reader.take()? {
+            println!("id={}", s.id);
+        }
+    }
+}
 ```
 
-Run the subscriber example in another terminal:
+## Async Streams
 
-```bash
-cargo run --example sub
+When the `async` feature is enabled (default), `DataReader` provides async iterators over incoming samples:
+
+```rust
+use cyclonedds::DataReader;
+use futures_util::StreamExt;
+
+async fn consume<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
+    let mut stream = Box::pin(reader.read_aiter());
+    while let Some(batch) = stream.next().await {
+        match batch {
+            Ok(samples) => println!("got {} samples", samples.len()),
+            Err(e) => eprintln!("read error: {}", e),
+        }
+    }
+}
 ```
 
-## Features
+## Feature Matrix
 
-- **Safe FFI**: All bindings are wrapped in safe Rust types
-- **RAII**: Resources are automatically cleaned up using the Drop trait
-- **Error handling**: Comprehensive error types using `thiserror`
-- **Serialization support**: Works with `serde` for data serialization
+| Feature | Python (CycloneDDS) | .NET | Rust (this crate) |
+|---------|---------------------|------|-------------------|
+| Core Entities | Yes | Partial | **Yes** |
+| QoS (26+) | Yes | Partial | **Yes** |
+| Listeners (13) | Yes | Partial | **Yes** |
+| WaitSet / Conditions | Yes | No | **Yes** |
+| CDR Serialization (XCDR1/2) | Yes | Yes | **Yes** |
+| Dynamic Types & Data | Yes | No | **Yes** |
+| Type Discovery (XTypes) | Yes | No | **Yes** |
+| Content-Filtered Topics | Yes | Partial | **Yes** (closure-based) |
+| Union / Bitmask / Enum | Yes | Partial | **Yes** |
+| IDL Compilation | Yes | Yes | **Yes** |
+| CLI Tools | Yes | No | **Yes** (`ls`, `ps`, `subscribe`, `typeof`, `publish`) |
+| Async Streams (`read_aiter`, `take_aiter`) | No | No | **Yes** |
+| Matched Endpoint Data | Yes | No | **Yes** |
+| Zero-copy Loan | No | Yes | **Yes** |
 
-## Building
+## Workspace Crates
+
+| Crate | Description |
+|-------|-------------|
+| `cyclonedds-sys` | Low-level FFI bindings (generated via bindgen) |
+| `cyclonedds` | High-level safe Rust API |
+| `cyclonedds-derive` | Procedural derive macros (`DdsType`, `DdsEnum`, `DdsUnion`, `DdsBitmask`) |
+| `cyclonedds-build` | Build-time helpers for generating types from IDL |
+| `cyclonedds-idlc` | IDL compiler backend producing Rust source from IDL files |
+| `cyclonedds-cli` | Command-line tools (`ls`, `ps`, `subscribe`, `typeof`, `publish`, `perf`) |
+| `cyclonedds-test-suite` | Integration tests |
+
+## Build
 
 ```bash
-# Build the workspace
-cargo build --workspace
-
-# Run tests
-cargo test --workspace
-
-# Build release
+cargo build --workspace          # build everything
+cargo test --workspace           # run tests
 cargo build --workspace --release
 ```
 
-## Platform Support
+### Requirements
 
-- **Linux/WSL**: Primary development target
-- **Windows**: Partial support (build system may require adjustments)
+- Rust 1.70+
+- CMake 3.10+
+- C/C++ compiler
+- Clang (for bindgen)
+
+The bundled CycloneDDS source in `vendor/` is built automatically by `cyclonedds-sys` when CMake is available.
+
+### WSL Notes
+
+If building in WSL, ensure `libddsc.so` is discoverable after the first build:
+
+```bash
+export LD_LIBRARY_PATH=~/cyclonedds-rust/vendor/cyclonedds/build/lib:$LD_LIBRARY_PATH
+cargo test --workspace --features async
+```
+
+## CLI Examples
+
+```bash
+# List all topics in a domain
+cargo run --bin cyclonedds-cli -- ls --domain 0
+
+# Show participant status
+cargo run --bin cyclonedds-cli -- ps --domain 0
+
+# Subscribe to a topic
+cargo run --bin cyclonedds-cli -- subscribe --topic HelloWorld
+
+# Show type info
+cargo run --bin cyclonedds-cli -- typeof --topic HelloWorld
+```
+
+## Examples
+
+```bash
+# Terminal 1 - subscriber
+cargo run --example sub
+
+# Terminal 2 - publisher
+cargo run --example pub
+```
+
+## Documentation
+
+- [Getting Started](docs/getting-started.md) — installation, first steps, WSL notes
+- [API Guide](docs/api-guide.md) — tour of all major API features
+- [Type System](docs/type-system.md) — `DdsType` derive, supported types, CDR encoding
+- [QoS Reference](docs/qos-reference.md) — all QoS policies and builder patterns
+- [Migration from Python](docs/migration-from-python.md) — guide for `cyclonedds-python` users
 
 ## License
 
-Licensed under either of:
-- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+Licensed under the [MIT License](LICENSE-MIT).
 
-## Contributing
+## Acknowledgments
 
-Contributions are welcome! Please ensure tests pass before submitting PRs.
+Built on [Eclipse CycloneDDS](https://github.com/eclipse-cyclonedds/cyclonedds) — a high-performance DDS implementation.

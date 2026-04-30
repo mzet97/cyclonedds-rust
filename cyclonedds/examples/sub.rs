@@ -1,59 +1,37 @@
-//! Hello World Subscriber Example
-//!
-//! Run this example with: cargo run --example sub
-//! Then run pub example in another terminal to send messages.
-
 use cyclonedds::*;
 
-/// Simple message type for demonstration (must match publisher)
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[repr(C)]
 struct HelloWorld {
     id: i32,
-    message: String,
+    message: [u8; 256],
 }
 
-fn main() {
-    println!("Starting CycloneDDS Subscriber...");
+impl DdsType for HelloWorld {
+    fn type_name() -> &'static str {
+        "HelloWorld"
+    }
+    fn ops() -> Vec<u32> {
+        let mut ops = Vec::new();
+        ops.extend(adr(TYPE_4BY | OP_FLAG_SGN, 0));
+        ops.extend(adr_bst(4, 256));
+        ops
+    }
+}
 
-    // Create DomainParticipant for domain 0
-    let participant = DomainParticipant::new(0)
-        .expect("Failed to create DomainParticipant");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let participant = DomainParticipant::new(0)?;
+    let subscriber = Subscriber::new(participant.entity())?;
+    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorldTopic")?;
+    let reader: DataReader<HelloWorld> = DataReader::new(subscriber.entity(), topic.entity())?;
 
-    // Create a topic
-    let topic: Topic<HelloWorld> = participant
-        .create_topic("HelloWorldTopic")
-        .expect("Failed to create topic");
-
-    // Create Subscriber
-    let subscriber = participant
-        .create_subscriber()
-        .expect("Failed to create subscriber");
-
-    // Create DataReader
-    let reader: DataReader<HelloWorld> = subscriber
-        .create_reader(&topic)
-        .expect("Failed to create reader");
-
-    println!("Subscriber ready. Waiting for messages...");
-
+    println!("Waiting for samples...");
     loop {
-        // Wait for data with timeout
-        match reader.wait(1000) {
-            Ok(true) => {
-                // Data available, read it
-                match reader.read() {
-                    Ok(messages) => {
-                        for msg in messages {
-                            println!("Received: {:?}", msg);
-                        }
-                    }
-                    Err(e) => eprintln!("Failed to read: {:?}", e),
-                }
-            }
-            Ok(false) => {
-                // Timeout, continue waiting
-            }
-            Err(e) => eprintln!("Wait error: {:?}", e),
+        let samples = reader.take()?;
+        for s in &samples {
+            let end = s.message.iter().position(|&b| b == 0).unwrap_or(256);
+            let text = std::str::from_utf8(&s.message[..end]).unwrap_or("?");
+            println!("Received: id={}, message={}", s.id, text);
         }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
