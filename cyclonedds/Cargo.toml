@@ -4,11 +4,17 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Safe Rust wrapper for CycloneDDS"
+description = "Safe Rust wrapper for Eclipse CycloneDDS"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords = ["dds", "cyclonedds", "middleware", "pub-sub", "distributed"]
+categories = ["network-programming", "api-bindings"]
 
 [dependencies]
-cyclonedds-sys = { workspace = true }
-cyclonedds-derive = { workspace = true }
+cyclonedds-rust-sys = { workspace = true, version = "0.1.0" }
+cyclonedds-derive = { workspace = true, version = "0.1.0" }
 thiserror = "1.0"
 tokio = { version = "1", features = ["rt", "sync", "time"], optional = true }
 async-stream = { version = "0.3", optional = true }

@@ -1,5 +1,5 @@
 use crate::{error::check, DdsError, DdsResult};
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::{CStr, CString};
 use std::slice;
 

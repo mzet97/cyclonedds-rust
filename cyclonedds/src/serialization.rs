@@ -7,7 +7,7 @@
 //! - [`CdrEncoding`] for selecting XCDR version.
 
 use crate::{DdsError, DdsResult, DdsType};
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 
@@ -129,7 +129,7 @@ impl<'a, T: DdsType> CdrSerializer<'a, T> {
 
             dds_stream_write_key(
                 &mut os,
-                cyclonedds_sys::dds_cdr_key_serialization_kind_DDS_CDR_KEY_SERIALIZATION_SAMPLE,
+                cyclonedds_rust_sys::dds_cdr_key_serialization_kind_DDS_CDR_KEY_SERIALIZATION_SAMPLE,
                 &dds_cdrstream_default_allocator,
                 data_ptr as *const _,
                 desc.as_ptr(),

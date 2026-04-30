@@ -1,6 +1,6 @@
 use crate::error::check_entity;
 use crate::{DdsEntity, DdsResult};
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Mutex, OnceLock};
@@ -144,16 +144,16 @@ impl ReadCondition {
     }
 
     pub fn any(reader: dds_entity_t) -> DdsResult<Self> {
-        let mask = cyclonedds_sys::DDS_ANY_SAMPLE_STATE
-            | cyclonedds_sys::DDS_ANY_INSTANCE_STATE
-            | cyclonedds_sys::DDS_ANY_VIEW_STATE;
+        let mask = cyclonedds_rust_sys::DDS_ANY_SAMPLE_STATE
+            | cyclonedds_rust_sys::DDS_ANY_INSTANCE_STATE
+            | cyclonedds_rust_sys::DDS_ANY_VIEW_STATE;
         Self::new(reader, mask)
     }
 
     pub fn not_read(reader: dds_entity_t) -> DdsResult<Self> {
-        let mask = cyclonedds_sys::DDS_NOT_READ_SAMPLE_STATE
-            | cyclonedds_sys::DDS_ANY_INSTANCE_STATE
-            | cyclonedds_sys::DDS_ANY_VIEW_STATE;
+        let mask = cyclonedds_rust_sys::DDS_NOT_READ_SAMPLE_STATE
+            | cyclonedds_rust_sys::DDS_ANY_INSTANCE_STATE
+            | cyclonedds_rust_sys::DDS_ANY_VIEW_STATE;
         Self::new(reader, mask)
     }
 }

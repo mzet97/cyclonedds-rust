@@ -1,0 +1,26 @@
+[package]
+name = "cyclonedds-rust-sys"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "FFI bindings for Eclipse CycloneDDS"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords = ["dds", "cyclonedds", "ffi", "bindings"]
+categories = ["network-programming", "external-ffi-bindings"]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.71"
+
+[features]
+default = []
+
+[lib]
+name = "cyclonedds_rust_sys"
+crate-type = ["lib"]
+doctest = false

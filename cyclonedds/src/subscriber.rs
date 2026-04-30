@@ -3,7 +3,7 @@ use crate::{
     error::{check, check_entity},
     DataReader, DdsResult, Listener, Qos, Topic,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 
 pub struct Subscriber {
     entity: dds_entity_t,

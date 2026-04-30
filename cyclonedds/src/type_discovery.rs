@@ -9,7 +9,7 @@ use crate::{
     xtypes::{FindScope, MatchedEndpoint, TopicDescriptor, TypeInfo},
     DdsEntity, DdsError, DdsResult, DataReader, DataWriter,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::CStr;
 
 // ---------------------------------------------------------------------------
@@ -364,7 +364,7 @@ pub fn dynamic_data_to_cdr(
     data: &crate::DynamicData,
     descriptor: &TopicDescriptor,
 ) -> DdsResult<Vec<u8>> {
-    use cyclonedds_sys::*;
+    use cyclonedds_rust_sys::*;
     use std::ffi::c_void;
 
     let size = descriptor.size() as usize;
@@ -464,7 +464,7 @@ pub fn cdr_to_dynamic_data(
     schema: &crate::DynamicTypeSchema,
     descriptor: &TopicDescriptor,
 ) -> DdsResult<crate::DynamicData> {
-    use cyclonedds_sys::*;
+    use cyclonedds_rust_sys::*;
     use std::ffi::c_void;
 
     let size = descriptor.size() as usize;

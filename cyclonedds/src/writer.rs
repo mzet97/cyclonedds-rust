@@ -6,7 +6,7 @@ use crate::{
     xtypes::MatchedEndpoint,
     DdsResult, DdsType, Listener, Qos,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 

@@ -72,15 +72,15 @@ impl DdsError {
 }
 
 pub fn err_nr(code: i32) -> i32 {
-    cyclonedds_sys::dds_err_nr(code)
+    cyclonedds_rust_sys::dds_err_nr(code)
 }
 
 pub fn err_line(code: i32) -> u32 {
-    cyclonedds_sys::dds_err_line(code)
+    cyclonedds_rust_sys::dds_err_line(code)
 }
 
 pub fn err_file_id(code: i32) -> u32 {
-    cyclonedds_sys::dds_err_file_id(code)
+    cyclonedds_rust_sys::dds_err_file_id(code)
 }
 
 pub fn check(ret: i32) -> DdsResult<()> {

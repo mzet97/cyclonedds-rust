@@ -4,7 +4,7 @@ use crate::{
     xtypes::{FindScope, TopicDescriptor, TypeInfo, TypeObject},
     DdsError, DdsResult, DdsType, UntypedTopic,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::{c_char, CStr};
 
 pub const DDS_MIN_PSEUDO_HANDLE: dds_entity_t = 0x7fff0000u32 as dds_entity_t;

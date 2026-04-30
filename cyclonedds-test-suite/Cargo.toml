@@ -13,4 +13,4 @@ path = "src/main.rs"
 
 [dependencies]
 cyclonedds = { path = "../cyclonedds" }
-cyclonedds-sys = { path = "../cyclonedds-sys" }
+cyclonedds-rust-sys = { path = "../cyclonedds-rust-sys" }

@@ -1,5 +1,5 @@
 use crate::DdsResult;
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::{CStr, CString};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

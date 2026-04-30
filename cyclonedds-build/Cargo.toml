@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Build script support for compiling IDL files to Rust with CycloneDDS"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords = ["dds", "cyclonedds", "build", "idl"]
+categories = ["network-programming", "development-tools::build-utils"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -8,7 +8,7 @@ use crate::{
     xtypes::{FindScope, TopicDescriptor, TypeInfo},
     DdsError, DdsResult,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::{ffi::CString, mem::ManuallyDrop};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

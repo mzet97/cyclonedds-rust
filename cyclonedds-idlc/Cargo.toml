@@ -4,12 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "CLI tool for compiling IDL files to Rust source code for CycloneDDS"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords = ["dds", "cyclonedds", "idl", "compiler"]
+categories = ["network-programming", "command-line-utilities"]
 
 [[bin]]
 name = "cyclonedds-idlc"
 path = "src/main.rs"
 
 [dependencies]
-cyclonedds-build = { path = "../cyclonedds-build" }
+cyclonedds-build = { path = "../cyclonedds-build", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

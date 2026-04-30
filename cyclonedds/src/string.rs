@@ -1,5 +1,5 @@
 use crate::{DdsError, DdsResult};
-use cyclonedds_sys::{dds_string_dup, dds_string_free};
+use cyclonedds_rust_sys::{dds_string_dup, dds_string_free};
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::os::raw::c_char;

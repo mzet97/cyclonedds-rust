@@ -1,5 +1,5 @@
 use crate::{error::check, DdsError, DdsResult, Qos};
-use cyclonedds_sys::{
+use cyclonedds_rust_sys::{
     dds_create_qos_provider, dds_create_qos_provider_scope, dds_delete_qos_provider,
     dds_qos_kind_DDS_PARTICIPANT_QOS, dds_qos_kind_DDS_PUBLISHER_QOS, dds_qos_kind_DDS_READER_QOS,
     dds_qos_kind_DDS_SUBSCRIBER_QOS, dds_qos_kind_DDS_TOPIC_QOS, dds_qos_kind_DDS_WRITER_QOS,

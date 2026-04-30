@@ -4,7 +4,7 @@ use crate::{
     xtypes::{SertypeHandle, TypeInfo, TypeObject},
     DdsError, DdsResult, Qos,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 
 pub trait DdsEntity {
     fn entity(&self) -> dds_entity_t;

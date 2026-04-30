@@ -4,7 +4,7 @@
 //! uses function-pointer + void-pointer pairs; this module hides that behind
 //! `Box<dyn Fn(LogEntry)>` closures stored in process-global slots.
 
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::CStr;
 use std::sync::Mutex;
 
@@ -172,7 +172,7 @@ pub fn set_log_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
     *slot = callback;
     let (cb, arg) = if slot.is_some() {
         (
-            Some(log_trampoline as unsafe extern "C" fn(*mut std::ffi::c_void, *const cyclonedds_sys::dds_log_data_t)),
+            Some(log_trampoline as unsafe extern "C" fn(*mut std::ffi::c_void, *const cyclonedds_rust_sys::dds_log_data_t)),
             std::ptr::null_mut::<std::ffi::c_void>(),
         )
     } else {
@@ -191,7 +191,7 @@ pub fn set_trace_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
     *slot = callback;
     let (cb, arg) = if slot.is_some() {
         (
-            Some(log_trampoline as unsafe extern "C" fn(*mut std::ffi::c_void, *const cyclonedds_sys::dds_log_data_t)),
+            Some(log_trampoline as unsafe extern "C" fn(*mut std::ffi::c_void, *const cyclonedds_rust_sys::dds_log_data_t)),
             std::ptr::null_mut::<std::ffi::c_void>(),
         )
     } else {

@@ -5,7 +5,7 @@ use crate::{
     xtypes::MatchedEndpoint,
     DdsError, DdsResult, DdsType, Listener, Loan, Qos, Sample,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::marker::PhantomData;
 use std::ptr;
 

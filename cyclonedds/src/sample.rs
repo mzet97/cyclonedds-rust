@@ -1,4 +1,4 @@
-use cyclonedds_sys::dds_sample_info_t;
+use cyclonedds_rust_sys::dds_sample_info_t;
 use std::ffi::c_void;
 
 pub struct Sample<T> {
@@ -116,7 +116,7 @@ impl<T> Drop for Loan<T> {
     fn drop(&mut self) {
         if !self.samples.is_empty() && self.count > 0 {
             unsafe {
-                cyclonedds_sys::dds_return_loan(
+                cyclonedds_rust_sys::dds_return_loan(
                     self.reader,
                     self.samples.as_mut_ptr(),
                     self.count as i32,

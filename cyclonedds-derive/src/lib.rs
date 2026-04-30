@@ -2244,6 +2244,6 @@ fn type_to_string(ty: &Type) -> String {
             };
             format!("[{}; {}]", elem, len)
         }
-        _ => format!("{:?}", ty),
+        _ => format!("<unknown type: {}>", quote::quote!(#ty)),
     }
 }

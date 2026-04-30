@@ -1,5 +1,5 @@
 use crate::{DataReader, DdsEntity, DdsResult, DdsType, WaitSet};
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 
 #[cfg(feature = "async")]
 impl WaitSet {

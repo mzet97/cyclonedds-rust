@@ -1,5 +1,5 @@
 use crate::{DdsError, DdsResult, DdsString};
-use cyclonedds_sys::{dds_alloc, dds_free};
+use cyclonedds_rust_sys::{dds_alloc, dds_free};
 use std::ffi::c_void;
 use std::fmt;
 use std::ptr;

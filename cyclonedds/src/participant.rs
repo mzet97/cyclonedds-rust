@@ -10,7 +10,7 @@ use crate::{
     DataReader, DdsError, DdsResult, DynamicType, DynamicTypeBuilder, History, Publisher, Qos,
     Reliability, Subscriber, Topic, UntypedTopic,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 
 /// RAII guard for a temporary writer entity.
 struct WriterGuard {

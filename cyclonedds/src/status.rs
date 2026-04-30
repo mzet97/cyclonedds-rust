@@ -5,7 +5,7 @@
 //! functions and the corresponding bit-mask constants.
 
 use crate::{DdsEntity, DdsResult};
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 
 // ---------------------------------------------------------------------------
 // Status-mask constants  (1 << id, matching dds_status_id values)

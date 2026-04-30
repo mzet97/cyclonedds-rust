@@ -86,7 +86,7 @@ enum Commands {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn format_guid(guid: &cyclonedds_sys::dds_guid_t) -> String {
+fn format_guid(guid: &cyclonedds_rust_sys::dds_guid_t) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
         guid.v[0], guid.v[1], guid.v[2], guid.v[3],
@@ -104,7 +104,7 @@ fn now_ns() -> u64 {
 }
 
 /// Check a DDS entity handle returned from an FFI call.
-fn check_entity(handle: cyclonedds_sys::dds_entity_t) -> cyclonedds::DdsResult<cyclonedds_sys::dds_entity_t> {
+fn check_entity(handle: cyclonedds_rust_sys::dds_entity_t) -> cyclonedds::DdsResult<cyclonedds_rust_sys::dds_entity_t> {
     if handle < 0 {
         Err(cyclonedds::DdsError::from(handle))
     } else {
@@ -250,7 +250,7 @@ fn cmd_subscribe(
         .build()?;
 
     let reader_entity = unsafe {
-        check_entity(cyclonedds_sys::dds_create_reader(
+        check_entity(cyclonedds_rust_sys::dds_create_reader(
             subscriber.entity(),
             topic.entity(),
             qos.as_ptr(),
@@ -263,7 +263,7 @@ fn cmd_subscribe(
 
     // Enable data-available status on reader
     unsafe {
-        cyclonedds_sys::dds_set_status_mask(reader_entity, STATUS_DATA_AVAILABLE);
+        cyclonedds_rust_sys::dds_set_status_mask(reader_entity, STATUS_DATA_AVAILABLE);
     }
     waitset.attach(reader_entity, 1)?;
 
@@ -289,17 +289,17 @@ fn cmd_subscribe(
 
         // Take CDR samples from the reader
         let max_buf: usize = 256;
-        let mut sdbuf: Vec<*mut cyclonedds_sys::ddsi_serdata> =
+        let mut sdbuf: Vec<*mut cyclonedds_rust_sys::ddsi_serdata> =
             vec![std::ptr::null_mut(); max_buf];
-        let mut infos: Vec<cyclonedds_sys::dds_sample_info_t> =
+        let mut infos: Vec<cyclonedds_rust_sys::dds_sample_info_t> =
             vec![unsafe { std::mem::zeroed() }; max_buf];
 
         let n = unsafe {
-            cyclonedds_sys::dds_takecdr(
+            cyclonedds_rust_sys::dds_takecdr(
                 reader_entity,
                 sdbuf.as_mut_ptr(),
                 max_buf as u32,
-                infos.as_mut_ptr() as *mut cyclonedds_sys::dds_sample_info_t,
+                infos.as_mut_ptr() as *mut cyclonedds_rust_sys::dds_sample_info_t,
                 0,
             )
         };
@@ -313,16 +313,16 @@ fn cmd_subscribe(
             let sd = sdbuf[i];
             if sd.is_null() || !infos[i].valid_data {
                 if !sd.is_null() {
-                    unsafe { cyclonedds_sys::ddsi_serdata_unref(sd) };
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
                 }
                 continue;
             }
 
             // Extract CDR bytes from the serdata
-            let size = unsafe { cyclonedds_sys::ddsi_serdata_size(sd) } as usize;
+            let size = unsafe { cyclonedds_rust_sys::ddsi_serdata_size(sd) } as usize;
             let mut cdr_bytes = vec![0u8; size];
             unsafe {
-                cyclonedds_sys::ddsi_serdata_to_ser(
+                cyclonedds_rust_sys::ddsi_serdata_to_ser(
                     sd,
                     0,
                     size,
@@ -331,7 +331,7 @@ fn cmd_subscribe(
             }
 
             // Unref the serdata now that we have the bytes
-            unsafe { cyclonedds_sys::ddsi_serdata_unref(sd) };
+            unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
 
             // Deserialize CDR into DynamicData
             received += 1;
@@ -346,7 +346,7 @@ fn cmd_subscribe(
 
     // Clean up reader entity
     unsafe {
-        cyclonedds_sys::dds_delete(reader_entity);
+        cyclonedds_rust_sys::dds_delete(reader_entity);
     }
 
     Ok(())
@@ -391,8 +391,8 @@ fn cmd_perf(domain_id: u32, num_samples: usize) -> cyclonedds::DdsResult<()> {
 
     // Enable data available status
     unsafe {
-        cyclonedds_sys::dds_set_status_mask(ping_reader.entity(), STATUS_DATA_AVAILABLE);
-        cyclonedds_sys::dds_set_status_mask(pong_reader.entity(), STATUS_DATA_AVAILABLE);
+        cyclonedds_rust_sys::dds_set_status_mask(ping_reader.entity(), STATUS_DATA_AVAILABLE);
+        cyclonedds_rust_sys::dds_set_status_mask(pong_reader.entity(), STATUS_DATA_AVAILABLE);
     }
 
     let ping_waitset = WaitSet::new(participant.entity())?;
@@ -604,7 +604,7 @@ fn cmd_publish(
         .build()?;
 
     let writer_entity = unsafe {
-        check_entity(cyclonedds_sys::dds_create_writer(
+        check_entity(cyclonedds_rust_sys::dds_create_writer(
             publisher.entity(),
             topic.entity(),
             qos.as_ptr(),
@@ -619,7 +619,7 @@ fn cmd_publish(
         let msg = format!("{} [{}]", payload, i);
         let c_msg = std::ffi::CString::new(msg).unwrap();
         unsafe {
-            let _ = cyclonedds_sys::dds_write(writer_entity, c_msg.as_ptr() as *const std::ffi::c_void);
+            let _ = cyclonedds_rust_sys::dds_write(writer_entity, c_msg.as_ptr() as *const std::ffi::c_void);
         }
         println!("Published: {}", c_msg.to_string_lossy());
         if delay_ms > 0 && i + 1 < count {
@@ -628,7 +628,7 @@ fn cmd_publish(
     }
 
     unsafe {
-        cyclonedds_sys::dds_delete(writer_entity);
+        cyclonedds_rust_sys::dds_delete(writer_entity);
     }
 
     Ok(())

@@ -7,7 +7,7 @@ use crate::{
     DDS_OP_TYPE_MASK_CONST, DDS_OP_SUBTYPE_MASK_CONST, DDS_OP_MASK_CONST,
     SUBTYPE_BST,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::CStr;
 
 pub struct TypeInfo {

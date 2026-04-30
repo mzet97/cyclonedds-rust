@@ -1,15 +1,27 @@
 [workspace]
-members = ["cyclonedds-sys", "cyclonedds", "cyclonedds-derive", "cyclonedds-test-suite", "cyclonedds-build", "cyclonedds-idlc", "cyclonedds-cli"]
+members = [
+    "cyclonedds-rust-sys",
+    "cyclonedds",
+    "cyclonedds-derive",
+    "cyclonedds-test-suite",
+    "cyclonedds-build",
+    "cyclonedds-idlc",
+    "cyclonedds-cli",
+]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Seu Nome"]
-license = "MIT/Apache-2.0"
+authors = ["Matheus Zeitune <matheus.zeitune.developer@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/mzet97/cyclonedds-rust"
+homepage = "https://github.com/mzet97/cyclonedds-rust"
+documentation = "https://docs.rs/cyclonedds"
+readme = "README.md"
 
 [workspace.dependencies]
-cyclonedds-sys = { path = "cyclonedds-sys" }
-cyclonedds = { path = "cyclonedds" }
-cyclonedds-derive = { path = "cyclonedds-derive" }
-cyclonedds-build = { path = "cyclonedds-build" }
+cyclonedds-rust-sys = { path = "cyclonedds-rust-sys", version = "0.1.0" }
+cyclonedds = { path = "cyclonedds", version = "0.1.0" }
+cyclonedds-derive = { path = "cyclonedds-derive", version = "0.1.0" }
+cyclonedds-build = { path = "cyclonedds-build", version = "0.1.0" }

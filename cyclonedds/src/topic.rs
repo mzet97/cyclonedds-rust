@@ -1,7 +1,7 @@
 use crate::{
     entity::DdsEntity, write_arena::WriteArena, xtypes::TopicDescriptor, DdsError, DdsResult, Qos,
 };
-use cyclonedds_sys::*;
+use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
 use std::ffi::CString;
 use std::marker::PhantomData;
