@@ -25,6 +25,7 @@ bindgen = { version = "0.71", optional = true }
 [features]
 default = []
 internal-ops = []
+security = []
 
 [lib]
 name = "cyclonedds_rust_sys"

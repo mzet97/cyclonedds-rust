@@ -230,22 +230,31 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
     } else {
         "ON"
     };
-    run(
-        Command::new("cmake")
-            .arg("-S")
-            .arg(source_dir)
-            .arg("-B")
-            .arg(build_dir)
-            .arg(format!("-DBUILD_SHARED_LIBS={}", shared))
-            .arg("-DBUILD_TESTING=OFF")
-            .arg("-DBUILD_IDLC=OFF")
-            .arg("-DBUILD_DDSPERF=OFF")
-            .arg("-DBUILD_EXAMPLES=OFF")
-            .arg("-DENABLE_LTO=OFF")
-            .arg("-DENABLE_SECURITY=OFF")
-            .arg("-DENABLE_SSL=OFF"),
-        "configure bundled CycloneDDS",
-    );
+
+    let enable_security = env::var_os("CARGO_FEATURE_SECURITY").is_some();
+    let (security_flag, ssl_flag) = if enable_security {
+        println!("cargo:warning=DDS Security enabled — ensure OpenSSL is installed");
+        ("ON", "ON")
+    } else {
+        ("OFF", "OFF")
+    };
+
+    let mut cmake = Command::new("cmake");
+    cmake
+        .arg("-S")
+        .arg(source_dir)
+        .arg("-B")
+        .arg(build_dir)
+        .arg(format!("-DBUILD_SHARED_LIBS={}", shared))
+        .arg("-DBUILD_TESTING=OFF")
+        .arg("-DBUILD_IDLC=OFF")
+        .arg("-DBUILD_DDSPERF=OFF")
+        .arg("-DBUILD_EXAMPLES=OFF")
+        .arg("-DENABLE_LTO=OFF")
+        .arg(format!("-DENABLE_SECURITY={}", security_flag))
+        .arg(format!("-DENABLE_SSL={}", ssl_flag));
+
+    run(&mut cmake, "configure bundled CycloneDDS");
     run(
         Command::new("cmake")
             .arg("--build")

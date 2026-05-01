@@ -28,6 +28,7 @@ futures-util = { version = "0.3", optional = true }
 [features]
 default = ["async"]
 async = ["tokio", "async-stream", "futures-core", "futures-util"]
+security = ["cyclonedds-rust-sys/security"]
 
 [dev-dependencies]
 cyclonedds-derive = { workspace = true }
