@@ -124,8 +124,8 @@ A v1.2.0 esta estabilizada no crates.io com DDS Security, Iceoryx/PSMX, async ba
 
 | # | Item | Fase | Prioridade | Status |
 |---|---|---|---|---|
-| 1 | DDS Security exemplos | 22 | Alta | Pendente |
-| 2 | DDS Security docs | 22 | Alta | Pendente |
+| 1 | DDS Security exemplos | 22 | Alta | Completo |
+| 2 | DDS Security docs | 22 | Alta | Completo |
 | 3 | Async timeout streams | 23 | Media | Pendente |
 | 4 | CLI `discover` e `--json` | 24 | Media | Pendente |
 | 5 | IDL unions e bitmasks | 25 | Media | Pendente |
@@ -136,4 +136,13 @@ A v1.2.0 esta estabilizada no crates.io com DDS Security, Iceoryx/PSMX, async ba
 
 ## Proxima Acao Recomendada
 
-Iniciar a **Fase 22** (DDS Security exemplos) pois e a feature de maior impacto da v1.2 que ainda carece de documentacao e exemplos. O primeiro passo e criar um script para gerar certificados auto-assinados e um par de exemplos pub/sub.
+**Fase 22 completa.** DDS Security exemplos e documentacao adicionados:
+- `scripts/generate-certs.sh` para gerar certificados auto-assinados
+- `examples/security/governance.xml` e `permissions.xml`
+- `examples/security_pub.rs` e `examples/security_sub.rs`
+- `docs/security-guide.md`
+
+**Proximas candidatas:**
+1. **Fase 23**: Async stream refinements (timeout, cancelamento)
+2. **Fase 24**: CLI v1.3 (`discover`, `--json`, `--rate`)
+3. **Fase 25**: IDL compiler avancado (unions, bitmasks)
