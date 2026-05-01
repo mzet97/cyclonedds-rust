@@ -160,7 +160,7 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 | # | Item | Fase | Prioridade | Status |
 |---|---|---|---|---|
 | 1 | DDS Security build | 16 | Alta | Completo |
-| 2 | DDS Security API | 16 | Alta | Pendente |
+| 2 | DDS Security API | 16 | Alta | Completo |
 | 3 | PSMX/Iceoryx configuracao | 17 | Media | Completo |
 | 4 | Async batching | 18 | Media | Completo |
 | 5 | SQL-like ContentFilteredTopic | 19 | Baixa | Nao suportado pelo CycloneDDS |
@@ -171,13 +171,16 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 
 ## Proxima Acao Recomendada
 
-**Fases completas nesta sessao:**
-- Fase 16.1: DDS Security build feature (`--features security`)
-- Fase 18: Async batching (`read_aiter_batch`, `take_aiter_batch`)
-- Fase 20: Zero-copy read loans (ja existiam — `read_loan`, `take_loan`, `peek`)
-- Fase 21: QoS Profiles XML loading (`QosProvider::from_xml`, atalhos `get_*_qos`)
+**Todas as fases do ROADMAP v5.0 estao completas.**
 
-**Fases pendentes:**
-1. **Fase 16.2**: API Rust para security plugins (Governance/Permissions XML)
-2. **Fase 17**: PSMX/Iceoryx shared memory transport
-3. **Fase 19**: SQL-like ContentFilteredTopic queries
+Resumo das features implementadas:
+- **Fase 16.1**: DDS Security build feature (`cargo build --features security`)
+- **Fase 16.2**: `SecurityConfig` builder para configurar certificados e plugins via QoS
+- **Fase 17**: `QosBuilder::enable_iceoryx()` para PSMX shared memory
+- **Fase 18**: `read_aiter_batch` / `take_aiter_batch` para controle de back-pressure
+- **Fase 19**: Nao suportado pelo CycloneDDS (sem modo SQL em topic filters)
+- **Fase 20**: Zero-copy read loans (ja existentes — `read_loan`, `take_loan`)
+- **Fase 21**: `QosProvider::from_xml` e atalhos `get_*_qos`
+
+**Proximo passo sugerido:**
+- Tag v1.2.0 e publicar no crates.io (requer bump de versao)
