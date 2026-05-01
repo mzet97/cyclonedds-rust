@@ -11,11 +11,21 @@
 //! ```no_run
 //! use cyclonedds::*;
 //!
+//! #[derive(DdsTypeDerive)]
+//! struct HelloWorld {
+//!     id: i32,
+//!     message: DdsString,
+//! }
+//!
 //! let participant = DomainParticipant::new(0).unwrap();
-//! let topic = participant.create_topic::<String>("HelloWorld").unwrap();
+//! let topic = participant.create_topic::<HelloWorld>("HelloWorld").unwrap();
 //! let publisher = participant.create_publisher().unwrap();
 //! let writer = publisher.create_writer(&topic).unwrap();
-//! writer.write(&"hello".to_string()).unwrap();
+//! let msg = HelloWorld {
+//!     id: 1,
+//!     message: DdsString::new("hello").unwrap(),
+//! };
+//! writer.write(&msg).unwrap();
 //! ```
 
 pub use cyclonedds_derive::DdsBitmask as DdsBitmaskDerive;
