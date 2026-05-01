@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-rust-sys"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bindgen",
  "cyclonedds-src",
@@ -284,6 +284,14 @@ version = "1.0.0"
 dependencies = [
  "cyclonedds",
  "cyclonedds-rust-sys",
+]
+
+[[package]]
+name = "dds-demo-test"
+version = "0.1.0"
+dependencies = [
+ "cyclonedds",
+ "cyclonedds-derive",
 ]
 
 [[package]]
