@@ -2,6 +2,7 @@
 name = "dds-demo-test"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [[bin]]
 name = "comprehensive_test"
@@ -16,5 +17,5 @@ name = "subscriber"
 path = "src/subscriber.rs"
 
 [dependencies]
-cyclonedds = { path = "../cyclonedds-rust/cyclonedds" }
-cyclonedds-derive = { path = "../cyclonedds-rust/cyclonedds-derive" }
+cyclonedds = { workspace = true }
+cyclonedds-derive = { workspace = true }
