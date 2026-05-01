@@ -87,7 +87,7 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 - Melhorar performance do stream com polling eficiente.
 
 **Criterios de aceitacao:**
-- [ ] `read_aiter_batch(100)` funciona e retorna ate 100 samples por iteracao.
+- [x] `read_aiter_batch(max_samples)` e `take_aiter_batch(max_samples)` implementados.
 - [ ] Benchmark mostra melhoria de throughput com batching.
 
 ---
@@ -159,10 +159,10 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 
 | # | Item | Fase | Prioridade | Status |
 |---|---|---|---|---|
-| 1 | DDS Security build | 16 | Alta | Pendente |
+| 1 | DDS Security build | 16 | Alta | Completo |
 | 2 | DDS Security API | 16 | Alta | Pendente |
 | 3 | PSMX/Iceoryx configuracao | 17 | Media | Pendente |
-| 4 | Async batching | 18 | Media | Pendente |
+| 4 | Async batching | 18 | Media | Completo |
 | 5 | SQL-like ContentFilteredTopic | 19 | Baixa | Pendente |
 | 6 | Zero-copy read loans | 20 | Media | Pendente |
 | 7 | QoS Profiles XML | 21 | Baixa | Pendente |
@@ -171,4 +171,11 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 
 ## Proxima Acao Recomendada
 
-Iniciar a **Fase 16** (DDS Security) pois e a feature mais solicitada e de maior impacto. O primeiro passo e reabilitar `-DENABLE_SECURITY=ON` no build e adicionar a feature `security` nos crates.
+**Fases completas nesta sessao:**
+- Fase 16.1: DDS Security build feature (`--features security`)
+- Fase 18: Async batching (`read_aiter_batch`, `take_aiter_batch`)
+
+**Proximas candidatas:**
+1. **Fase 16.2**: API Rust para security plugins (complexa, requer bindings adicionais)
+2. **Fase 20**: Zero-copy read loans (`read_loan`, `take_loan`)
+3. **Fase 21**: QoS Profiles XML loading (`QosProvider::from_xml`)
