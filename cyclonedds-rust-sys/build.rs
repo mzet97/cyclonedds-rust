@@ -241,7 +241,9 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
             .arg("-DBUILD_IDLC=OFF")
             .arg("-DBUILD_DDSPERF=OFF")
             .arg("-DBUILD_EXAMPLES=OFF")
-            .arg("-DENABLE_LTO=OFF"),
+            .arg("-DENABLE_LTO=OFF")
+            .arg("-DENABLE_SECURITY=OFF")
+            .arg("-DENABLE_SSL=OFF"),
         "configure bundled CycloneDDS",
     );
     run(
