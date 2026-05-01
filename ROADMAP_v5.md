@@ -33,8 +33,8 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 - Adicionar feature `security` no `cyclonedds` e `cyclonedds-rust-sys`.
 
 **Criterios de aceitacao:**
-- [ ] Build com `--features security` funciona em Linux.
-- [ ] Build sem a feature continua funcionando (backward compat).
+- [x] Build com `--features security` funciona em Linux (requer OpenSSL instalado).
+- [x] Build sem a feature continua funcionando (backward compat).
 - [ ] CI passa com e sem a feature.
 
 ### 16.2 API de Security
