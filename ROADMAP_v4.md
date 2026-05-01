@@ -172,11 +172,11 @@ A v1.0.0 esta estabilizada no crates.io e funcionando em Linux/WSL/Windows. A v1
 
 | # | Item | Fase | Prioridade | Status |
 |---|------|------|------------|--------|
-| 1 | CI passando em Ubuntu | 11 | Alta | Pendente |
-| 2 | CI passando em Windows | 11 | Alta | Pendente |
-| 3 | CI passando em macOS | 11 | Media | Pendente |
-| 4 | Benchmark de latencia | 12 | Alta | Pendente |
-| 5 | Benchmark de throughput | 12 | Alta | Pendente |
+| 1 | CI passando em Ubuntu | 11 | Alta | Completo |
+| 2 | CI passando em Windows | 11 | Alta | Completo |
+| 3 | CI passando em macOS | 11 | Media | Completo |
+| 4 | Benchmark de latencia | 12 | Alta | Completo |
+| 5 | Benchmark de throughput | 12 | Alta | Completo |
 | 6 | cargo-cyclonedds plugin | 13 | Media | Pendente |
 | 7 | CLI publish com JSON | 14 | Media | Pendente |
 | 8 | CLI typeof com metadados | 14 | Media | Pendente |
