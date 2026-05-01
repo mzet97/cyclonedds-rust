@@ -5,74 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-04-30
-
-### Added
-- Full v1.0 release with stable API.
-- All crates published to crates.io.
-- CI/CD with GitHub Actions.
-- Cross-process integration tests.
-- Zero-copy write loan tests and documentation.
-- Latency benchmark example.
-
-### Changed
-- MSRV raised to Rust 1.85.
-- `cyclonedds-src` published as separate crate.
-- `cyclonedds-rust-sys` uses `cyclonedds_src::source_dir()` for bundled source.
-
-## [Unreleased]
+## [1.1.0] - 2026-05-01
 
 ### Added
 
-- Crate `cyclonedds-src` bundling Eclipse CycloneDDS C source for out-of-the-box builds without system `libddsc`.
-- `rust-version = "1.85"` (MSRV) declared in workspace root and propagated to all crates.
-- Prebuilt FFI bindings used unconditionally in `cyclonedds-rust-sys`; removes runtime dependency on `clang`/`bindgen` for end users.
-
-### Changed
-
-- `cyclonedds-rust-sys/build.rs` now resolves CycloneDDS source from `cyclonedds-src` crate first, then workspace `vendor/`, then system library.
-- `Cargo.lock` kept at lockfile version 3; this also documents the failed Rust 1.70 validation path before the MSRV was raised to Rust 1.85.
-- `cyclonedds-rust-sys/build.rs` now resolves bundled source via `cyclonedds_src::source_dir()`, which also works when the sys crate is built from a published package rather than from the workspace layout.
-- Added `internal-ops` feature to `cyclonedds-rust-sys` to silence unexpected cfg warnings.
-- Removed unused imports in `cyclonedds-cli` and `cyclonedds-build`.
-- Cleaned up redundant `version` keys in workspace dependency declarations.
-- Created `scripts/publish.sh` for automated sequential crate publishing.
-- **Fase 3:** DDS Security explicitamente documentado como non-goal para v1.0.
-- WriteLoan testado com `cyclonedds-test-suite/tests/write_loan.rs`.
-- CLI documentado com limites honestos no README.
-- Benchmark de latência criado em `cyclonedds-test-suite/examples/bench_latency.rs`.
-- Added GitHub Actions CI: `ci.yml` (Linux/Windows/macOS), `msrv.yml`, `clippy.yml`, `doc.yml`.
-- Added cross-process pub/sub integration test via `cyclonedds-test-suite/tests/interop.rs`.
-- Added `#![warn(missing_docs)]` to `cyclonedds` crate; CI allows missing_docs temporarily while full docs are in progress.
-- Documented core types: `DomainParticipant`, `DataReader`, `DataWriter`, `UntypedTopic`.
+- **CLI v1.1**: `publish --json` flag for publishing structured messages from JSON payloads.
+  Supports primitives, structs, arrays, sequences, and enums via DynamicData.
+- **CLI v1.1**: `typeof` command now displays IDL-like representation with XTypes metadata:
+  keys, extensibility (`@final`/`@appendable`/`@mutable`), annotations (`@key`, `@optional`,
+  `@must_understand`, `@external`), enum literals, union cases, and bitmask positions.
+- **Benchmarks**: New `cyclonedds-bench` crate with Criterion benchmarks for latency
+  (round-trip 64B, 1KB, 16KB) and throughput (msg/s with variable batch sizes).
+- **Cargo plugin**: New `cargo-cyclonedds` crate providing `cargo cyclonedds generate <idl>`
+  command with `--output-dir`, `--cyclonedds-home`, `--module-name`, and `--no-idlc` flags.
+- **CI/CD**: GitHub Actions workflows passing on Ubuntu, Windows, and macOS.
+  Windows CI fixed by disabling DDS Security (`-DENABLE_SECURITY=OFF`) and SSL
+  (`-DENABLE_SSL=OFF`) in bundled CycloneDDS build.
 
 ### Fixed
 
-- `cyclonedds-test-suite` now aliases `cyclonedds-rust-sys` as `cyclonedds_sys`, matching the integration tests that reference raw DDS status constants.
+- **Docs.rs**: Resolved ~820 `missing_docs` warnings. Internal modules now use
+  `#[allow(missing_docs)]` to suppress bindgen/FFI noise without reducing API coverage.
+- **Docs.rs**: Fixed broken intra-doc link in `status.rs` (`crate::error::check`).
+- **Docs.rs**: Added `#[allow(rustdoc::broken_intra_doc_links)]` and
+  `#[allow(rustdoc::invalid_html_tags)]` to `cyclonedds-rust-sys` generated bindings.
+- **Doctest**: Fixed broken doctest in `cyclonedds/src/lib.rs` to use `DdsTypeDerive` struct.
 
-### Validation
+### Changed
 
-- `cargo build -p cyclonedds-rust-sys` passed in a WSL root copy using bundled `cyclonedds-src`.
-- `cargo test --workspace --features async` passed after fixing the test-suite sys dependency alias.
-- MSRV validation with Rust 1.70.0 showed the previous declaration was aspirational: current dependency resolution selects crates using Rust 2024 edition. The documented MSRV is now raised to Rust 1.85 so the release gate can be verified against the actual dependency graph.
-- `cargo +1.85.0 build --workspace --all-features --locked` and `cargo +1.85.0 test --workspace --features async --locked` passed in a WSL copy.
-- A temporary external consumer project built successfully against `cyclonedds` by path, exercising bundled `cyclonedds-src` and `cyclonedds-rust-sys` outside the repository workspace.
+- Bumped workspace version to `1.1.0`.
+- `cyclonedds-rust-sys` bumped to `1.0.2` (CI fixes).
 
-## [0.1.0] - 2025-04-??
+## [1.0.0] - 2026-04-30
 
 ### Added
 
-- Initial release of `cyclonedds-rust` workspace.
-- Safe Rust wrapper (`cyclonedds`) around Eclipse CycloneDDS.
-- Complete DDS entity model: DomainParticipant, Publisher, Subscriber, Topic, DataWriter, DataReader.
-- 26+ QoS policies via type-safe `QosBuilder`.
+- Initial stable release.
+- Safe Rust bindings for Eclipse CycloneDDS core entities.
+- 26+ QoS policies via `QosBuilder`.
 - 13 listener callbacks via `ListenerBuilder`.
-- WaitSet / ReadCondition / QueryCondition / GuardCondition support.
+- WaitSet / Conditions for event-driven architectures.
 - Derive macros: `DdsType`, `DdsEnum`, `DdsUnion`, `DdsBitmask`.
 - CDR serialization (XCDR1/XCDR2), dynamic types, type discovery (XTypes).
 - Async streams (`read_aiter`, `take_aiter`) with tokio integration.
-- CLI tools: `ls`, `ps`, `subscribe`, `typeof`, `publish`.
-- Build helpers (`cyclonedds-build`, `cyclonedds-idlc`) for IDL-to-Rust code generation.
-
-[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/mzet97/cyclonedds-rust/releases/tag/v0.1.0
+- CLI tools: `ls`, `ps`, `subscribe`, `typeof`, `publish`, `perf`.
+- IDL compilation support via `cyclonedds-build` and `cyclonedds-idlc`.
