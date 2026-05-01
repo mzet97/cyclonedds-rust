@@ -93,6 +93,13 @@ fn emit_link_info(lib_dir: &Path, link_kind: &'static str) {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
     }
+    // Windows system libraries required by CycloneDDS
+    #[cfg(target_os = "windows")]
+    {
+        println!("cargo:rustc-link-lib=bcrypt");
+        println!("cargo:rustc-link-lib=iphlpapi");
+        println!("cargo:rustc-link-lib=ws2_32");
+    }
 }
 
 fn find_system_ddsc_library() -> Option<(PathBuf, &'static str)> {
@@ -110,13 +117,21 @@ fn find_system_ddsc_library() -> Option<(PathBuf, &'static str)> {
 }
 
 fn which_cmake() -> Option<PathBuf> {
-    let output = Command::new("which").arg("cmake").output().ok()?;
-    if output.status.success() {
-        let path = String::from_utf8_lossy(&output.stdout);
-        Some(PathBuf::from(path.trim()))
-    } else {
-        None
-    }
+    // Try `which cmake` first (Unix), fall back to `where cmake` (Windows)
+    let output = Command::new("which")
+        .arg("cmake")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .or_else(|| {
+            Command::new("where")
+                .arg("cmake")
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+        })?;
+    let path = String::from_utf8_lossy(&output.stdout);
+    Some(PathBuf::from(path.lines().next().unwrap_or("").trim()))
 }
 
 /// Remove `const _: () = { ... }` static assertion blocks from a string.
@@ -210,13 +225,18 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
     std::fs::create_dir_all(build_dir)
         .unwrap_or_else(|err| panic!("failed to create {}: {err}", build_dir.display()));
 
+    let shared = if cfg!(target_os = "windows") {
+        "OFF"  // Windows: static linking avoids symbol-export issues with MSVC
+    } else {
+        "ON"
+    };
     run(
         Command::new("cmake")
             .arg("-S")
             .arg(source_dir)
             .arg("-B")
             .arg(build_dir)
-            .arg("-DBUILD_SHARED_LIBS=ON")
+            .arg(format!("-DBUILD_SHARED_LIBS={}", shared))
             .arg("-DBUILD_TESTING=OFF")
             .arg("-DBUILD_IDLC=OFF")
             .arg("-DBUILD_DDSPERF=OFF")
@@ -243,14 +263,6 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
 }
 
 fn find_ddsc_library(build_dir: &Path) -> Option<(PathBuf, &'static str)> {
-    let names: &[(&str, &str)] = &[
-        ("libddsc.dylib", "dylib"),
-        ("libddsc.so", "dylib"),
-        ("ddsc.dll", "dylib"),
-        ("ddsc.lib", "dylib"),
-        ("libddsc.a", "static"),
-    ];
-
     let mut stack = vec![build_dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let entries = std::fs::read_dir(&dir).ok()?;
@@ -260,10 +272,23 @@ fn find_ddsc_library(build_dir: &Path) -> Option<(PathBuf, &'static str)> {
                 stack.push(path);
                 continue;
             }
-            for (file_name, kind) in names {
-                if path.file_name() == Some(OsStr::new(file_name)) {
+            let name = path.file_name()?;
+            match name.to_str()? {
+                "libddsc.dylib" | "libddsc.so" | "ddsc.dll" => {
+                    return Some((path.parent()?.to_path_buf(), "dylib"));
+                }
+                "ddsc.lib" => {
+                    // On Windows, ddsc.lib may be an import library (paired with ddsc.dll)
+                    // or a static library. If no corresponding dll exists in the same
+                    // directory, treat it as static.
+                    let dll = path.with_file_name("ddsc.dll");
+                    let kind = if dll.exists() { "dylib" } else { "static" };
                     return Some((path.parent()?.to_path_buf(), kind));
                 }
+                "libddsc.a" => {
+                    return Some((path.parent()?.to_path_buf(), "static"));
+                }
+                _ => {}
             }
         }
     }

@@ -24,7 +24,7 @@ readme = "README.md"
 
 [workspace.dependencies]
 cyclonedds-src = { path = "cyclonedds-src", version = "1.0.1" }
-cyclonedds-rust-sys = { path = "cyclonedds-rust-sys", version = "1.0.0" }
+cyclonedds-rust-sys = { path = "cyclonedds-rust-sys", version = "1.0.1" }
 cyclonedds = { path = "cyclonedds", version = "1.0.0" }
 cyclonedds-derive = { path = "cyclonedds-derive", version = "1.0.0" }
 cyclonedds-build = { path = "cyclonedds-build", version = "1.0.0" }
