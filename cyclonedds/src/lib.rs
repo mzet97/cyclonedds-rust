@@ -51,41 +51,26 @@ mod error;
 pub mod log;
 #[allow(missing_docs)]
 mod listener;
-#[allow(missing_docs)]
 mod participant;
-#[allow(missing_docs)]
 mod publisher;
-#[allow(missing_docs)]
 mod qos;
-#[allow(missing_docs)]
 mod qos_provider;
-#[allow(missing_docs)]
 mod reader;
-#[allow(missing_docs)]
 mod serialization;
-#[allow(missing_docs)]
 pub mod sample;
-#[allow(missing_docs)]
 mod sequence;
-#[allow(missing_docs)]
+#[cfg(feature = "security")]
+pub mod security;
 mod statistics;
-#[allow(missing_docs)]
 mod status;
-#[allow(missing_docs)]
 mod string;
-#[allow(missing_docs)]
 mod subscriber;
-#[allow(missing_docs)]
 mod topic;
-#[allow(missing_docs)]
 mod waitset;
 #[doc(hidden)]
 pub mod write_arena;
-#[allow(missing_docs)]
 mod writer;
-#[allow(missing_docs)]
 mod type_discovery;
-#[allow(missing_docs)]
 mod xtypes;
 
 pub use builtin::{
@@ -129,6 +114,8 @@ pub use status::{
     STATUS_SUBSCRIPTION_MATCHED,
 };
 pub use statistics::{StatisticEntryRef, StatisticKind, StatisticValue, Statistics};
+#[cfg(feature = "security")]
+pub use security::SecurityConfig;
 pub use string::DdsString;
 pub use subscriber::Subscriber;
 pub use type_discovery::{

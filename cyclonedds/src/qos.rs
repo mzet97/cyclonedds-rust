@@ -367,6 +367,13 @@ impl QosBuilder {
         self
     }
 
+    /// Enable Iceoryx as the PSMX shared-memory transport.
+    ///
+    /// This is a convenience wrapper around [`Self::psmx_instances`].
+    pub fn enable_iceoryx(self) -> Self {
+        self.psmx_instances(vec!["iceoryx".into()])
+    }
+
     pub fn property(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.properties.push((name.into(), value.into(), false));
         self

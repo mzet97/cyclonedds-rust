@@ -161,9 +161,9 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 |---|---|---|---|---|
 | 1 | DDS Security build | 16 | Alta | Completo |
 | 2 | DDS Security API | 16 | Alta | Pendente |
-| 3 | PSMX/Iceoryx configuracao | 17 | Media | Pendente |
+| 3 | PSMX/Iceoryx configuracao | 17 | Media | Completo |
 | 4 | Async batching | 18 | Media | Completo |
-| 5 | SQL-like ContentFilteredTopic | 19 | Baixa | Pendente |
+| 5 | SQL-like ContentFilteredTopic | 19 | Baixa | Nao suportado pelo CycloneDDS |
 | 6 | Zero-copy read loans | 20 | Media | Completo |
 | 7 | QoS Profiles XML | 21 | Baixa | Completo |
 
