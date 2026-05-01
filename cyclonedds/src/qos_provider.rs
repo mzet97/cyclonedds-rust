@@ -48,6 +48,13 @@ impl QosProvider {
         Ok(Self { ptr })
     }
 
+    /// Create a provider from an inline XML QoS definition.
+    ///
+    /// Alias for [`Self::new`].
+    pub fn from_xml(definition: &str) -> DdsResult<Self> {
+        Self::new(definition)
+    }
+
     pub fn with_scope(definition: &str, scope: &str) -> DdsResult<Self> {
         let definition = to_cstring(definition, "qos definition")?;
         let scope = to_cstring(scope, "qos scope")?;
@@ -95,6 +102,36 @@ impl QosProvider {
         Qos::from_raw_clone(qos)?.ok_or_else(|| {
             DdsError::Other(format!("CycloneDDS returned a null QoS for key `{key:?}`"))
         })
+    }
+
+    /// Convenience: get participant QoS for a named profile.
+    pub fn get_participant_qos(&self, profile: &str) -> DdsResult<Qos> {
+        self.get_qos(QosKind::Participant, profile)
+    }
+
+    /// Convenience: get publisher QoS for a named profile.
+    pub fn get_publisher_qos(&self, profile: &str) -> DdsResult<Qos> {
+        self.get_qos(QosKind::Publisher, profile)
+    }
+
+    /// Convenience: get subscriber QoS for a named profile.
+    pub fn get_subscriber_qos(&self, profile: &str) -> DdsResult<Qos> {
+        self.get_qos(QosKind::Subscriber, profile)
+    }
+
+    /// Convenience: get topic QoS for a named profile.
+    pub fn get_topic_qos(&self, profile: &str) -> DdsResult<Qos> {
+        self.get_qos(QosKind::Topic, profile)
+    }
+
+    /// Convenience: get data reader QoS for a named profile.
+    pub fn get_reader_qos(&self, profile: &str) -> DdsResult<Qos> {
+        self.get_qos(QosKind::Reader, profile)
+    }
+
+    /// Convenience: get data writer QoS for a named profile.
+    pub fn get_writer_qos(&self, profile: &str) -> DdsResult<Qos> {
+        self.get_qos(QosKind::Writer, profile)
     }
 }
 

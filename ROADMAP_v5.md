@@ -164,8 +164,8 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 | 3 | PSMX/Iceoryx configuracao | 17 | Media | Pendente |
 | 4 | Async batching | 18 | Media | Completo |
 | 5 | SQL-like ContentFilteredTopic | 19 | Baixa | Pendente |
-| 6 | Zero-copy read loans | 20 | Media | Pendente |
-| 7 | QoS Profiles XML | 21 | Baixa | Pendente |
+| 6 | Zero-copy read loans | 20 | Media | Completo |
+| 7 | QoS Profiles XML | 21 | Baixa | Completo |
 
 ---
 
@@ -174,8 +174,10 @@ A v1.1.0 esta estabilizada no crates.io com CLI melhorado, benchmarks, cargo plu
 **Fases completas nesta sessao:**
 - Fase 16.1: DDS Security build feature (`--features security`)
 - Fase 18: Async batching (`read_aiter_batch`, `take_aiter_batch`)
+- Fase 20: Zero-copy read loans (ja existiam — `read_loan`, `take_loan`, `peek`)
+- Fase 21: QoS Profiles XML loading (`QosProvider::from_xml`, atalhos `get_*_qos`)
 
-**Proximas candidatas:**
-1. **Fase 16.2**: API Rust para security plugins (complexa, requer bindings adicionais)
-2. **Fase 20**: Zero-copy read loans (`read_loan`, `take_loan`)
-3. **Fase 21**: QoS Profiles XML loading (`QosProvider::from_xml`)
+**Fases pendentes:**
+1. **Fase 16.2**: API Rust para security plugins (Governance/Permissions XML)
+2. **Fase 17**: PSMX/Iceoryx shared memory transport
+3. **Fase 19**: SQL-like ContentFilteredTopic queries
