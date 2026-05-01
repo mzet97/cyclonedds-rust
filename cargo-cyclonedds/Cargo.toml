@@ -10,6 +10,9 @@ description = "Cargo plugin for generating Rust types from OMG IDL files for Cyc
 keywords = ["dds", "cyclonedds", "idl", "cargo-plugin"]
 categories = ["command-line-utilities", "development-tools"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [[bin]]
 name = "cargo-cyclonedds"
 path = "src/main.rs"

@@ -13,6 +13,9 @@ readme.workspace = true
 keywords = ["dds", "cyclonedds", "middleware", "pub-sub", "distributed"]
 categories = ["network-programming", "api-bindings"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 cyclonedds-rust-sys = { workspace = true }
 cyclonedds-derive = { workspace = true }

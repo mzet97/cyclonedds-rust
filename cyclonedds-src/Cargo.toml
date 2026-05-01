@@ -12,6 +12,10 @@ documentation.workspace = true
 readme.workspace = true
 keywords = ["dds", "cyclonedds", "source"]
 categories = ["external-ffi-bindings", "network-programming"]
+
+[package.metadata.docs.rs]
+all-features = true
+
 include = [
     "/Cargo.toml",
     "/src/lib.rs",

@@ -12,6 +12,9 @@ readme.workspace = true
 keywords = ["dds", "cyclonedds", "idl", "compiler"]
 categories = ["network-programming", "command-line-utilities"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [[bin]]
 name = "cyclonedds-idlc"
 path = "src/main.rs"

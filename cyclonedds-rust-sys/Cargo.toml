@@ -13,6 +13,9 @@ readme.workspace = true
 keywords = ["dds", "cyclonedds", "ffi", "bindings"]
 categories = ["network-programming", "external-ffi-bindings"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 
 [build-dependencies]
