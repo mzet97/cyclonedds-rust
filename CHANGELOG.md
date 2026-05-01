@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-01
+
+### Added
+
+- **DDS Security**: `SecurityConfig` builder for configuring DDS Security via QoS properties.
+  Supports identity certificates, Governance/Permissions XML, and plugin selection.
+  Enable with `cargo build --features security` (requires OpenSSL).
+- **Iceoryx/PSMX**: `QosBuilder::enable_iceoryx()` convenience method for shared-memory transport.
+- **Async batching**: `read_aiter_batch(max_samples)` and `take_aiter_batch(max_samples)` on
+  `DataReader` for back-pressure control in async streams.
+- **QoS Profiles**: `QosProvider::from_xml()` alias and convenience getters:
+  `get_participant_qos`, `get_publisher_qos`, `get_subscriber_qos`, `get_topic_qos`,
+  `get_reader_qos`, `get_writer_qos`.
+- **`[package.metadata.docs.rs]`**: Added to all publishable crates with `all-features = true`.
+
+### Changed
+
+- Workspace version bumped to `1.2.0`.
+
 ## [1.1.0] - 2026-05-01
 
 ### Added
