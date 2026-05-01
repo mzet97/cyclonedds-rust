@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-05-01
+
+### Added
+
+- **CLI v1.3**: `discover` command for listing discovered types on a topic with metadata
+  (size, align, key count).
+- **CLI v1.3**: `subscribe --json` flag for outputting received samples as JSON.
+- **CLI v1.3**: `publish --rate <hz>` flag for publishing at a fixed frequency
+  (overrides count and delay).
+- **CDR Benchmarks**: New `cyclonedds-bench/benches/cdr.rs` with Criterion benchmarks
+  for serialization, deserialization, and round-trip of simple and complex types.
+- **ROS2 Integration**: `examples/ros2_turtlesim.rs` demonstrates publishing
+  `geometry_msgs/Twist` messages to a ROS2 `turtlesim` node.
+- **ROS2 Documentation**: `docs/ros2-integration.md` with topic naming, QoS mappings,
+  common message types, and troubleshooting.
+- **DDS Security Examples**: `examples/security_pub.rs` and `examples/security_sub.rs`
+  with complete `SecurityConfig` usage.
+- **DDS Security Docs**: `docs/security-guide.md` with certificate generation and setup.
+- **Async Timeouts**: `read_aiter_timeout(timeout_ns)` and `take_aiter_timeout(timeout_ns)`
+  for async streams with configurable timeouts.
+
+### Changed
+
+- Workspace version bumped to `1.3.0`.
+
 ## [1.2.0] - 2026-05-01
 
 ### Added

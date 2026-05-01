@@ -45,6 +45,9 @@ enum Commands {
         /// Maximum number of samples to receive (0 = unlimited)
         #[arg(long, default_value_t = 0)]
         samples: usize,
+        /// Output samples as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Run a ping-pong latency performance test
     Perf {
@@ -82,6 +85,17 @@ enum Commands {
         /// Delay between messages in milliseconds
         #[arg(short, long, default_value_t = 0)]
         delay_ms: u64,
+        /// Publish rate in Hz (overrides count and delay_ms)
+        #[arg(long)]
+        rate: Option<u64>,
+    },
+    /// Discover and list all types available on a topic
+    Discover {
+        /// Topic name to discover
+        topic: String,
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
     },
 }
 
@@ -207,6 +221,7 @@ fn cmd_subscribe(
     topic_name: &str,
     domain_id: u32,
     max_samples: usize,
+    output_json: bool,
 ) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
@@ -339,7 +354,14 @@ fn cmd_subscribe(
             // Deserialize CDR into DynamicData
             received += 1;
             match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
-                Ok(data) => println!("[{}] {:?}", received, data),
+                Ok(data) => {
+                    if output_json {
+                        let json_val = dynamic_value_to_json(data.value());
+                        println!("{}", serde_json::to_string_pretty(&json_val).unwrap_or_else(|_| format!("{:?}", data)));
+                    } else {
+                        println!("[{}] {:?}", received, data);
+                    }
+                }
                 Err(e) => println!("[{}] <decode error: {:?}>", received, e),
             }
         }
@@ -687,6 +709,53 @@ fn cmd_typeof(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
 }
 
 // ---------------------------------------------------------------------------
+// discover command
+// ---------------------------------------------------------------------------
+
+fn cmd_discover(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+
+    println!("Discovering types on topic '{}'...", topic_name);
+
+    let endpoint = 'search: {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == topic_name {
+                    break 'search ep.clone();
+                }
+            }
+        }
+        println!(
+            "No publication found for topic '{}' within timeout.",
+            topic_name
+        );
+        return Ok(());
+    };
+
+    let type_name = endpoint.type_name();
+    println!("Topic: {}", topic_name);
+    println!("Type: {}", type_name);
+
+    let type_info = endpoint.type_info()?;
+    let discovered = discover_type_from_type_info(
+        participant.entity(),
+        &type_info,
+        &type_name,
+        5_000_000_000,
+    )?;
+
+    println!("Type schema discovered successfully.");
+    println!("  Size: {} bytes", discovered.topic_descriptor.size());
+    println!("  Align: {} bytes", discovered.topic_descriptor.align());
+    println!("  Key count: {}", discovered.topic_descriptor.key_count());
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // publish command
 // ---------------------------------------------------------------------------
 
@@ -827,6 +896,56 @@ fn json_to_dynamic_value(
     }
 }
 
+fn dynamic_value_to_json(value: &cyclonedds::DynamicValue) -> serde_json::Value {
+    use cyclonedds::DynamicValue;
+    match value {
+        DynamicValue::Bool(b) => serde_json::Value::Bool(*b),
+        DynamicValue::Byte(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::Int8(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::UInt8(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::Int16(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::UInt16(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::Int32(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::UInt32(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::Int64(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::UInt64(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::Float32(v) => serde_json::Value::Number(serde_json::Number::from_f64(*v as f64).unwrap_or(0.into())),
+        DynamicValue::Float64(v) => serde_json::Value::Number(serde_json::Number::from_f64(*v).unwrap_or(0.into())),
+        DynamicValue::Char8(v) => serde_json::Value::String((*v as char).to_string()),
+        DynamicValue::Char16(v) => serde_json::Value::String(std::char::from_u32(*v as u32).unwrap_or('?').to_string()),
+        DynamicValue::String(s) => serde_json::Value::String(s.clone()),
+        DynamicValue::Sequence(items) | DynamicValue::Array(items) => {
+            serde_json::Value::Array(items.iter().map(dynamic_value_to_json).collect())
+        }
+        DynamicValue::Struct(fields) => {
+            let mut map = serde_json::Map::new();
+            for (k, v) in fields {
+                map.insert(k.clone(), dynamic_value_to_json(v));
+            }
+            serde_json::Value::Object(map)
+        }
+        DynamicValue::Enum { value } => serde_json::Value::Number((*value).into()),
+        DynamicValue::Bitmask(v) => serde_json::Value::Number((*v).into()),
+        DynamicValue::Union { discriminator, field, value } => {
+            let mut map = serde_json::Map::new();
+            map.insert("discriminator".to_string(), serde_json::Value::Number((*discriminator).into()));
+            map.insert("field".to_string(), serde_json::Value::String(field.clone()));
+            map.insert("value".to_string(), dynamic_value_to_json(value));
+            serde_json::Value::Object(map)
+        }
+        DynamicValue::Map(entries) => {
+            // Represent as array of {key, value} objects since JSON keys are strings
+            serde_json::Value::Array(entries.iter().map(|(k, v)| {
+                let mut obj = serde_json::Map::new();
+                obj.insert("key".to_string(), dynamic_value_to_json(k));
+                obj.insert("value".to_string(), dynamic_value_to_json(v));
+                serde_json::Value::Object(obj)
+            }).collect())
+        }
+        DynamicValue::Null => serde_json::Value::Null,
+    }
+}
+
 fn cmd_publish(
     topic_name: &str,
     domain_id: u32,
@@ -834,7 +953,13 @@ fn cmd_publish(
     json: Option<String>,
     count: usize,
     delay_ms: u64,
+    rate: Option<u64>,
 ) -> cyclonedds::DdsResult<()> {
+    let (count, delay_ms) = if let Some(hz) = rate {
+        (0, 1000 / hz) // 0 = unlimited count
+    } else {
+        (count, delay_ms)
+    };
     let participant = DomainParticipant::new(domain_id)?;
     let publisher = Publisher::new(participant.entity())?;
     let pub_reader = participant.create_builtin_publication_reader()?;
@@ -891,8 +1016,11 @@ fn cmd_publish(
         let data = DynamicData::from_value(&discovered.type_schema, dyn_value)?;
         let cdr = dynamic_data_to_cdr(&data, &discovered.topic_descriptor)?;
 
-        println!("Publishing {} JSON message(s) to '{}'...", count, topic_name);
-        for i in 0..count {
+        let unlimited = count == 0;
+        let prefix = if unlimited { String::new() } else { format!("{} ", count) };
+        println!("Publishing {}JSON message(s) to '{}'...", prefix, topic_name);
+        let mut i = 0;
+        while unlimited || i < count {
             unsafe {
                 let _ = cyclonedds_rust_sys::dds_write(
                     writer_entity,
@@ -900,14 +1028,18 @@ fn cmd_publish(
                 );
             }
             println!("Published JSON message [{}]", i);
-            if delay_ms > 0 && i + 1 < count {
+            if delay_ms > 0 {
                 std::thread::sleep(Duration::from_millis(delay_ms));
             }
+            i += 1;
         }
     } else {
         let payload = message.unwrap_or_else(|| "Hello from cyclonedds-cli".to_string());
-        println!("Publishing {} string message(s) to '{}'...", count, topic_name);
-        for i in 0..count {
+        let unlimited = count == 0;
+        let prefix = if unlimited { String::new() } else { format!("{} ", count) };
+        println!("Publishing {}string message(s) to '{}'...", prefix, topic_name);
+        let mut i = 0;
+        while unlimited || i < count {
             let msg = format!("{} [{}]", payload, i);
             let c_msg = std::ffi::CString::new(msg).unwrap();
             unsafe {
@@ -917,9 +1049,10 @@ fn cmd_publish(
                 );
             }
             println!("Published: {}", c_msg.to_string_lossy());
-            if delay_ms > 0 && i + 1 < count {
+            if delay_ms > 0 {
                 std::thread::sleep(Duration::from_millis(delay_ms));
             }
+            i += 1;
         }
     }
 
@@ -944,7 +1077,8 @@ fn main() {
             topic,
             domain_id,
             samples,
-        } => cmd_subscribe(&topic, domain_id, samples),
+            json,
+        } => cmd_subscribe(&topic, domain_id, samples, json),
         Commands::Perf { domain_id, samples } => cmd_perf(domain_id, samples),
         Commands::Typeof { topic, domain_id } => cmd_typeof(&topic, domain_id),
         Commands::Publish {
@@ -954,7 +1088,9 @@ fn main() {
             json,
             count,
             delay_ms,
-        } => cmd_publish(&topic, domain_id, message, json, count, delay_ms),
+            rate,
+        } => cmd_publish(&topic, domain_id, message, json, count, delay_ms, rate),
+        Commands::Discover { topic, domain_id } => cmd_discover(&topic, domain_id),
     };
 
     if let Err(e) = result {

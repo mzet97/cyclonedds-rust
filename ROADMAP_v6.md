@@ -126,11 +126,11 @@ A v1.2.0 esta estabilizada no crates.io com DDS Security, Iceoryx/PSMX, async ba
 |---|---|---|---|---|
 | 1 | DDS Security exemplos | 22 | Alta | Completo |
 | 2 | DDS Security docs | 22 | Alta | Completo |
-| 3 | Async timeout streams | 23 | Media | Pendente |
-| 4 | CLI `discover` e `--json` | 24 | Media | Pendente |
-| 5 | IDL unions e bitmasks | 25 | Media | Pendente |
-| 6 | CDR otimizacoes | 26 | Baixa | Pendente |
-| 7 | ROS2 turtlesim demo | 27 | Baixa | Pendente |
+| 3 | Async timeout streams | 23 | Media | Completo |
+| 4 | CLI `discover` e `--json` | 24 | Media | Completo |
+| 5 | IDL unions e bitmasks | 25 | Media | Completo |
+| 6 | CDR otimizacoes | 26 | Baixa | Completo |
+| 7 | ROS2 turtlesim demo | 27 | Baixa | Completo |
 
 ---
 
