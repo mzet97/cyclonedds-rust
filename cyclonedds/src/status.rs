@@ -357,7 +357,7 @@ impl From<dds_subscription_matched_status> for SubscriptionMatchedStatus {
 /// implementing [`DdsEntity`].
 ///
 /// Each method calls the corresponding `dds_get_*_status` C function,
-/// maps errors through [`crate::error::check`], and converts the raw C
+/// maps errors through `crate::error::check`, and converts the raw C
 /// struct into the appropriate typed Rust struct.
 pub trait StatusExt: DdsEntity {
     /// Get the inconsistent-topic status (valid for Topic entities).

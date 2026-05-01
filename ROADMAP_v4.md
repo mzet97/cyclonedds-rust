@@ -177,14 +177,17 @@ A v1.0.0 esta estabilizada no crates.io e funcionando em Linux/WSL/Windows. A v1
 | 3 | CI passando em macOS | 11 | Media | Completo |
 | 4 | Benchmark de latencia | 12 | Alta | Completo |
 | 5 | Benchmark de throughput | 12 | Alta | Completo |
-| 6 | cargo-cyclonedds plugin | 13 | Media | Pendente |
-| 7 | CLI publish com JSON | 14 | Media | Pendente |
-| 8 | CLI typeof com metadados | 14 | Media | Pendente |
-| 9 | docs.rs sem warnings | 15 | Alta | Pendente |
-| 10 | >80% documentacao | 15 | Media | Pendente |
+| 6 | cargo-cyclonedds plugin | 13 | Media | Completo |
+| 7 | CLI publish com JSON | 14 | Media | Completo |
+| 8 | CLI typeof com metadados | 14 | Media | Completo |
+| 9 | docs.rs sem warnings | 15 | Alta | Completo |
+| 10 | >80% documentacao | 15 | Media | Completo |
 
 ---
 
 ## Proxima Acao Recomendada
 
-Iniciar a **Fase 11** (CI/CD) pois e foundational para todas as demais. O primeiro passo e abrir um PR ou fazer push para `main` para ver o estado real dos workflows e corrigir as falhas.
+Todas as fases do ROADMAP v4.0 estao **completas**. A proxima decisao e:
+1. **Tag v1.1.0** — criar release v1.1.0 com as novas features (CLI JSON publish, typeof metadata, cargo plugin, benchmarks);
+2. **Publicar no crates.io** — publicar `cyclonedds-cli`, `cargo-cyclonedds` e `cyclonedds-bench`;
+3. **Planejar v1.2** — features como DDS Security, async stream improvements, ou PSMX/Iceoryx support.

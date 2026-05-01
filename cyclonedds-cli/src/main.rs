@@ -6,8 +6,8 @@ use clap::{Parser, Subcommand};
 use cyclonedds::{
     BuiltinEndpointSample, BuiltinParticipantSample, DdsEntity, DdsTypeDerive as DdsType,
     DomainParticipant, DataReader, DataWriter, Publisher, QosBuilder, Reliability,
-    Subscriber, WaitSet, STATUS_DATA_AVAILABLE, discover_type_from_type_info,
-    cdr_to_dynamic_data,
+    Subscriber, WaitSet, STATUS_DATA_AVAILABLE,     discover_type_from_type_info,
+    dynamic_data_to_cdr, cdr_to_dynamic_data, DynamicData,
 };
 
 // ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         domain_id: u32,
     },
-    /// Publish simple string messages to a topic
+    /// Publish messages to a topic (string or JSON)
     Publish {
         /// Topic name to publish to
         topic: String,
@@ -73,6 +73,9 @@ enum Commands {
         /// Message to publish (if omitted, reads from stdin)
         #[arg(short, long)]
         message: Option<String>,
+        /// JSON payload to publish as a structured message
+        #[arg(long)]
+        json: Option<String>,
         /// Number of times to publish the message
         #[arg(short, long, default_value_t = 1)]
         count: usize,
@@ -510,6 +513,133 @@ fn run_ponger(
 // typeof command
 // ---------------------------------------------------------------------------
 
+fn format_type_schema(schema: &cyclonedds::DynamicTypeSchema) -> String {
+    use cyclonedds::{DynamicPrimitiveKind, DynamicTypeSchema};
+
+    match schema {
+        DynamicTypeSchema::Primitive(kind) => match kind {
+            DynamicPrimitiveKind::Boolean => "boolean".into(),
+            DynamicPrimitiveKind::Byte => "octet".into(),
+            DynamicPrimitiveKind::Int8 => "int8".into(),
+            DynamicPrimitiveKind::UInt8 => "uint8".into(),
+            DynamicPrimitiveKind::Int16 => "short".into(),
+            DynamicPrimitiveKind::UInt16 => "unsigned short".into(),
+            DynamicPrimitiveKind::Int32 => "long".into(),
+            DynamicPrimitiveKind::UInt32 => "unsigned long".into(),
+            DynamicPrimitiveKind::Int64 => "long long".into(),
+            DynamicPrimitiveKind::UInt64 => "unsigned long long".into(),
+            DynamicPrimitiveKind::Float32 => "float".into(),
+            DynamicPrimitiveKind::Float64 => "double".into(),
+            DynamicPrimitiveKind::Char8 => "char".into(),
+            DynamicPrimitiveKind::Char16 => "wchar".into(),
+        },
+        DynamicTypeSchema::String { bound: None } => "string".into(),
+        DynamicTypeSchema::String { bound: Some(b) } => format!("string<{}>", b),
+        DynamicTypeSchema::Sequence { element, bound: None, .. } => {
+            format!("sequence<{}>", format_type_schema(element))
+        }
+        DynamicTypeSchema::Sequence { element, bound: Some(b), .. } => {
+            format!("sequence<{}, {}>", format_type_schema(element), b)
+        }
+        DynamicTypeSchema::Array { element, bounds, .. } => {
+            let dims: Vec<String> = bounds.iter().map(|b| b.to_string()).collect();
+            format!("{}[{}]", format_type_schema(element), dims.join("]["))
+        }
+        DynamicTypeSchema::Struct { name, .. } => name.clone(),
+        DynamicTypeSchema::Enum { name, .. } => name.clone(),
+        DynamicTypeSchema::Union { name, .. } => name.clone(),
+        DynamicTypeSchema::Bitmask { name, .. } => name.clone(),
+        DynamicTypeSchema::Map { key, value, bound: None, .. } => {
+            format!("map<{}, {}>", format_type_schema(key), format_type_schema(value))
+        }
+        DynamicTypeSchema::Map { key, value, bound: Some(b), .. } => {
+            format!("map<{}, {}, {}>", format_type_schema(key), format_type_schema(value), b)
+        }
+        DynamicTypeSchema::Alias { target, .. } => format_type_schema(target),
+    }
+}
+
+fn print_type_schema(schema: &cyclonedds::DynamicTypeSchema, indent: usize) {
+    use cyclonedds::{DynamicTypeExtensibility, DynamicTypeSchema};
+    let prefix = "  ".repeat(indent);
+
+    match schema {
+        DynamicTypeSchema::Struct { name, fields, extensibility, autoid, .. } => {
+            let ext = match extensibility {
+                Some(DynamicTypeExtensibility::Final) => " @final",
+                Some(DynamicTypeExtensibility::Appendable) => " @appendable",
+                Some(DynamicTypeExtensibility::Mutable) => " @mutable",
+                None => "",
+            };
+            let autoid_str = match autoid {
+                Some(cyclonedds::DynamicTypeAutoId::Sequential) => " @autoid(Sequential)",
+                Some(cyclonedds::DynamicTypeAutoId::Hash) => " @autoid(Hash)",
+                None => "",
+            };
+            println!("{}{}struct {}{} {{", prefix, prefix, name, format!("{}{}", ext, autoid_str));
+            for field in fields {
+                let mut attrs = Vec::new();
+                if field.key {
+                    attrs.push("@key");
+                }
+                if field.optional {
+                    attrs.push("@optional");
+                }
+                if field.must_understand {
+                    attrs.push("@must_understand");
+                }
+                if field.external {
+                    attrs.push("@external");
+                }
+                let attr_str = if attrs.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {}", attrs.join(" "))
+                };
+                let type_str = format_type_schema(&field.value);
+                println!("{}  {}{}{};", prefix, type_str, attr_str, field.name);
+            }
+            println!("{}}};", prefix);
+        }
+        DynamicTypeSchema::Enum { name, literals, .. } => {
+            println!("{}enum {} {{", prefix, name);
+            for lit in literals {
+                let default = if lit.default { "  /* default */" } else { "" };
+                println!("{}  {} = {},{}", prefix, lit.name, lit.value, default);
+            }
+            println!("{}}};", prefix);
+        }
+        DynamicTypeSchema::Union { name, discriminator, cases, .. } => {
+            let disc = format_type_schema(discriminator);
+            println!("{}union {} switch ({}) {{", prefix, name, disc);
+            for case in cases {
+                let labels: Vec<String> = case.labels.iter().map(|l| l.to_string()).collect();
+                let default = if case.default { " /* default */" } else { "" };
+                let type_str = format_type_schema(&case.value);
+                println!(
+                    "{}  case {}: {}{} {};",
+                    prefix,
+                    labels.join(", case "),
+                    default,
+                    type_str,
+                    case.name
+                );
+            }
+            println!("{}}};", prefix);
+        }
+        DynamicTypeSchema::Bitmask { name, fields, .. } => {
+            println!("{}bitmask {} {{", prefix, name);
+            for field in fields {
+                println!("{}  {} @position({});", prefix, field.name, field.position);
+            }
+            println!("{}}};", prefix);
+        }
+        _ => {
+            println!("{}{}", prefix, format_type_schema(schema));
+        }
+    }
+}
+
 fn cmd_typeof(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
@@ -547,8 +677,11 @@ fn cmd_typeof(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
     println!("\n=== Type Information ===");
     println!("Type name: {}", discovered.type_name);
     println!("Type info present: {}", type_info.is_present());
-    println!("\n=== Type Schema (Debug) ===");
-    println!("{:?}", discovered.type_schema);
+    println!("Topic descriptor size: {} bytes", discovered.topic_descriptor.size());
+    println!("Topic descriptor align: {} bytes", discovered.topic_descriptor.align());
+
+    println!("\n=== IDL-like Representation ===");
+    print_type_schema(&discovered.type_schema, 0);
 
     Ok(())
 }
@@ -557,10 +690,148 @@ fn cmd_typeof(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
 // publish command
 // ---------------------------------------------------------------------------
 
+fn json_to_dynamic_value(
+    json: &serde_json::Value,
+    schema: &cyclonedds::DynamicTypeSchema,
+) -> cyclonedds::DdsResult<cyclonedds::DynamicValue> {
+    use cyclonedds::{
+        DynamicPrimitiveKind, DynamicTypeSchema, DynamicValue,
+    };
+
+    match schema {
+        DynamicTypeSchema::Primitive(kind) => match kind {
+            DynamicPrimitiveKind::Boolean => json
+                .as_bool()
+                .map(DynamicValue::Bool)
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected bool".into())),
+            DynamicPrimitiveKind::Int32 => json
+                .as_i64()
+                .map(|v| DynamicValue::Int32(v as i32))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected int32".into())),
+            DynamicPrimitiveKind::UInt32 => json
+                .as_u64()
+                .map(|v| DynamicValue::UInt32(v as u32))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected uint32".into())),
+            DynamicPrimitiveKind::Int64 => json
+                .as_i64()
+                .map(DynamicValue::Int64)
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected int64".into())),
+            DynamicPrimitiveKind::UInt64 => json
+                .as_u64()
+                .map(DynamicValue::UInt64)
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected uint64".into())),
+            DynamicPrimitiveKind::Float32 => json
+                .as_f64()
+                .map(|v| DynamicValue::Float32(v as f32))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected float32".into())),
+            DynamicPrimitiveKind::Float64 => json
+                .as_f64()
+                .map(DynamicValue::Float64)
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected float64".into())),
+            DynamicPrimitiveKind::Byte => json
+                .as_u64()
+                .map(|v| DynamicValue::Byte(v as u8))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected byte".into())),
+            DynamicPrimitiveKind::Int8 => json
+                .as_i64()
+                .map(|v| DynamicValue::Int8(v as i8))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected int8".into())),
+            DynamicPrimitiveKind::UInt8 => json
+                .as_u64()
+                .map(|v| DynamicValue::UInt8(v as u8))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected uint8".into())),
+            DynamicPrimitiveKind::Int16 => json
+                .as_i64()
+                .map(|v| DynamicValue::Int16(v as i16))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected int16".into())),
+            DynamicPrimitiveKind::UInt16 => json
+                .as_u64()
+                .map(|v| DynamicValue::UInt16(v as u16))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected uint16".into())),
+            DynamicPrimitiveKind::Char8 => json
+                .as_str()
+                .and_then(|s| s.chars().next())
+                .map(|c| DynamicValue::Char8(c as u8))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected char".into())),
+            DynamicPrimitiveKind::Char16 => json
+                .as_str()
+                .and_then(|s| s.chars().next())
+                .map(|c| DynamicValue::Char16(c as u16))
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected char16".into())),
+        },
+        DynamicTypeSchema::String { .. } => json
+            .as_str()
+            .map(|s| DynamicValue::String(s.to_string()))
+            .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected string".into())),
+        DynamicTypeSchema::Struct { fields, .. } => {
+            let obj = json.as_object().ok_or_else(|| {
+                cyclonedds::DdsError::BadParameter("expected object for struct".into())
+            })?;
+            let mut map = std::collections::BTreeMap::new();
+            for field in fields {
+                if let Some(val) = obj.get(&field.name) {
+                    map.insert(field.name.clone(), json_to_dynamic_value(val, &field.value)?);
+                } else if !field.optional {
+                    return Err(cyclonedds::DdsError::BadParameter(format!(
+                        "missing required field '{}'",
+                        field.name
+                    )));
+                }
+            }
+            Ok(DynamicValue::Struct(map))
+        }
+        DynamicTypeSchema::Sequence { element, .. } => {
+            let arr = json.as_array().ok_or_else(|| {
+                cyclonedds::DdsError::BadParameter("expected array for sequence".into())
+            })?;
+            let items: Result<Vec<_>, _> = arr
+                .iter()
+                .map(|v| json_to_dynamic_value(v, element))
+                .collect();
+            Ok(DynamicValue::Sequence(items?))
+        }
+        DynamicTypeSchema::Array { element, bounds, .. } => {
+            let arr = json.as_array().ok_or_else(|| {
+                cyclonedds::DdsError::BadParameter("expected array".into())
+            })?;
+            let expected_len: usize = bounds.iter().map(|b| *b as usize).product();
+            if arr.len() != expected_len {
+                return Err(cyclonedds::DdsError::BadParameter(format!(
+                    "array length mismatch: expected {}, got {}",
+                    expected_len,
+                    arr.len()
+                )));
+            }
+            let items: Result<Vec<_>, _> = arr
+                .iter()
+                .map(|v| json_to_dynamic_value(v, element))
+                .collect();
+            Ok(DynamicValue::Array(items?))
+        }
+        DynamicTypeSchema::Enum { literals, .. } => {
+            let name = json.as_str().ok_or_else(|| {
+                cyclonedds::DdsError::BadParameter("expected string for enum".into())
+            })?;
+            let val = literals
+                .iter()
+                .find(|l| l.name == name)
+                .map(|l| l.value)
+                .ok_or_else(|| {
+                    cyclonedds::DdsError::BadParameter(format!("unknown enum literal '{}'", name))
+                })?;
+            Ok(DynamicValue::Enum { value: val })
+        }
+        _ => Err(cyclonedds::DdsError::BadParameter(
+            "unsupported type for JSON conversion".into(),
+        )),
+    }
+}
+
 fn cmd_publish(
     topic_name: &str,
     domain_id: u32,
     message: Option<String>,
+    json: Option<String>,
     count: usize,
     delay_ms: u64,
 ) -> cyclonedds::DdsResult<()> {
@@ -612,18 +883,43 @@ fn cmd_publish(
         ))?
     };
 
-    let payload = message.unwrap_or_else(|| "Hello from cyclonedds-cli".to_string());
-    println!("Publishing {} message(s) to '{}'...", count, topic_name);
+    if let Some(json_str) = json {
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            cyclonedds::DdsError::BadParameter(format!("invalid JSON: {}", e))
+        })?;
+        let dyn_value = json_to_dynamic_value(&json_value, &discovered.type_schema)?;
+        let data = DynamicData::from_value(&discovered.type_schema, dyn_value)?;
+        let cdr = dynamic_data_to_cdr(&data, &discovered.topic_descriptor)?;
 
-    for i in 0..count {
-        let msg = format!("{} [{}]", payload, i);
-        let c_msg = std::ffi::CString::new(msg).unwrap();
-        unsafe {
-            let _ = cyclonedds_rust_sys::dds_write(writer_entity, c_msg.as_ptr() as *const std::ffi::c_void);
+        println!("Publishing {} JSON message(s) to '{}'...", count, topic_name);
+        for i in 0..count {
+            unsafe {
+                let _ = cyclonedds_rust_sys::dds_write(
+                    writer_entity,
+                    cdr.as_ptr() as *const std::ffi::c_void,
+                );
+            }
+            println!("Published JSON message [{}]", i);
+            if delay_ms > 0 && i + 1 < count {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+            }
         }
-        println!("Published: {}", c_msg.to_string_lossy());
-        if delay_ms > 0 && i + 1 < count {
-            std::thread::sleep(Duration::from_millis(delay_ms));
+    } else {
+        let payload = message.unwrap_or_else(|| "Hello from cyclonedds-cli".to_string());
+        println!("Publishing {} string message(s) to '{}'...", count, topic_name);
+        for i in 0..count {
+            let msg = format!("{} [{}]", payload, i);
+            let c_msg = std::ffi::CString::new(msg).unwrap();
+            unsafe {
+                let _ = cyclonedds_rust_sys::dds_write(
+                    writer_entity,
+                    c_msg.as_ptr() as *const std::ffi::c_void,
+                );
+            }
+            println!("Published: {}", c_msg.to_string_lossy());
+            if delay_ms > 0 && i + 1 < count {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+            }
         }
     }
 
@@ -655,9 +951,10 @@ fn main() {
             topic,
             domain_id,
             message,
+            json,
             count,
             delay_ms,
-        } => cmd_publish(&topic, domain_id, message, count, delay_ms),
+        } => cmd_publish(&topic, domain_id, message, json, count, delay_ms),
     };
 
     if let Err(e) = result {

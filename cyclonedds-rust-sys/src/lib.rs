@@ -5,6 +5,9 @@
 #![allow(deref_nullptr)]
 #![allow(clippy::all)]
 #![allow(clippy::missing_safety_doc)]
+#![allow(missing_docs)]
+#![allow(rustdoc::broken_intra_doc_links)]
+#![allow(rustdoc::invalid_html_tags)]
 
 use std::sync::atomic::{AtomicU32, Ordering};
 

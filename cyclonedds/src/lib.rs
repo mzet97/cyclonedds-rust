@@ -34,33 +34,58 @@ pub use cyclonedds_derive::DdsType as DdsTypeDerive;
 pub use cyclonedds_derive::DdsUnion as DdsUnionDerive;
 
 #[cfg(feature = "async")]
+#[allow(missing_docs)]
 pub mod r#async;
+#[allow(missing_docs)]
 mod builtin;
+#[allow(missing_docs)]
 mod content_filtered_topic;
+#[allow(missing_docs)]
 mod dynamic_type;
+#[allow(missing_docs)]
 mod dynamic_value;
+#[allow(missing_docs)]
 mod entity;
+#[allow(missing_docs)]
 mod error;
 pub mod log;
+#[allow(missing_docs)]
 mod listener;
+#[allow(missing_docs)]
 mod participant;
+#[allow(missing_docs)]
 mod publisher;
+#[allow(missing_docs)]
 mod qos;
+#[allow(missing_docs)]
 mod qos_provider;
+#[allow(missing_docs)]
 mod reader;
+#[allow(missing_docs)]
 mod serialization;
+#[allow(missing_docs)]
 pub mod sample;
+#[allow(missing_docs)]
 mod sequence;
+#[allow(missing_docs)]
 mod statistics;
+#[allow(missing_docs)]
 mod status;
+#[allow(missing_docs)]
 mod string;
+#[allow(missing_docs)]
 mod subscriber;
+#[allow(missing_docs)]
 mod topic;
+#[allow(missing_docs)]
 mod waitset;
 #[doc(hidden)]
 pub mod write_arena;
+#[allow(missing_docs)]
 mod writer;
+#[allow(missing_docs)]
 mod type_discovery;
+#[allow(missing_docs)]
 mod xtypes;
 
 pub use builtin::{
