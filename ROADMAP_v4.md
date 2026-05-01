@@ -187,7 +187,26 @@ A v1.0.0 esta estabilizada no crates.io e funcionando em Linux/WSL/Windows. A v1
 
 ## Proxima Acao Recomendada
 
-Todas as fases do ROADMAP v4.0 estao **completas**. A proxima decisao e:
-1. **Tag v1.1.0** — criar release v1.1.0 com as novas features (CLI JSON publish, typeof metadata, cargo plugin, benchmarks);
-2. **Publicar no crates.io** — publicar `cyclonedds-cli`, `cargo-cyclonedds` e `cyclonedds-bench`;
-3. **Planejar v1.2** — features como DDS Security, async stream improvements, ou PSMX/Iceoryx support.
+Todas as fases do ROADMAP v4.0 estao **completas**.
+
+**Feito:**
+- Tag `v1.1.0` criada e pushada para `origin`.
+- GitHub Release v1.1.0 publicada em https://github.com/mzet97/cyclonedds-rust/releases/tag/v1.1.0.
+
+**Pendente (requer acao manual):**
+- **Publicar no crates.io** — ordem correta:
+  1. `cyclonedds-rust-sys` 1.0.2 (ja esta pronto, so falta publicar)
+  2. `cyclonedds-derive` 1.1.0
+  3. `cyclonedds-build` 1.1.0
+  4. `cyclonedds-idlc` 1.1.0
+  5. `cyclonedds` 1.1.0
+  6. `cyclonedds-cli` 1.1.0
+  7. `cargo-cyclonedds` 1.1.0
+  
+  Requer `CARGO_REGISTRY_TOKEN` configurado. O dry-run de `cyclonedds-rust-sys` falhou
+  localmente por politica de Controle de Aplicativo do Windows (os error 4551), nao por
+  erro de codigo.
+
+**Opcional (planejamento):**
+- **v1.2** — features candidatas: DDS Security, PSMX/Iceoryx support, async stream
+  improvements, ContentFilteredTopic closures, zero-copy read loans.
