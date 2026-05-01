@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "cyclonedds-src",
     "cyclonedds-rust-sys",
     "cyclonedds",
     "cyclonedds-derive",
@@ -11,8 +12,9 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+rust-version = "1.85"
 authors = ["Matheus Zeitune <matheus.zeitune.developer@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/mzet97/cyclonedds-rust"
@@ -21,7 +23,8 @@ documentation = "https://docs.rs/cyclonedds"
 readme = "README.md"
 
 [workspace.dependencies]
-cyclonedds-rust-sys = { path = "cyclonedds-rust-sys", version = "0.1.0" }
-cyclonedds = { path = "cyclonedds", version = "0.1.0" }
-cyclonedds-derive = { path = "cyclonedds-derive", version = "0.1.0" }
-cyclonedds-build = { path = "cyclonedds-build", version = "0.1.0" }
+cyclonedds-src = { path = "cyclonedds-src", version = "1.0.1" }
+cyclonedds-rust-sys = { path = "cyclonedds-rust-sys", version = "1.0.0" }
+cyclonedds = { path = "cyclonedds", version = "1.0.0" }
+cyclonedds-derive = { path = "cyclonedds-derive", version = "1.0.0" }
+cyclonedds-build = { path = "cyclonedds-build", version = "1.0.0" }

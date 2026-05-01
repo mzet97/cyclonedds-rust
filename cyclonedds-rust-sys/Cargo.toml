@@ -1,6 +1,7 @@
 [package]
 name = "cyclonedds-rust-sys"
 version.workspace = true
+rust-version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -15,10 +16,12 @@ categories = ["network-programming", "external-ffi-bindings"]
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.71"
+cyclonedds-src = { workspace = true }
+bindgen = { version = "0.71", optional = true }
 
 [features]
 default = []
+internal-ops = []
 
 [lib]
 name = "cyclonedds_rust_sys"

@@ -1,0 +1,40 @@
+[package]
+name = "cyclonedds-src"
+version = "1.0.1"
+rust-version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Eclipse CycloneDDS C library source for building from source"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords = ["dds", "cyclonedds", "source"]
+categories = ["external-ffi-bindings", "network-programming"]
+include = [
+    "/Cargo.toml",
+    "/src/lib.rs",
+    "/src/cyclonedds/CMakeLists.txt",
+    "/src/cyclonedds/src/**",
+    "/src/cyclonedds/cmake/**",
+    "/src/cyclonedds/ports/**",
+    "/src/cyclonedds/compat/**",
+    "/src/cyclonedds/etc/**",
+    "/src/cyclonedds/scripts/**",
+    "/src/cyclonedds/package.xml",
+    "/src/cyclonedds/CHANGELOG.rst",
+    "/src/cyclonedds/LICENSE",
+    "/src/cyclonedds/README.md",
+    "/src/cyclonedds/CMakeCPack.cmake",
+    "/src/cyclonedds/*.in",
+    "/src/cyclonedds/*.cmake.in",
+]
+
+[dependencies]
+
+[build-dependencies]
+
+[lib]
+name = "cyclonedds_src"
+crate-type = ["lib"]

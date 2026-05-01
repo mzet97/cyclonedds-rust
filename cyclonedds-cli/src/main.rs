@@ -5,7 +5,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use cyclonedds::{
     BuiltinEndpointSample, BuiltinParticipantSample, DdsEntity, DdsTypeDerive as DdsType,
-    DomainParticipant, FindScope, DataReader, DataWriter, Publisher, QosBuilder, Reliability,
+    DomainParticipant, DataReader, DataWriter, Publisher, QosBuilder, Reliability,
     Subscriber, WaitSet, STATUS_DATA_AVAILABLE, discover_type_from_type_info,
     cdr_to_dynamic_data,
 };

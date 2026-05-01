@@ -1,0 +1,545 @@
+// Copyright(c) 2006 to 2022 ZettaScale Technology and others
+//
+// This program and the accompanying materials are made available under the
+// terms of the Eclipse Public License v. 2.0 which is available at
+// http://www.eclipse.org/legal/epl-2.0, or the Eclipse Distribution License
+// v. 1.0 which is available at
+// http://www.eclipse.org/org/documents/edl-v10.php.
+//
+// SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
+
+module TypeBuilderTypes {
+
+  enum en { E1, E2 };
+  bitmask bm { BM1, BM2 };
+
+  /* basic test */
+  struct t1 {
+    long f1;
+  };
+
+  /* external members */
+  struct t2 {
+    octet f1;
+    char f2;
+    unsigned short f3;
+    @external short f4;
+    unsigned long f5;
+    long f6;
+    @external unsigned long long f7;
+    long long f8;
+    boolean f9;
+    @external string f10;
+    string<10> f11;
+    @external en f12;
+    bm f13;
+  };
+
+  /* nesting */
+  struct t3a {
+    short f1;
+  };
+
+  struct t3 {
+    t1 f1;
+    t3a f2;
+    t2 f3;
+  };
+
+  /* basic sequences */
+  struct t4 {
+    sequence<long> f1;
+    sequence<string> f2;
+    sequence<t1> f3;
+  };
+
+  /* member types */
+  typedef sequence<float, 2> td1;
+  typedef long tda1[2];
+  typedef tda1 tda2;
+  typedef td1 tda3;
+  typedef tda3 tda4[6];
+  typedef sequence<sequence<sequence<tda4, 3> >, 2> td2;
+  typedef sequence<long> temp;
+
+  @bit_bound(4) enum en8 { EN8_1, EN8_2 };
+  @bit_bound(12) bitmask bm16 { BM16_1, BM16_2 };
+  union t5 switch (short) {
+    case 1: char u1;
+    case 2: long u2;
+    case 3: string<5> u3;
+    case 4: case 5: long u4;
+    case 6: case 7: t1 u6;
+    case 8: bm u8;
+    case 9: sequence<long> u9;
+    case 10: sequence<long, 3> u10;
+    case 11: string u11;
+    case 12: en u12;
+    case 13: @external long u13;
+    case 14: @external string u14;
+    case 15: case 16: @external t1 u15;
+    case 17: boolean u17;
+    case 18: float u18;
+    case 19: en8 u19;
+    case 21: bm16 u21;
+    case 22: td1 u22;
+    case 23: @external sequence<long> u23[3];
+    case 24: @external sequence<sequence<long> > u24[3];
+    case 25: @external sequence<sequence<bm16> > u25[3][4];
+    case 26: @external sequence<td1> u26[3];
+    case 27: @external sequence<sequence<td2>, 2> u27[500][50][5];
+    case 28: sequence<sequence<bm16, 12>, 8> u28[3][4];
+    case 29: sequence<sequence<tda1, 5> > u29[3][4];
+    case 30: sequence<tda2> u30[300][4];
+    case 31: sequence<tda3> u31[3][400];
+    case 32: tda4 u32[400][500];
+    case 33: sequence<td2> u33[500];
+    case 34: temp u34;
+    case 35: t4 u35;
+  };
+
+  /* collection types */
+  typedef long arr_def[300];
+  typedef arr_def arr_def2[300];
+  typedef sequence<arr_def> seq_def;
+  typedef sequence<arr_def> seq_arr_def[2];
+  struct t6 {
+    long f1[2];
+    char f2[1000];
+    t1 f3[3];
+    en f4[15];
+    en8 f5[1];
+    bm f6[10];
+    bm16 f7[100];
+    @external long f8[2];
+    sequence<long> f9[10];
+    arr_def f10;
+    arr_def f11[3];
+    arr_def2 f12;
+    arr_def2 f13[6];
+    seq_def f14;
+    seq_def f15[5];
+    seq_arr_def f16;
+    seq_arr_def f17[10];
+    sequence<arr_def> f18;
+    sequence<seq_def> f19;
+    sequence<seq_arr_def, 200> f20;
+    sequence<seq_arr_def, 4> f21[3];
+    sequence<sequence<sequence<seq_arr_def, 4> >, 2> f22[3][4];
+  };
+
+  /* member id / index in keys */
+  @nested
+  struct tk1 {
+    @id(2) long tk1_1;
+    @id(1) long tk1_2;
+  };
+
+  @nested
+  struct tk2 {
+    long tk2_1;
+    @id(15) @key long tk2_2;
+  };
+
+  @nested
+  struct tk3n {
+    long tk3n_1;
+  };
+
+  @nested
+  struct tk3 {
+    long tk3_1;
+    tk3n tk3_2;
+  };
+
+  struct t7 {
+    @id (3) @key long f1;
+    @id (0) @key tk1 f2;
+    @id (1) @key tk2 f3;
+    @id (2) long f4;
+    @id (5) @key tk3 f5;
+  };
+
+  /* key enum and bitmask members */
+  struct t8 {
+    char f1;
+    @key bm f2;
+    bm f3;
+    @key char f4;
+    char f5;
+    @key en f6;
+    en f7;
+  };
+
+  /* optional aggregated type members */
+  @appendable
+  struct t9 {
+    @optional long f1;
+    @optional t8 f2;
+    @optional t5 f3;
+    @optional t7 f4;
+  };
+
+  /* inheritance */
+  struct t10_2 {
+    long f10_2;
+  };
+  struct t10_1 : t10_2 {
+    long f10_1;
+  };
+  struct t10 : t10_1 {
+    long f1;
+    t10_2 f2;
+  };
+
+  /* nesting */
+  @nested struct t11a { long f1; };
+  @nested @appendable struct t11b { t11a f1; };
+  struct t11 {
+    t11a u1;
+    t11b u2;
+  };
+
+  /* key members */
+  @nested struct t12a { long fa1; };
+  @nested struct t12b { long fb1; t12a fb2; };
+  @mutable
+  struct t12 {
+    long f1;
+    @key short f2;
+    t12a f3;
+    t12b f4;
+    @external string<5> f5;
+    @key t12a f6;
+    sequence<sequence<t12b, 5>, 4> f7[3];
+    @key float f8[3][4];
+    string f9[5];
+  };
+
+  /* keys in mutable type */
+  @nested @mutable struct t13a {
+    char b1;
+    @key t1 b2;
+    @key boolean b3;
+  };
+  @mutable struct t13 : t13a {
+    char f0;
+    long long f1;
+    t1 f2;
+    t12 f3;
+    t11 f4;
+  };
+
+  /* keys in nested types */
+  @nested struct t14a { long a1; };
+  @nested struct t14b { @key t14a b1; };
+  @nested struct t14c { @key t14b c1; };
+  struct t14 {
+    @key t14c f1;
+  };
+
+  /* optional union type members */
+  union t15a switch (char) {
+    case 'a': long u1;
+    case 'z': string u2;
+    default: float u3;
+  };
+  union t15b switch (long long) {
+    case 1: @external long u1;
+    case 2: case 5: t1 u2;
+    case 10: case 11: default: @external t2 u3;
+  };
+  struct t15c {
+    @optional string a1;
+    @optional char a2;
+    @optional long long a3;
+    @optional t15a a4;
+    @optional t15b a5;
+  };
+  struct t15 : t15c {
+    @optional t15c f1;
+    @optional en f2;
+    @optional bm16 f3;
+  };
+
+  /* key alignment xcdrv1 / xcdrv2 */
+  struct t16 {
+    @key char f1;
+    @key long long f2;
+    @key char f3;
+  };
+
+  /* enum with non-default bit-bound as switch type */
+  @bit_bound(12) enum en16 { EN16_1, EN16_2 };
+  union t17 switch(en16) {
+    case EN16_1: t14 u1;
+    case EN16_2: t15 u2;
+  };
+
+  /* hash member id */
+  struct t18 {
+    @hashid("test") long f1;
+  };
+
+  /* multiple typedefs for same source type */
+  typedef sequence<string> t19_1;
+  typedef sequence<string> t19_2;
+  struct t19 {
+      t19_2 f1;
+      t19_1 f2;
+  };
+
+  /* sequence type union member */
+  union t20_1 switch (short) {
+    case 1:
+    case 2:
+      sequence<long> u1;
+    case 3:
+    default:
+      short u2[3];
+  };
+  struct t20 {
+    t20_1 f1;
+    long f2;
+  };
+
+  /* test enum type union member */
+  enum t21_1 {
+    T21_1_0,
+    T21_1_1
+  };
+  union t21_2 switch(short) {
+    case 1:
+      t21_1 u1[3];
+  };
+  struct t21 {
+    t21_2 f1;
+  };
+
+  /* test fixed type flag for arrays with fixed-lendth element type */
+  struct t22_1 {
+    char f1[3];
+  };
+  typedef long arr_l[3];
+  typedef arr_l arr_l2[4];
+  typedef arr_l2 arr_l3;
+  struct t22 {
+    long long f1[2][3];
+    arr_l3 f2;
+    arr_l3 f3[2];
+    t22_1 f4;
+  };
+
+  /* string type makes it a non-fixed types */
+  typedef string arr_s[2];
+  typedef arr_s arr_s2;
+  struct t23 {
+    arr_s2 f1[2];
+  };
+
+
+  struct t24_1 {
+    long f1;
+  };
+  union t24_2 switch(octet) {
+    case 1: long a;
+    case 2: case 3: t24_1 b;
+    case 4: case 5: sequence<t24_1> c;
+  };
+  union t24 switch(octet) {
+    case 1: case 2:
+      sequence<t24_1> u1;
+    case 3: case 4:
+      t24_1 u2;
+    case 5: case 6:
+      t24_1 u3[2];
+    case 7: case 8:
+      sequence<t24_1> u4[2];
+
+    case 10: case 11:
+      sequence<t24_2> s1;
+    case 12: case 13:
+      t24_2 s2;
+
+    case 99:
+    default:
+      sequence<t24_1> u99;
+  };
+
+  union t25_1 switch(long) {
+    default:
+      string<9>  u1;
+  };
+  struct t25 {
+    t25_1 f1;
+  };
+
+  /* default case with non-zero value */
+  @nested union t26_1 switch(octet) {
+    case 0:
+      long u1;
+    default:
+      long u2;
+  };
+  struct t26 {
+    t26_1 f1;
+  };
+
+  /* default case with non-zero enum value */
+  enum en27 { @value(4) E27_3, E27_1, @value(3) E27_2 };
+  @nested union t27_1 switch(en27) {
+    case E27_1:
+      long u1;
+    case E27_3:
+      long u3;
+    default:
+      long ud;
+  };
+  struct t27 {
+    t27_1 f1;
+  };
+
+  /* bounded and unbounded string key */
+  struct t28 {
+    @key string f1;
+    @key string<3> f2;
+  };
+
+  /* sequence and array as key */
+  struct t29 {
+    @key sequence<long> f1;
+  };
+  struct t30 {
+    @key sequence<sequence<long> > f1;
+  };
+  struct t31 {
+    @key sequence<sequence<string<5>, 6> > f1;
+  };
+  @nested struct t32_1 { long n1; };
+  struct t32 {
+    @key sequence<t32_1> f1;
+  };
+
+  struct t33 {
+    @key long f1[5];
+  };
+  struct t34 {
+    @key sequence<long> f1[4];
+  };
+  struct t35_1 { long n1; };
+  struct t35 {
+    @key t35_1 f1[3];
+  };
+
+  @nested struct t36_1 { long n1; };
+  struct t36 {
+    @key t36_1 f1;
+  };
+
+  /* optional nested sequence */
+  typedef sequence<sequence<string, 18> > t37_1;
+  struct t37 {
+    @optional t37_1 f1[3][3];
+  };
+
+  typedef sequence<sequence<long> > t38_1;
+  struct t38 {
+    @optional sequence<t38_1> f1[3];
+  };
+
+  /* FIXME: this fails with a compiler error on the generated code: type dds_sequence_sequence_float (used in opcodes) is undeclared */
+  // typedef sequence<sequence<float> > t39_1[3];
+  // struct t39 {
+  //   sequence<t39_1> f1[2];
+  // };
+
+  @nested struct t39_n { @key sequence<short> n1[2]; };
+  struct t39 { t39_n t1; };
+
+  @nested struct t40_n2 { sequence<short> n2_1[2]; };
+  @nested struct t40_n1 { @key t40_n2 n1_1; };
+  struct t40 { t40_n1 t1; };
+
+  typedef sequence<sequence<long> > t41_td1;
+  @nested struct t41_n1 { @key t41_td1 n1[2]; };
+  struct t41 { t41_n1 t1; };
+
+  @nested struct t42_n3 { sequence<sequence<short> > n3_1[2]; @key sequence<octet> n3_2; };
+  @nested struct t42_n2 { @key sequence<t42_n3> n2_1[2]; };
+  @nested struct t42_n1 : t42_n2 { long n1_1; };
+  struct t42 { t42_n1 t1[2]; };
+
+  @nested struct t43_n2 { @key short n2_1; short n2_2; };
+  @nested struct t43_n1 { sequence<t43_n2> n1_1[2]; };
+  struct t43 { t43_n1 t1; @key t43_n1 t2[3]; };
+
+  @nested struct t44_n2 { sequence<long> n2_1; };
+  @nested struct t44_n1 { sequence<sequence<t44_n2> > n1_1[3]; };
+  struct t44 { t44_n1 t1; @key t44_n1 t2; };
+
+  // not @nested: also used for inheritance test
+  @final struct t45_n2 { @id(2) @key short n2_1; @id(1) @key short n2_2; };
+  @final struct t45_n1 : t45_n2 { @id(11) long n1_1; };
+  @final struct t45 : t45_n1 { @id(21) long t1; };
+
+  // not @nested: also used for inheritance test
+  @appendable struct t46_n2 { @id(2) @key short n2_1; @id(1) @key short n2_2; };
+  @appendable struct t46_n1 : t46_n2 { @id(11) long n1_1; };
+  @appendable struct t46 : t46_n1 { @id(21) long t1; };
+
+  // not @nested: also used for inheritance test
+  @mutable struct t47_n2 { @id(2) @key short n2_1; @id(1) @key short n2_2; };
+  @mutable struct t47_n1 : t47_n2 { @id(11) long n1_1; };
+  @mutable struct t47 : t47_n1 { @id(21) long t1; };
+
+  // used for testing constructing a topic from a typedef
+  @nested struct t48_n1 { long n1; };
+  typedef t48_n1 t48_a1;
+  struct t48 { t48_a1 t1; };
+
+  // used for testing member id table for optional members
+  @nested @final struct t49a { @optional @id(40) long a1; };
+  @nested @final struct t49b { @optional @id(50) long b1; };
+  @nested @final struct t49d { @optional @id(60) long d1; };
+  @nested @final struct t49f { @optional @id(70) long f1; };
+  @nested @final struct t49g { @optional @id(80) long g1; };
+  @nested @final struct t49h { @optional @id(90) long h1; };
+  @nested @final struct t49i { @optional @id(100) long i1; };
+  @nested @final struct t49j { @optional @id(110) long j1; };
+  @nested @final struct t49l { @optional @id(120) long j1; };
+  typedef sequence<t49j> td49[3];
+  @nested @final struct t49c {
+    @optional @id(30) string c1;
+    @optional @id(31) char c2;
+    @optional @id(32) long long c3;
+    @optional @id(33) t49a c4;
+    @optional @id(34) @external t49a c5;
+    @optional @id(35) sequence<t49a> c6;
+    @optional @id(36) sequence<t49b> c7;
+    @optional @id(37) t49g c8;
+  };
+  @nested @final union t49e switch (long) {
+    case 1:
+      t49f u1;
+    case 2:
+      t49h u2[3];
+    case 3:
+      sequence<t49i> u3[2];
+    case 4:
+      td49 u4[4];
+  };
+  @nested @final union t49k switch (long) {
+    case 1:
+      t49l u1;
+  };
+  struct t49 : t49a {
+    @optional @id(20) t49a f1;
+    @optional @id(21) t49a f2;
+    @optional @id(22) t49c f3;
+    @optional @id(23) t49d f4[2];
+    @optional @id(24) t49e f5;
+    @optional @id(25) sequence<sequence<t49a> > f6;
+    @optional @id(26) sequence<sequence<t49k> > f7;
+  };
+
+};

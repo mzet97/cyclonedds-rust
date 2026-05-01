@@ -291,7 +291,7 @@ fn to_snake_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::idl_parser::{IdlEnumVariant, IdlField, IdlAnnotation};
+    use crate::idl_parser::{IdlEnumVariant, IdlField};
 
     #[test]
     fn test_generate_simple_struct() {

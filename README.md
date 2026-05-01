@@ -20,7 +20,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cyclonedds = "0.1"
+cyclonedds = "1.0"
 ```
 
 ### Define a Topic Type
@@ -114,7 +114,8 @@ async fn consume<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
 | CLI Tools | Yes | No | **Yes** (`ls`, `ps`, `subscribe`, `typeof`, `publish`) |
 | Async Streams (`read_aiter`, `take_aiter`) | No | No | **Yes** |
 | Matched Endpoint Data | Yes | No | **Yes** |
-| Zero-copy Loan | No | Yes | **Yes** |
+| Zero-copy Write Loan | No | Yes | **Yes** |
+| DDS Security | Yes | No | Planned post-v1.0 |
 
 ## Workspace Crates
 
@@ -138,12 +139,13 @@ cargo build --workspace --release
 
 ### Requirements
 
-- Rust 1.70+
+- Rust 1.85+ (MSRV)
 - CMake 3.10+
 - C/C++ compiler
-- Clang (for bindgen)
 
-The bundled CycloneDDS source in `vendor/` is built automatically by `cyclonedds-sys` when CMake is available.
+> **Note:** Clang is no longer required for end users. Prebuilt FFI bindings are shipped with the crate. Clang is only needed if you are a maintainer regenerating bindings (see `scripts/regenerate-bindings.sh`).
+
+The bundled CycloneDDS source in `cyclonedds-src` is built automatically by `cyclonedds-rust-sys` when CMake is available.
 
 ### WSL Notes
 
@@ -187,6 +189,21 @@ cargo run --example pub
 - [Type System](docs/type-system.md) — `DdsType` derive, supported types, CDR encoding
 - [QoS Reference](docs/qos-reference.md) — all QoS policies and builder patterns
 - [Migration from Python](docs/migration-from-python.md) — guide for `cyclonedds-python` users
+
+## Known Limitations
+
+- **DDS Security:** Not supported in v1.0. Planned for a future release.
+- **CLI `publish`:** Currently supports simple string messages and dynamic types discovered at runtime. Complex structs require using the Rust API directly.
+- **PSMX / Iceoryx:** Shared memory transport is not yet configurable via the Rust API.
+
+## Benchmarks
+
+```bash
+cargo test --test write_loan     # zero-copy write test
+cargo test --test interop        # cross-process pub/sub test
+cargo run --example interop_pub  # standalone publisher
+cargo run --example interop_sub  # standalone subscriber
+```
 
 ## License
 

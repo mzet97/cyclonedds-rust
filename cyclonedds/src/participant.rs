@@ -38,11 +38,23 @@ impl Drop for ReaderGuard {
     }
 }
 
+/// A DDS DomainParticipant is the entry-point for DDS communication.
+///
+/// It represents the local membership of the application in a DDS domain
+/// identified by a domain ID. All other DDS entities (topics, publishers,
+/// subscribers, readers, writers) are created from a participant.
 pub struct DomainParticipant {
     entity: dds_entity_t,
 }
 
 impl DomainParticipant {
+    /// Create a new participant in the given domain with default QoS.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use cyclonedds::DomainParticipant;
+    /// let participant = DomainParticipant::new(0).unwrap();
+    /// ```
     pub fn new(domain_id: u32) -> DdsResult<Self> {
         Self::with_qos_and_listener(domain_id, None, None)
     }

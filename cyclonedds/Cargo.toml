@@ -1,6 +1,7 @@
 [package]
 name = "cyclonedds"
 version.workspace = true
+rust-version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,8 +14,8 @@ keywords = ["dds", "cyclonedds", "middleware", "pub-sub", "distributed"]
 categories = ["network-programming", "api-bindings"]
 
 [dependencies]
-cyclonedds-rust-sys = { workspace = true, version = "0.1.0" }
-cyclonedds-derive = { workspace = true, version = "0.1.0" }
+cyclonedds-rust-sys = { workspace = true }
+cyclonedds-derive = { workspace = true }
 thiserror = "1.0"
 tokio = { version = "1", features = ["rt", "sync", "time"], optional = true }
 async-stream = { version = "0.3", optional = true }

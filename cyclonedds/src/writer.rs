@@ -10,6 +10,7 @@ use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 
+/// A typed DDS DataWriter that publishes samples of type `T`.
 pub struct DataWriter<T: DdsType> {
     entity: dds_entity_t,
     _marker: PhantomData<T>,

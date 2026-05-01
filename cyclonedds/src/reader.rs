@@ -9,6 +9,7 @@ use cyclonedds_rust_sys::*;
 use std::marker::PhantomData;
 use std::ptr;
 
+/// A typed DDS DataReader that receives samples of type `T`.
 pub struct DataReader<T: DdsType> {
     entity: dds_entity_t,
     _marker: PhantomData<T>,

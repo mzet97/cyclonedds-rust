@@ -1,0 +1,12 @@
+gen
+gen.*
+.cproject
+.project
+.settings/
+.vs/
+.vscode/
+build/
+*~
+.zed
+.cache
+compile_commands.json

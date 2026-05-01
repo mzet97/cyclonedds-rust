@@ -7,6 +7,7 @@ use std::ffi::CString;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+/// A topic without compile-time type information.
 pub struct UntypedTopic {
     entity: dds_entity_t,
 }

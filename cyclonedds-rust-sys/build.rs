@@ -164,6 +164,7 @@ fn strip_static_assertions_from_str(content: &str) -> String {
 }
 
 fn try_resolve_cyclonedds_source(workspace_root: &Path) -> Result<PathBuf, String> {
+    // 1. Environment override (highest priority)
     if let Some(source) = env::var_os("CYCLONEDDS_SRC") {
         let source = PathBuf::from(source);
         if !source.exists() {
@@ -172,13 +173,19 @@ fn try_resolve_cyclonedds_source(workspace_root: &Path) -> Result<PathBuf, Strin
         return Ok(source);
     }
 
+    // 2. cyclonedds-src crate (bundled source — works when published on crates.io)
+    let bundled = cyclonedds_src::source_dir();
+    if bundled.exists() {
+        return Ok(bundled);
+    }
+
+    // 3. Workspace vendor directory (local development)
     let vendor = workspace_root.join("vendor/cyclonedds");
     if vendor.exists() {
         Ok(vendor)
     } else {
         Err(format!(
-            "CycloneDDS source not found at {}. Initialize submodule or set CYCLONEDDS_SRC.",
-            vendor.display()
+            "CycloneDDS source not found. Set CYCLONEDDS_SRC or ensure vendor/cyclonedds exists.",
         ))
     }
 }

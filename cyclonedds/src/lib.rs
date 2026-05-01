@@ -1,3 +1,23 @@
+#![warn(missing_docs)]
+
+//! Safe, idiomatic Rust bindings for Eclipse CycloneDDS.
+//!
+//! CycloneDDS is a high-performance implementation of the OMG Data Distribution
+//! Service (DDS) specification. This crate provides a safe Rust API on top of
+//! the raw FFI bindings in `cyclonedds-rust-sys`.
+//!
+//! # Quick Start
+//!
+//! ```no_run
+//! use cyclonedds::*;
+//!
+//! let participant = DomainParticipant::new(0).unwrap();
+//! let topic = participant.create_topic::<String>("HelloWorld").unwrap();
+//! let publisher = participant.create_publisher().unwrap();
+//! let writer = publisher.create_writer(&topic).unwrap();
+//! writer.write(&"hello".to_string()).unwrap();
+//! ```
+
 pub use cyclonedds_derive::DdsBitmask as DdsBitmaskDerive;
 pub use cyclonedds_derive::DdsEnum as DdsEnumDerive;
 pub use cyclonedds_derive::DdsType as DdsTypeDerive;

@@ -1,0 +1,26 @@
+name: MSRV
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+      - name: Install MSRV Rust
+        uses: dtolnay/rust-toolchain@1.85.0
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Build with MSRV
+        run: cargo build --workspace --all-features --locked
+      - name: Test with MSRV
+        run: cargo test --workspace --features async --locked
