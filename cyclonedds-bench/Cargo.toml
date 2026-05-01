@@ -1,0 +1,21 @@
+[package]
+name = "cyclonedds-bench"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+cyclonedds = { path = "../cyclonedds" }
+cyclonedds-derive = { path = "../cyclonedds-derive" }
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["html_reports"] }
+
+[[bench]]
+name = "latency"
+harness = false
+
+[[bench]]
+name = "throughput"
+harness = false
