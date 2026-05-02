@@ -80,7 +80,7 @@ pub use builtin::{
     BUILTIN_TOPIC_DCPSPARTICIPANT, BUILTIN_TOPIC_DCPSPUBLICATION, BUILTIN_TOPIC_DCPSSUBSCRIPTION,
     BUILTIN_TOPIC_DCPSTOPIC, DDS_MIN_PSEUDO_HANDLE,
 };
-pub use content_filtered_topic::{ContentFilteredTopic, TopicFilterExt};
+pub use content_filtered_topic::{ContentFilteredTopic, FilterParams, TopicFilterExt, TopicParameterizedFilterExt};
 pub use dynamic_type::{
     DynamicEnumLiteralValue, DynamicMemberBuilder, DynamicPrimitiveKind, DynamicType,
     DynamicTypeAutoId, DynamicTypeBuilder, DynamicTypeExtensibility, DynamicTypeSpec,

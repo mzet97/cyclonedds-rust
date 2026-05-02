@@ -14,9 +14,11 @@ use crate::{
     DdsError, DdsResult, DdsType, Topic,
 };
 use cyclonedds_rust_sys::*;
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::topic::{OP_KOF, OP_RTS};
 
@@ -399,5 +401,97 @@ impl<T: DdsType + 'static> TopicFilterExt<T> for Topic<T> {
             }
         }
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Parameterized filters (dynamic parameter updates at runtime)
+// ---------------------------------------------------------------------------
+
+/// Shared parameter store for content filters.
+///
+/// `FilterParams` holds a map of named integer parameters that can be updated
+/// at runtime without recreating the filter closure.
+///
+/// # Example
+/// ```no_run
+/// use cyclonedds::{ContentFilteredTopic, FilterParams};
+///
+/// let params = FilterParams::new();
+/// params.set("min_id", 10);
+/// params.set("max_id", 100);
+/// ```
+pub struct FilterParams {
+    inner: Arc<Mutex<HashMap<String, i64>>>,
+}
+
+impl FilterParams {
+    pub fn new() -> Self {
+        FilterParams {
+            inner: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Set a parameter value.
+    pub fn set(&self, key: impl Into<String>, value: i64) {
+        let mut p = self.inner.lock().unwrap();
+        p.insert(key.into(), value);
+    }
+
+    /// Get a parameter value.
+    pub fn get(&self, key: &str) -> Option<i64> {
+        let p = self.inner.lock().unwrap();
+        p.get(key).copied()
+    }
+
+    /// Remove a parameter.
+    pub fn remove(&self, key: &str) {
+        let mut p = self.inner.lock().unwrap();
+        p.remove(key);
+    }
+
+    pub(crate) fn clone_inner(&self) -> Arc<Mutex<HashMap<String, i64>>> {
+        self.inner.clone()
+    }
+}
+
+impl Default for FilterParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Extension trait for creating parameterized content filters on [`Topic`].
+pub trait TopicParameterizedFilterExt<T: DdsType + 'static> {
+    /// Create a content-filtered topic with a parameterized filter.
+    ///
+    /// The `filter` closure receives a reference to the sample and the current
+    /// parameter store. Parameters can be updated at any time via the returned
+    /// [`FilterParams`] without recreating the topic.
+    fn with_params<F>(
+        &self,
+        filter: F,
+    ) -> DdsResult<(ContentFilteredTopic<T>, FilterParams)>
+    where
+        F: Fn(&T, &FilterParams) -> bool + Send + Sync + 'static;
+}
+
+impl<T: DdsType + 'static> TopicParameterizedFilterExt<T> for Topic<T> {
+    fn with_params<F>(
+        &self,
+        filter: F,
+    ) -> DdsResult<(ContentFilteredTopic<T>, FilterParams)>
+    where
+        F: Fn(&T, &FilterParams) -> bool + Send + Sync + 'static,
+    {
+        let params = FilterParams::new();
+        let params_clone = params.clone_inner();
+
+        let cft = ContentFilteredTopic::new(self, move |sample| {
+            let p = FilterParams { inner: params_clone.clone() };
+            filter(sample, &p)
+        })?;
+
+        Ok((cft, params))
     }
 }
