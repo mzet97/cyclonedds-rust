@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 ///
 /// # Example
 /// ```no_run
+/// use cyclonedds::*;
+///
 /// #[derive(DdsTypeDerive, Clone)]
 /// struct AddRequest {
 ///     correlation_id: u64,
@@ -37,6 +39,22 @@ pub trait RequestReply: DdsType + Clone + Send + 'static {
 ///
 /// # Example
 /// ```no_run
+/// use cyclonedds::*;
+/// use std::time::Duration;
+///
+/// #[derive(DdsTypeDerive, Clone)]
+/// struct AddRequest { correlation_id: u64, a: i32, b: i32 }
+/// #[derive(DdsTypeDerive, Clone)]
+/// struct AddReply { correlation_id: u64, result: i32 }
+/// impl RequestReply for AddRequest {
+///     fn correlation_id(&self) -> u64 { self.correlation_id }
+///     fn set_correlation_id(&mut self, id: u64) { self.correlation_id = id; }
+/// }
+/// impl RequestReply for AddReply {
+///     fn correlation_id(&self) -> u64 { self.correlation_id }
+///     fn set_correlation_id(&mut self, id: u64) { self.correlation_id = id; }
+/// }
+///
 /// let participant = DomainParticipant::new(0).unwrap();
 /// let requester = Requester::<AddRequest, AddReply>::new(
 ///     &participant, "CalcService", None, None,
@@ -137,6 +155,22 @@ where
 ///
 /// # Example
 /// ```no_run
+/// use cyclonedds::*;
+/// use std::time::Duration;
+///
+/// #[derive(DdsTypeDerive, Clone)]
+/// struct AddRequest { correlation_id: u64, a: i32, b: i32 }
+/// #[derive(DdsTypeDerive, Clone)]
+/// struct AddReply { correlation_id: u64, result: i32 }
+/// impl RequestReply for AddRequest {
+///     fn correlation_id(&self) -> u64 { self.correlation_id }
+///     fn set_correlation_id(&mut self, id: u64) { self.correlation_id = id; }
+/// }
+/// impl RequestReply for AddReply {
+///     fn correlation_id(&self) -> u64 { self.correlation_id }
+///     fn set_correlation_id(&mut self, id: u64) { self.correlation_id = id; }
+/// }
+///
 /// let participant = DomainParticipant::new(0).unwrap();
 /// let replier = Replier::<AddRequest, AddReply>::new(
 ///     &participant, "CalcService", None, None,

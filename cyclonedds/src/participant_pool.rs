@@ -15,6 +15,9 @@ use std::time::{Duration, Instant};
 ///
 /// # Example
 /// ```no_run
+/// use cyclonedds::ParticipantPool;
+/// use std::time::Duration;
+///
 /// let mut pool = ParticipantPool::new();
 /// pool.join_domain(0, None).unwrap();
 /// pool.join_domain(1, None).unwrap();
