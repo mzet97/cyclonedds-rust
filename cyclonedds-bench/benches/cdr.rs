@@ -2,6 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use cyclonedds::{CdrDeserializer, CdrEncoding, CdrSerializer, DdsTypeDerive};
 
 #[derive(DdsTypeDerive, Clone)]
+#[allow(dead_code)]
 struct Point {
     x: f64,
     y: f64,
@@ -9,12 +10,14 @@ struct Point {
 }
 
 #[derive(DdsTypeDerive, Clone)]
+#[allow(dead_code)]
 struct Pose {
     position: Point,
     orientation: Point,
 }
 
 #[derive(DdsTypeDerive, Clone)]
+#[allow(dead_code)]
 struct Message {
     id: i32,
     seq: u64,

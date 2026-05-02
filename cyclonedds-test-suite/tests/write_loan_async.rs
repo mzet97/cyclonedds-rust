@@ -25,11 +25,10 @@ fn write_loan_async_publishes_sample() {
             .await
             .unwrap();
 
-        assert!(wait_for(Duration::from_secs(2), || reader
+        assert!(wait_for(Duration::from_secs(2), || !reader
             .read()
             .unwrap()
-            .len()
-            >= 1));
+            .is_empty()));
 
         let data = reader.take().unwrap();
         assert_eq!(data.len(), 1);

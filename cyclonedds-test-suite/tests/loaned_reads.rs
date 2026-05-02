@@ -1,4 +1,4 @@
-use cyclonedds::{DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Subscriber};
+use cyclonedds::{DdsEntity, DdsTypeDerive, DomainParticipant, Subscriber};
 
 #[repr(C)]
 #[derive(Debug, Clone, DdsTypeDerive)]
