@@ -23,4 +23,4 @@ jobs:
       - name: Build with MSRV
         run: cargo build --workspace --features async --locked
       - name: Test with MSRV
-        run: cargo test --workspace --features async --locked -- --skip cross_process_pub_sub_reliable --skip cross_process_pub_sub_best_effort
+        run: cargo test --workspace --features async --locked -- --test-threads=1 --skip cross_process_pub_sub_reliable --skip cross_process_pub_sub_best_effort
