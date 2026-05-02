@@ -462,7 +462,7 @@ fn cmd_subscribe(
 
             // Deserialize CDR into DynamicData
             received += 1;
-            match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
+            match cdr_to_dynamic_data(&cdr_bytes, schema, topic_descriptor) {
                 Ok(data) => {
                     // Apply simple field filter if provided
                     if let Some(fexpr) = filter {
@@ -1140,11 +1140,12 @@ fn print_type_schema(schema: &cyclonedds::DynamicTypeSchema, indent: usize) {
                 None => "",
             };
             println!(
-                "{}{}struct {}{} {{",
+                "{}{}struct {}{}{} {{",
                 prefix,
                 prefix,
                 name,
-                format!("{}{}", ext, autoid_str)
+                ext,
+                autoid_str
             );
             for field in fields {
                 let mut attrs = Vec::new();
@@ -1819,7 +1820,7 @@ fn cmd_echo(topic_name: &str, domain_id: u32, max_samples: usize) -> cyclonedds:
             }
             unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
 
-            match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
+            match cdr_to_dynamic_data(&cdr_bytes, schema, topic_descriptor) {
                 Ok(data) => {
                     received += 1;
                     println!("[echo {}] {:?}", received, data);
@@ -1958,7 +1959,7 @@ fn cmd_record(
             }
             unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
 
-            match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
+            match cdr_to_dynamic_data(&cdr_bytes, schema, topic_descriptor) {
                 Ok(data) => {
                     received += 1;
                     let json_val = dynamic_value_to_json(data.value());
