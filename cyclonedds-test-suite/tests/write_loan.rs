@@ -9,6 +9,7 @@ struct LoanTestMsg {
 }
 
 impl LoanTestMsg {
+    #[allow(dead_code)]
     fn new(id: i32, value: i64) -> Self {
         Self { id, value }
     }
