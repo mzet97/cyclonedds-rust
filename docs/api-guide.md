@@ -232,7 +232,7 @@ Enable the `async` feature (on by default) to use async/await with DDS operation
 
 ```toml
 [dependencies]
-cyclonedds = "1.5"  # async feature enabled by default
+cyclonedds = "1.7"  # async feature enabled by default
 tokio = { version = "1", features = ["full"] }
 ```
 

@@ -12,7 +12,7 @@ Linux: `sudo apt install cyclonedds-dev` | macOS: `brew install cyclonedds` | Wi
 
 ```toml
 [dependencies]
-cyclonedds = "1.5"  # async is enabled by default
+cyclonedds = "1.7"  # async is enabled by default
 ```
 
 ## Define a Topic Type

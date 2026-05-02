@@ -13,6 +13,12 @@ Safe, idiomatic Rust bindings for [Eclipse CycloneDDS](https://github.com/eclips
 - **Derive macros** for topic types: `DdsType`, `DdsEnum`, `DdsUnion`, `DdsBitmask`
 - **CDR serialization** (XCDR1/XCDR2), dynamic types, type discovery (XTypes)
 - **Async Streams** (`read_aiter`, `take_aiter`) with tokio integration
+- **Async Timeouts & Cancellation** (`read_aiter_timeout`, `take_aiter_timeout`) with safe cancellation
+- **Zero-Copy Loans** (`write_loan`, `read_loan`, `take_loan`) for minimal latency
+- **DDS Security** (`SecurityConfig`) with X.509 certificate validation and hot-reload
+- **ROS2 Interop** helpers (`ros2_topic_name`, `ros2_qos_reliable`) for seamless ROS2 integration
+- **Diagnostics CLI** (`diagnose`, `metrics`) with Prometheus export support
+- **`tracing` Integration** for structured logs and distributed spans
 
 ## Quick Start
 
@@ -20,7 +26,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cyclonedds = "1.5"
+cyclonedds = "1.7"
 ```
 
 ### Define a Topic Type
