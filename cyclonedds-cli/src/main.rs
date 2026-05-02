@@ -462,7 +462,7 @@ fn cmd_subscribe(
 
             // Deserialize CDR into DynamicData
             received += 1;
-            match cdr_to_dynamic_data(&cdr_bytes, schema, topic_descriptor) {
+            match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
                 Ok(data) => {
                     // Apply simple field filter if provided
                     if let Some(fexpr) = filter {
