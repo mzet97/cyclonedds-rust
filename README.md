@@ -20,7 +20,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cyclonedds = "1.0"
+cyclonedds = "1.5"
 ```
 
 ### Define a Topic Type
@@ -111,11 +111,11 @@ async fn consume<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
 | Content-Filtered Topics | Yes | Partial | **Yes** (closure-based) |
 | Union / Bitmask / Enum | Yes | Partial | **Yes** |
 | IDL Compilation | Yes | Yes | **Yes** |
-| CLI Tools | Yes | No | **Yes** (`ls`, `ps`, `subscribe`, `typeof`, `publish`) |
+| CLI Tools | Yes | No | **Yes** (`ls`, `ps`, `subscribe`, `typeof`, `publish`, `discover`, `echo`, `record`, `replay`, `monitor`, `health`, `topology`) |
 | Async Streams (`read_aiter`, `take_aiter`) | No | No | **Yes** |
 | Matched Endpoint Data | Yes | No | **Yes** |
 | Zero-copy Write Loan | No | Yes | **Yes** |
-| DDS Security | Yes | No | Planned post-v1.0 |
+| DDS Security | Yes | No | **Yes** (`SecurityConfig` + `--features security`) |
 
 ## Workspace Crates
 
@@ -126,7 +126,9 @@ async fn consume<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
 | `cyclonedds-derive` | Procedural derive macros (`DdsType`, `DdsEnum`, `DdsUnion`, `DdsBitmask`) |
 | `cyclonedds-build` | Build-time helpers for generating types from IDL |
 | `cyclonedds-idlc` | IDL compiler backend producing Rust source from IDL files |
-| `cyclonedds-cli` | Command-line tools (`ls`, `ps`, `subscribe`, `typeof`, `publish`, `perf`) |
+| `cyclonedds-cli` | Command-line tools (`ls`, `ps`, `subscribe`, `typeof`, `publish`, `perf`, `discover`, `echo`, `record`, `replay`, `monitor`, `health`, `topology`) |
+| `cargo-cyclonedds` | Cargo plugin (`cargo cyclonedds generate <idl>`) |
+| `cyclonedds-bench` | Criterion benchmarks (latency, throughput, CDR) |
 | `cyclonedds-test-suite` | Integration tests |
 
 ## Build
@@ -168,8 +170,23 @@ cargo run --bin cyclonedds-cli -- ps --domain 0
 # Subscribe to a topic
 cargo run --bin cyclonedds-cli -- subscribe --topic HelloWorld
 
+# Subscribe with JSON output and filter
+cargo run --bin cyclonedds-cli -- subscribe --topic HelloWorld --json --filter "id > 10"
+
 # Show type info
 cargo run --bin cyclonedds-cli -- typeof --topic HelloWorld
+
+# Publish at 10 Hz
+cargo run --bin cyclonedds-cli -- publish --topic HelloWorld --message "hi" --rate 10
+
+# Monitor throughput
+cargo run --bin cyclonedds-cli -- monitor --topic HelloWorld
+
+# Health check
+cargo run --bin cyclonedds-cli -- health "HelloWorld,AnotherTopic"
+
+# Generate topology graph
+cargo run --bin cyclonedds-cli -- topology --output topology.dot
 ```
 
 ## Examples
@@ -185,16 +202,19 @@ cargo run --example pub
 ## Documentation
 
 - [Getting Started](docs/getting-started.md) — installation, first steps, WSL notes
+- [Tutorial](docs/tutorial.md) — step-by-step first DDS application
 - [API Guide](docs/api-guide.md) — tour of all major API features
 - [Type System](docs/type-system.md) — `DdsType` derive, supported types, CDR encoding
 - [QoS Reference](docs/qos-reference.md) — all QoS policies and builder patterns
+- [ROS2 Integration](docs/ros2-integration.md) — communicating with ROS2 nodes
+- [Security Guide](docs/security-guide.md) — DDS Security setup and certificates
+- [FAQ](docs/faq.md) — frequently asked questions and troubleshooting
 - [Migration from Python](docs/migration-from-python.md) — guide for `cyclonedds-python` users
 
 ## Known Limitations
 
-- **DDS Security:** Not supported in v1.0. Planned for a future release.
-- **CLI `publish`:** Currently supports simple string messages and dynamic types discovered at runtime. Complex structs require using the Rust API directly.
-- **PSMX / Iceoryx:** Shared memory transport is not yet configurable via the Rust API.
+- **CLI `publish`:** Supports string messages, JSON payloads, and dynamic types discovered at runtime. Complex nested structs may require using the Rust API directly for full control.
+- **DDS Security on Windows:** Requires OpenSSL to be installed and `OPENSSL_ROOT_DIR` configured. The `security` feature is disabled by default on Windows CI to avoid build issues.
 
 ## Benchmarks
 
