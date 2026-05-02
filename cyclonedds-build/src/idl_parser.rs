@@ -316,7 +316,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::StrLit(s));
             }
             c if c.is_ascii_digit()
-                || (c == '-' && chars.peek().map_or(false, |nc| nc.is_ascii_digit())) =>
+                || (c == '-' && chars.peek().is_some_and(|nc| nc.is_ascii_digit())) =>
             {
                 let negative = c == '-';
                 if negative {
@@ -355,8 +355,8 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                         break;
                     }
                 }
-                let val = if num.starts_with("-") {
-                    num[1..]
+                let val = if let Some(stripped) = num.strip_prefix('-') {
+                    stripped
                         .parse::<i64>()
                         .map(|v| -v)
                         .map_err(|e| format!("Invalid integer: {}", e))?
@@ -922,11 +922,10 @@ impl<'a> Parser<'a> {
         while let Some(tok) = self.advance() {
             match tok {
                 Token::LBrace | Token::LParen => depth += 1,
-                Token::RBrace | Token::RParen => {
-                    if depth > 0 {
-                        depth -= 1;
-                    }
+                Token::RBrace | Token::RParen if depth > 0 => {
+                    depth -= 1;
                 }
+                Token::RBrace | Token::RParen => {}
                 Token::Semi if depth == 0 => return Ok(()),
                 _ => {}
             }

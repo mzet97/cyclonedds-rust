@@ -149,7 +149,7 @@ fn generate_union(u: &IdlUnion) -> String {
         }
         output.push_str("    ");
         output.push_str(&to_pascal_case(&case.name));
-        output.push_str("(");
+        output.push('(');
         output.push_str(&type_ref_to_rust(&case.ty));
         output.push_str("),\n");
     }
@@ -158,7 +158,7 @@ fn generate_union(u: &IdlUnion) -> String {
         output.push_str("    #[dds_default]\n");
         output.push_str("    ");
         output.push_str(&to_pascal_case(&default.name));
-        output.push_str("(");
+        output.push('(');
         output.push_str(&type_ref_to_rust(&default.ty));
         output.push_str("),\n");
     }
