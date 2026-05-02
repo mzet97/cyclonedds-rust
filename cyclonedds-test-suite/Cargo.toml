@@ -15,3 +15,6 @@ path = "src/main.rs"
 [dependencies]
 cyclonedds = { path = "../cyclonedds" }
 cyclonedds_sys = { package = "cyclonedds-rust-sys", path = "../cyclonedds-rust-sys" }
+
+[features]
+security = ["cyclonedds/security", "cyclonedds_sys/security"]

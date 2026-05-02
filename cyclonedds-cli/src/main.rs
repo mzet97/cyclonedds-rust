@@ -48,6 +48,9 @@ enum Commands {
         /// Output samples as JSON
         #[arg(long)]
         json: bool,
+        /// Simple filter expression (e.g. "id > 10")
+        #[arg(long)]
+        filter: Option<String>,
     },
     /// Run a ping-pong latency performance test
     Perf {
@@ -96,6 +99,43 @@ enum Commands {
         /// DDS domain ID
         #[arg(long, default_value_t = 0)]
         domain_id: u32,
+    },
+    /// Echo mode: subscribe and republish received samples
+    Echo {
+        /// Topic name to echo
+        topic: String,
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+        /// Maximum number of samples to echo (0 = unlimited)
+        #[arg(long, default_value_t = 0)]
+        samples: usize,
+    },
+    /// Record samples from a topic to a JSON file
+    Record {
+        /// Topic name to record
+        topic: String,
+        /// Output file for recorded samples
+        output: String,
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+        /// Maximum number of samples to record (0 = unlimited)
+        #[arg(long, default_value_t = 0)]
+        samples: usize,
+    },
+    /// Replay samples from a JSON file to a topic
+    Replay {
+        /// Topic name to replay to
+        topic: String,
+        /// Input file with recorded samples
+        input: String,
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+        /// Delay between messages in milliseconds
+        #[arg(short, long, default_value_t = 0)]
+        delay_ms: u64,
     },
 }
 
@@ -222,6 +262,7 @@ fn cmd_subscribe(
     domain_id: u32,
     max_samples: usize,
     output_json: bool,
+    filter: Option<&str>,
 ) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
@@ -355,6 +396,12 @@ fn cmd_subscribe(
             received += 1;
             match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
                 Ok(data) => {
+                    // Apply simple field filter if provided
+                    if let Some(fexpr) = filter {
+                        if !eval_filter(data.value(), fexpr) {
+                            continue;
+                        }
+                    }
                     if output_json {
                         let json_val = dynamic_value_to_json(data.value());
                         println!("{}", serde_json::to_string_pretty(&json_val).unwrap_or_else(|_| format!("{:?}", data)));
@@ -946,6 +993,59 @@ fn dynamic_value_to_json(value: &cyclonedds::DynamicValue) -> serde_json::Value 
     }
 }
 
+/// Evaluate a simple filter expression against a DynamicValue::Struct.
+/// Supports: `field > num`, `field < num`, `field >= num`, `field <= num`, `field == num`, `field != num`
+fn eval_filter(value: &cyclonedds::DynamicValue, filter: &str) -> bool {
+    let parts: Vec<&str> = filter.split_whitespace().collect();
+    if parts.len() != 3 {
+        return true; // malformed filter: pass through
+    }
+    let field_name = parts[0];
+    let op = parts[1];
+    let rhs_str = parts[2];
+
+    let rhs = match rhs_str.parse::<f64>() {
+        Ok(v) => v,
+        Err(_) => return true,
+    };
+
+    let fields = match value {
+        cyclonedds::DynamicValue::Struct(f) => f,
+        _ => return true,
+    };
+
+    let field_val = match fields.get(field_name) {
+        Some(v) => v,
+        None => return false,
+    };
+
+    let lhs = match field_val {
+        cyclonedds::DynamicValue::Bool(b) => *b as i64 as f64,
+        cyclonedds::DynamicValue::Byte(v) => *v as f64,
+        cyclonedds::DynamicValue::Int8(v) => *v as f64,
+        cyclonedds::DynamicValue::UInt8(v) => *v as f64,
+        cyclonedds::DynamicValue::Int16(v) => *v as f64,
+        cyclonedds::DynamicValue::UInt16(v) => *v as f64,
+        cyclonedds::DynamicValue::Int32(v) => *v as f64,
+        cyclonedds::DynamicValue::UInt32(v) => *v as f64,
+        cyclonedds::DynamicValue::Int64(v) => *v as f64,
+        cyclonedds::DynamicValue::UInt64(v) => *v as f64,
+        cyclonedds::DynamicValue::Float32(v) => *v as f64,
+        cyclonedds::DynamicValue::Float64(v) => *v,
+        _ => return true,
+    };
+
+    match op {
+        ">" => lhs > rhs,
+        ">=" => lhs >= rhs,
+        "<" => lhs < rhs,
+        "<=" => lhs <= rhs,
+        "==" | "=" => (lhs - rhs).abs() < f64::EPSILON,
+        "!=" | "<>" => (lhs - rhs).abs() >= f64::EPSILON,
+        _ => true,
+    }
+}
+
 fn cmd_publish(
     topic_name: &str,
     domain_id: u32,
@@ -1064,6 +1164,373 @@ fn cmd_publish(
 }
 
 // ---------------------------------------------------------------------------
+// echo command
+// ---------------------------------------------------------------------------
+
+fn cmd_echo(
+    topic_name: &str,
+    domain_id: u32,
+    max_samples: usize,
+) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let publisher = Publisher::new(participant.entity())?;
+    let subscriber = Subscriber::new(participant.entity())?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+
+    println!("Echo mode on topic '{}' — discovering type...", topic_name);
+
+    let endpoint = 'search: {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == topic_name {
+                    break 'search ep.clone();
+                }
+            }
+        }
+        println!("No publication found for topic '{}' within timeout.", topic_name);
+        return Ok(());
+    };
+
+    let type_name = endpoint.type_name();
+    let type_info = endpoint.type_info()?;
+    let discovered = discover_type_from_type_info(
+        participant.entity(),
+        &type_info,
+        &type_name,
+        5_000_000_000,
+    )?;
+
+    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let qos = QosBuilder::new()
+        .reliability(Reliability::Reliable, 10_000_000_000)
+        .build()?;
+
+    let reader_entity = unsafe {
+        check_entity(cyclonedds_rust_sys::dds_create_reader(
+            subscriber.entity(),
+            topic.entity(),
+            qos.as_ptr(),
+            std::ptr::null_mut(),
+        ))?
+    };
+
+    let writer_entity = unsafe {
+        check_entity(cyclonedds_rust_sys::dds_create_writer(
+            publisher.entity(),
+            topic.entity(),
+            qos.as_ptr(),
+            std::ptr::null_mut(),
+        ))?
+    };
+
+    let schema = &discovered.type_schema;
+    let topic_descriptor = &discovered.topic_descriptor;
+
+    println!("Echoing samples on '{}'... Press Ctrl+C to stop.", topic_name);
+
+    let mut received = 0;
+    let max_buf: usize = 64;
+    let mut sdbuf: Vec<*mut cyclonedds_rust_sys::ddsi_serdata> =
+        vec![std::ptr::null_mut(); max_buf];
+    let mut infos: Vec<cyclonedds_rust_sys::dds_sample_info> =
+        vec![unsafe { std::mem::zeroed() }; max_buf];
+
+    loop {
+        if max_samples > 0 && received >= max_samples {
+            break;
+        }
+
+        let n = unsafe {
+            cyclonedds_rust_sys::dds_takecdr(
+                reader_entity,
+                sdbuf.as_mut_ptr(),
+                max_buf as u32,
+                infos.as_mut_ptr() as *mut cyclonedds_rust_sys::dds_sample_info_t,
+                0,
+            )
+        };
+
+        if n <= 0 {
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        let n = n as usize;
+
+        for i in 0..n {
+            let sd = sdbuf[i];
+            if sd.is_null() || !infos[i].valid_data {
+                if !sd.is_null() {
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+                }
+                continue;
+            }
+
+            let size = unsafe { cyclonedds_rust_sys::ddsi_serdata_size(sd) } as usize;
+            let mut cdr_bytes = vec![0u8; size];
+            unsafe {
+                cyclonedds_rust_sys::ddsi_serdata_to_ser(
+                    sd,
+                    0,
+                    size,
+                    cdr_bytes.as_mut_ptr() as *mut std::ffi::c_void,
+                );
+            }
+            unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+
+            match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
+                Ok(data) => {
+                    received += 1;
+                    println!("[echo {}] {:?}", received, data);
+                    let cdr = dynamic_data_to_cdr(&data, &discovered.topic_descriptor)?;
+                    unsafe {
+                        let _ = cyclonedds_rust_sys::dds_write(
+                            writer_entity,
+                            cdr.as_ptr() as *const std::ffi::c_void,
+                        );
+                    }
+                }
+                Err(e) => println!("[echo {}] <decode error: {:?}>", received, e),
+            }
+        }
+    }
+
+    unsafe {
+        cyclonedds_rust_sys::dds_delete(reader_entity);
+        cyclonedds_rust_sys::dds_delete(writer_entity);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// record command
+// ---------------------------------------------------------------------------
+
+fn cmd_record(
+    topic_name: &str,
+    output_path: &str,
+    domain_id: u32,
+    max_samples: usize,
+) -> cyclonedds::DdsResult<()> {
+    use std::io::Write;
+
+    let participant = DomainParticipant::new(domain_id)?;
+    let subscriber = Subscriber::new(participant.entity())?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+
+    println!("Recording from topic '{}' to '{}'...", topic_name, output_path);
+
+    let endpoint = 'search: {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == topic_name {
+                    break 'search ep.clone();
+                }
+            }
+        }
+        println!("No publication found for topic '{}' within timeout.", topic_name);
+        return Ok(());
+    };
+
+    let type_name = endpoint.type_name();
+    let type_info = endpoint.type_info()?;
+    let discovered = discover_type_from_type_info(
+        participant.entity(),
+        &type_info,
+        &type_name,
+        5_000_000_000,
+    )?;
+
+    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let qos = QosBuilder::new()
+        .reliability(Reliability::Reliable, 10_000_000_000)
+        .build()?;
+
+    let reader_entity = unsafe {
+        check_entity(cyclonedds_rust_sys::dds_create_reader(
+            subscriber.entity(),
+            topic.entity(),
+            qos.as_ptr(),
+            std::ptr::null_mut(),
+        ))?
+    };
+
+    let schema = &discovered.type_schema;
+    let topic_descriptor = &discovered.topic_descriptor;
+
+    let mut file = std::fs::File::create(output_path)
+        .map_err(|e| cyclonedds::DdsError::BadParameter(format!("cannot create file: {}", e)))?;
+    writeln!(file, "[")
+        .map_err(|e| cyclonedds::DdsError::BadParameter(format!("write error: {}", e)))?;
+
+    let mut received = 0;
+    let max_buf: usize = 64;
+    let mut sdbuf: Vec<*mut cyclonedds_rust_sys::ddsi_serdata> =
+        vec![std::ptr::null_mut(); max_buf];
+    let mut infos: Vec<cyclonedds_rust_sys::dds_sample_info> =
+        vec![unsafe { std::mem::zeroed() }; max_buf];
+
+    loop {
+        if max_samples > 0 && received >= max_samples {
+            break;
+        }
+
+        let n = unsafe {
+            cyclonedds_rust_sys::dds_takecdr(
+                reader_entity,
+                sdbuf.as_mut_ptr(),
+                max_buf as u32,
+                infos.as_mut_ptr() as *mut cyclonedds_rust_sys::dds_sample_info_t,
+                0,
+            )
+        };
+
+        if n <= 0 {
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        let n = n as usize;
+
+        for i in 0..n {
+            let sd = sdbuf[i];
+            if sd.is_null() || !infos[i].valid_data {
+                if !sd.is_null() {
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+                }
+                continue;
+            }
+
+            let size = unsafe { cyclonedds_rust_sys::ddsi_serdata_size(sd) } as usize;
+            let mut cdr_bytes = vec![0u8; size];
+            unsafe {
+                cyclonedds_rust_sys::ddsi_serdata_to_ser(
+                    sd,
+                    0,
+                    size,
+                    cdr_bytes.as_mut_ptr() as *mut std::ffi::c_void,
+                );
+            }
+            unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+
+            match cdr_to_dynamic_data(&cdr_bytes, &schema, topic_descriptor) {
+                Ok(data) => {
+                    received += 1;
+                    let json_val = dynamic_value_to_json(data.value());
+                    let json_str = serde_json::to_string(&json_val)
+                        .unwrap_or_else(|_| format!("{:?}", data));
+                    if received > 1 {
+                        writeln!(file, ",")
+                            .map_err(|e| cyclonedds::DdsError::BadParameter(format!("write error: {}", e)))?;
+                    }
+                    write!(file, "{}", json_str)
+                        .map_err(|e| cyclonedds::DdsError::BadParameter(format!("write error: {}", e)))?;
+                    println!("Recorded sample {}", received);
+                }
+                Err(e) => println!("<decode error: {:?}>", e),
+            }
+        }
+    }
+
+    writeln!(file, "\n]")
+        .map_err(|e| cyclonedds::DdsError::BadParameter(format!("write error: {}", e)))?;
+
+    unsafe {
+        cyclonedds_rust_sys::dds_delete(reader_entity);
+    }
+
+    println!("Recorded {} samples to '{}'.", received, output_path);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// replay command
+// ---------------------------------------------------------------------------
+
+fn cmd_replay(
+    topic_name: &str,
+    input_path: &str,
+    domain_id: u32,
+    delay_ms: u64,
+) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let publisher = Publisher::new(participant.entity())?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+
+    println!("Replaying from '{}' to topic '{}'...", input_path, topic_name);
+
+    let endpoint = 'search: {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == topic_name {
+                    break 'search ep.clone();
+                }
+            }
+        }
+        println!("No publication found for topic '{}' within timeout.", topic_name);
+        return Ok(());
+    };
+
+    let type_name = endpoint.type_name();
+    let type_info = endpoint.type_info()?;
+    let discovered = discover_type_from_type_info(
+        participant.entity(),
+        &type_info,
+        &type_name,
+        5_000_000_000,
+    )?;
+
+    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let qos = QosBuilder::new()
+        .reliability(Reliability::Reliable, 10_000_000_000)
+        .build()?;
+
+    let writer_entity = unsafe {
+        check_entity(cyclonedds_rust_sys::dds_create_writer(
+            publisher.entity(),
+            topic.entity(),
+            qos.as_ptr(),
+            std::ptr::null_mut(),
+        ))?
+    };
+
+    let json_str = std::fs::read_to_string(input_path)
+        .map_err(|e| cyclonedds::DdsError::BadParameter(format!("cannot read file: {}", e)))?;
+    let values: Vec<serde_json::Value> = serde_json::from_str(&json_str)
+        .map_err(|e| cyclonedds::DdsError::BadParameter(format!("invalid JSON: {}", e)))?;
+
+    println!("Replaying {} samples...", values.len());
+    for (i, val) in values.iter().enumerate() {
+        let dyn_value = json_to_dynamic_value(val, &discovered.type_schema)?;
+        let data = DynamicData::from_value(&discovered.type_schema, dyn_value)?;
+        let cdr = dynamic_data_to_cdr(&data, &discovered.topic_descriptor)?;
+
+        unsafe {
+            let _ = cyclonedds_rust_sys::dds_write(
+                writer_entity,
+                cdr.as_ptr() as *const std::ffi::c_void,
+            );
+        }
+        println!("Replayed sample [{}]", i);
+        if delay_ms > 0 {
+            std::thread::sleep(Duration::from_millis(delay_ms));
+        }
+    }
+
+    unsafe {
+        cyclonedds_rust_sys::dds_delete(writer_entity);
+    }
+
+    println!("Replay complete.");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -1078,7 +1545,8 @@ fn main() {
             domain_id,
             samples,
             json,
-        } => cmd_subscribe(&topic, domain_id, samples, json),
+            filter,
+        } => cmd_subscribe(&topic, domain_id, samples, json, filter.as_deref()),
         Commands::Perf { domain_id, samples } => cmd_perf(domain_id, samples),
         Commands::Typeof { topic, domain_id } => cmd_typeof(&topic, domain_id),
         Commands::Publish {
@@ -1091,6 +1559,23 @@ fn main() {
             rate,
         } => cmd_publish(&topic, domain_id, message, json, count, delay_ms, rate),
         Commands::Discover { topic, domain_id } => cmd_discover(&topic, domain_id),
+        Commands::Echo {
+            topic,
+            domain_id,
+            samples,
+        } => cmd_echo(&topic, domain_id, samples),
+        Commands::Record {
+            topic,
+            output,
+            domain_id,
+            samples,
+        } => cmd_record(&topic, &output, domain_id, samples),
+        Commands::Replay {
+            topic,
+            input,
+            domain_id,
+            delay_ms,
+        } => cmd_replay(&topic, &input, domain_id, delay_ms),
     };
 
     if let Err(e) = result {

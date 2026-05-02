@@ -55,6 +55,15 @@ impl QosProvider {
         Self::new(definition)
     }
 
+    /// Create a provider from an inline XML QoS definition and select a
+    /// named profile (scope).
+    ///
+    /// The `scope` corresponds to the `name` attribute of a `<qos_profile>`
+    /// element in the XML.
+    pub fn from_xml_with_profile(definition: &str, profile: &str) -> DdsResult<Self> {
+        Self::with_scope(definition, profile)
+    }
+
     pub fn with_scope(definition: &str, scope: &str) -> DdsResult<Self> {
         let definition = to_cstring(definition, "qos definition")?;
         let scope = to_cstring(scope, "qos scope")?;
@@ -86,6 +95,14 @@ impl QosProvider {
             DdsError::BadParameter(format!("path is not valid UTF-8: {}", path.display()))
         })?;
         Self::with_scope(definition, scope)
+    }
+
+    /// Create a provider from an XML file and select a named profile.
+    ///
+    /// The `profile` corresponds to the `name` attribute of a `<qos_profile>`
+    /// element in the XML file.
+    pub fn from_file_with_profile(path: impl AsRef<Path>, profile: &str) -> DdsResult<Self> {
+        Self::from_file_with_scope(path, profile)
     }
 
     pub fn get_qos(&self, kind: QosKind, key: &str) -> DdsResult<Qos> {

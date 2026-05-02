@@ -411,6 +411,148 @@ impl<T: DdsType> DataReader<T> {
         }
     }
 
+    /// Async iterator that yields batches of samples via `read` with both
+    /// a configurable batch size and a timeout on the WaitSet.
+    ///
+    /// This combines [`read_aiter_batch`](Self::read_aiter_batch) and
+    /// [`read_aiter_timeout`](Self::read_aiter_timeout) for fine-grained
+    /// back-pressure and cancellation control.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use cyclonedds::DataReader;
+    /// use futures_util::StreamExt;
+    /// # async fn example<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
+    /// let mut stream = Box::pin(reader.read_aiter_batch_timeout(64, 500_000_000));
+    /// while let Some(batch) = stream.next().await {
+    ///     match batch {
+    ///         Ok(samples) if !samples.is_empty() => println!("got {} samples", samples.len()),
+    ///         Ok(_) => println!("timeout — no data"),
+    ///         Err(e) => eprintln!("read error: {}", e),
+    ///     }
+    /// }
+    /// # }
+    /// ```
+    pub fn read_aiter_batch_timeout(
+        &self,
+        max_samples: usize,
+        timeout_ns: i64,
+    ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
+        let entity = self.entity();
+        async_stream::try_stream! {
+            let participant = tokio::task::spawn_blocking(move || unsafe {
+                dds_get_participant(entity)
+            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
+
+            let waitset = WaitSet::new(participant)?;
+            waitset.attach(entity, 0)?;
+
+            loop {
+                let triggered = waitset.wait_async(timeout_ns).await?;
+                if triggered.is_empty() {
+                    yield Vec::new();
+                    continue;
+                }
+
+                let batch = tokio::task::spawn_blocking(move || unsafe {
+                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
+                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
+
+                    let n = dds_read(
+                        entity,
+                        samples.as_mut_ptr(),
+                        infos.as_mut_ptr() as *mut dds_sample_info_t,
+                        max_samples,
+                        max_samples as u32,
+                    );
+
+                    if n < 0 {
+                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
+                    }
+                    let n = n as usize;
+
+                    let mut result = Vec::with_capacity(n);
+                    for i in 0..n {
+                        if infos[i].valid_data && !samples[i].is_null() {
+                            let data = std::ptr::read(samples[i] as *const T);
+                            result.push(data);
+                        }
+                    }
+
+                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
+                    Ok(result)
+                })
+                .await
+                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
+
+                yield batch?;
+            }
+        }
+    }
+
+    /// Async iterator that yields batches of samples via `take` with both
+    /// a configurable batch size and a timeout on the WaitSet.
+    ///
+    /// Like [`read_aiter_batch_timeout`](Self::read_aiter_batch_timeout) but
+    /// removes samples from the reader history.
+    pub fn take_aiter_batch_timeout(
+        &self,
+        max_samples: usize,
+        timeout_ns: i64,
+    ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
+        let entity = self.entity();
+        async_stream::try_stream! {
+            let participant = tokio::task::spawn_blocking(move || unsafe {
+                dds_get_participant(entity)
+            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
+
+            let waitset = WaitSet::new(participant)?;
+            waitset.attach(entity, 0)?;
+
+            loop {
+                let triggered = waitset.wait_async(timeout_ns).await?;
+                if triggered.is_empty() {
+                    yield Vec::new();
+                    continue;
+                }
+
+                let batch = tokio::task::spawn_blocking(move || unsafe {
+                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
+                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
+
+                    let n = dds_take(
+                        entity,
+                        samples.as_mut_ptr(),
+                        infos.as_mut_ptr() as *mut dds_sample_info_t,
+                        max_samples,
+                        max_samples as u32,
+                    );
+
+                    if n < 0 {
+                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
+                    }
+                    let n = n as usize;
+
+                    let mut result = Vec::with_capacity(n);
+                    for i in 0..n {
+                        if infos[i].valid_data && !samples[i].is_null() {
+                            let data = std::ptr::read(samples[i] as *const T);
+                            result.push(data);
+                        }
+                    }
+
+                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
+                    Ok(result)
+                })
+                .await
+                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
+
+                yield batch?;
+            }
+        }
+    }
+
     /// Async iterator that yields batches of samples via `take` with a
     /// configurable timeout on the WaitSet.
     ///

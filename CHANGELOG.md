@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-05-01
+
+### Added
+
+- **DDS Security Tests**: `cyclonedds-test-suite/tests/security.rs` with integration
+  tests for `SecurityConfig` builder, QoS property application, and graceful handling
+  of invalid certificate paths.
+- **QoS Profiles**: `QosProvider::from_xml_with_profile()` and
+  `QosProvider::from_file_with_profile()` for loading named profiles from XML.
+  Example file added at `examples/qos_profiles.xml`.
+- **Async Batch Timeouts**: `read_aiter_batch_timeout(max_samples, timeout_ns)` and
+  `take_aiter_batch_timeout(max_samples, timeout_ns)` for combined back-pressure
+  and cancellation control.
+- **CLI v1.4**: `echo` command for loopback debugging (subscribe + republish).
+- **CLI v1.4**: `record <file>` command for recording samples to JSON.
+- **CLI v1.4**: `replay <file>` command for replaying recorded JSON samples.
+- **CLI v1.4**: `subscribe --filter "field > 10"` for simple numeric field filtering.
+- **IDL Compiler Tests**: Added tests for nested structs, cross-module type references
+  (`Geometry::Point`), and array typedefs.
+- **Observability**: `examples/metrics.rs` demonstrating `Statistics` API usage
+  for writer and participant metrics.
+- **SHM Transport**: `examples/shm_pub.rs` and `examples/shm_sub.rs` demonstrating
+  Iceoryx/PSMX shared-memory transport with large messages.
+
+### Changed
+
+- Workspace version bumped to `1.4.0`.
+
 ## [1.3.0] - 2026-05-01
 
 ### Added

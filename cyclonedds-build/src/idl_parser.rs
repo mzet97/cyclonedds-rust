@@ -979,4 +979,86 @@ mod tests {
             _ => panic!("Expected struct"),
         }
     }
+
+    #[test]
+    fn test_parse_nested_struct() {
+        let idl = r#"
+            struct Point {
+                double x;
+                double y;
+            };
+            struct Pose {
+                Point position;
+                Point orientation;
+            };
+        "#;
+        let file = parse_idl(idl).unwrap();
+        assert_eq!(file.types.len(), 2);
+        match &file.types[1] {
+            IdlType::Struct(s) => {
+                assert_eq!(s.name, "Pose");
+                assert_eq!(s.fields.len(), 2);
+                match &s.fields[0].ty {
+                    IdlTypeRef::Named(name) => assert_eq!(name, "Point"),
+                    _ => panic!("Expected named type reference"),
+                }
+            }
+            _ => panic!("Expected struct"),
+        }
+    }
+
+    #[test]
+    fn test_parse_cross_module_reference() {
+        let idl = r#"
+            module Geometry {
+                struct Point {
+                    double x;
+                    double y;
+                };
+            };
+            struct Pose {
+                Geometry::Point position;
+            };
+        "#;
+        let file = parse_idl(idl).unwrap();
+        assert_eq!(file.types.len(), 1);
+        assert!(file.modules.contains_key("Geometry"));
+        match &file.types[0] {
+            IdlType::Struct(s) => {
+                match &s.fields[0].ty {
+                    IdlTypeRef::Named(name) => assert_eq!(name, "Geometry::Point"),
+                    _ => panic!("Expected scoped named type"),
+                }
+            }
+            _ => panic!("Expected struct"),
+        }
+    }
+
+    #[test]
+    fn test_parse_typedef_array() {
+        let idl = r#"
+            typedef long IntArray[10];
+            struct Data {
+                IntArray values;
+            };
+        "#;
+        let file = parse_idl(idl).unwrap();
+        assert_eq!(file.types.len(), 2);
+        match &file.types[0] {
+            IdlType::Typedef(td) => {
+                assert_eq!(td.name, "IntArray");
+                match &td.ty {
+                    IdlTypeRef::Array { element_type, size } => {
+                        assert_eq!(*size, 10);
+                        match element_type.as_ref() {
+                            IdlTypeRef::Primitive(PrimitiveType::Long) => {}
+                            _ => panic!("Expected long array"),
+                        }
+                    }
+                    _ => panic!("Expected array typedef"),
+                }
+            }
+            _ => panic!("Expected typedef"),
+        }
+    }
 }

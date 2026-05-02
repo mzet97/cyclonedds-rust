@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example QoS Profiles for CycloneDDS.
+
+  Usage in Rust:
+    let provider = QosProvider::from_file("examples/qos_profiles.xml")?;
+    let qos = provider.get_participant_qos("sensor_profile")?;
+-->
+<dds xmlns="http://www.omg.org/dds/"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://www.omg.org/dds/ http://www.omg.org/dds/DDS-QoS.xsd">
+
+  <qos_library name="example_library">
+
+    <!-- Reliable profile for critical control topics -->
+    <qos_profile name="control_profile">
+      <participant_qos>
+        <property>
+          <value>
+            <element>
+              <name>dds.sec.auth.plugin</name>
+              <value>dds.sec.auth.builtin.PKI-DH</value>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+      <topic_qos>
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+          <max_blocking_time>
+            <sec>1</sec>
+            <nanosec>0</nanosec>
+          </max_blocking_time>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>10</depth>
+        </history>
+      </topic_qos>
+      <writer_qos>
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>10</depth>
+        </history>
+      </writer_qos>
+      <reader_qos>
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>10</depth>
+        </history>
+      </reader_qos>
+    </qos_profile>
+
+    <!-- Best-effort profile for high-frequency sensor data -->
+    <qos_profile name="sensor_profile">
+      <topic_qos>
+        <reliability>
+          <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>VOLATILE_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>5</depth>
+        </history>
+      </topic_qos>
+      <writer_qos>
+        <reliability>
+          <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>5</depth>
+        </history>
+      </writer_qos>
+      <reader_qos>
+        <reliability>
+          <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>5</depth>
+        </history>
+      </reader_qos>
+    </qos_profile>
+
+    <!-- Low-latency profile for real-time control -->
+    <qos_profile name="realtime_profile">
+      <participant_qos>
+        <transport_priority>
+          <value>100</value>
+        </transport_priority>
+      </participant_qos>
+      <topic_qos>
+        <latency_budget>
+          <duration>
+            <sec>0</sec>
+            <nanosec>100000</nanosec>
+          </duration>
+        </latency_budget>
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+      </topic_qos>
+      <writer_qos>
+        <latency_budget>
+          <duration>
+            <sec>0</sec>
+            <nanosec>100000</nanosec>
+          </duration>
+        </latency_budget>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+      </writer_qos>
+      <reader_qos>
+        <latency_budget>
+          <duration>
+            <sec>0</sec>
+            <nanosec>100000</nanosec>
+          </duration>
+        </latency_budget>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+      </reader_qos>
+    </qos_profile>
+
+  </qos_library>
+</dds>
