@@ -83,7 +83,7 @@ impl ParticipantPool {
     /// Returns the participant for a domain, if any.
     pub fn get(&self, domain_id: u32) -> Option<DomainParticipant> {
         let p = self.participants.lock().unwrap();
-        p.get(&domain_id).map(|e| DomainParticipant::new(e.participant.entity() as u32).ok()).flatten()
+        p.get(&domain_id).and_then(|e| DomainParticipant::new(e.participant.entity() as u32).ok())
     }
 
     /// Discover topics in a domain using DDS builtin topics.

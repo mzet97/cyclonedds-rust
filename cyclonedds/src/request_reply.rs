@@ -216,7 +216,7 @@ where
     pub fn receive_request(&self, timeout: Duration) -> DdsResult<Option<TReq>> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
-            for sample in self.reader.take()? {
+            if let Some(sample) = self.reader.take()?.into_iter().next() {
                 return Ok(Some(sample));
             }
             std::thread::sleep(Duration::from_millis(10));
