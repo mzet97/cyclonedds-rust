@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-05-02
+
+### Added
+
+- **DDS Request-Reply Pattern** (`Requester<TReq,TRep>` + `Replier<TReq,TRep>` with correlation IDs, timeout, and retry).
+- **Connection Pooling & Service Discovery** (`ParticipantPool` with multi-domain participant management, `discover_topics()`, `discover_participants()`, automatic heartbeat/purge).
+- **Content Filtering Advanced** (`FilterParams` + `TopicParameterizedFilterExt::with_params()` for runtime parameter updates).
+- **Serde Integration** (`SerdeSample<T>` with feature `serde` + `postcard` for Rust-to-Rust serialization over DDS).
+- **Observability** (`observability.rs` with `init_json_logging()`, `init_tokio_console()`, `init_full_observability()`; features `opentelemetry` and `tokio-console`).
+- **WASM Support (Experimental)** — new `cyclonedds-wasm` crate with DDS-compatible API over WebSocket; compiles for `wasm32-unknown-unknown`.
+- **no_std / Embedded Support (Experimental)** — feature `no_std` exports `DdsType` trait + CDR opcode constants without FFI; compiles for `thumbv7em-none-eabihf`.
+- **Security Production Hardening** (`SecurityConfig::crl()` for Certificate Revocation Lists + `docs/security-production.md`).
+
+### Changed
+
+- `cyclonedds-rust-sys` and `thiserror` are now optional dependencies (feature `std`).
+- Feature `async` now implies `std` for CI compatibility.
+- `lib.rs` uses `#[cfg(feature = "std")]` to conditionally compile all FFI-dependent modules.
+
 ## [1.7.0] - 2026-05-02
 
 ### Added
@@ -47,5 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero-copy write loans (`WriteLoan<T>`).
 - DDS Security support (`SecurityConfig` + `--features security`).
 
+[1.8.0]: https://github.com/mzet97/cyclonedds-rust/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/mzet97/cyclonedds-rust/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/mzet97/cyclonedds-rust/releases/tag/v1.6.0

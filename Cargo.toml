@@ -16,7 +16,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.7.0"
+version = "1.8.0"
 edition = "2021"
 rust-version = "1.85"
 authors = ["Matheus Zeitune <matheus.zeitune.developer@gmail.com>"]
@@ -29,7 +29,7 @@ readme = "README.md"
 [workspace.dependencies]
 cyclonedds-src = { path = "cyclonedds-src", version = "1.0.1" }
 cyclonedds-rust-sys = { path = "cyclonedds-rust-sys", version = "1.0.3" }
-cyclonedds = { path = "cyclonedds", version = "1.7.0" }
-cyclonedds-derive = { path = "cyclonedds-derive", version = "1.7.0" }
-cyclonedds-build = { path = "cyclonedds-build", version = "1.7.0" }
+cyclonedds = { path = "cyclonedds", version = "1.8.0" }
+cyclonedds-derive = { path = "cyclonedds-derive", version = "1.8.0" }
+cyclonedds-build = { path = "cyclonedds-build", version = "1.8.0" }
 criterion = "0.5"

@@ -19,6 +19,8 @@ Safe, idiomatic Rust bindings for [Eclipse CycloneDDS](https://github.com/eclips
 - **ROS2 Interop** helpers (`ros2_topic_name`, `ros2_qos_reliable`) for seamless ROS2 integration
 - **Diagnostics CLI** (`diagnose`, `metrics`) with Prometheus export support
 - **`tracing` Integration** for structured logs and distributed spans
+- **WASM (Experimental)** — `cyclonedds-wasm` crate for browser-based DDS over WebSocket
+- **no_std / Embedded (Experimental)** — define DDS types without `std` for embedded targets
 
 ## Quick Start
 
@@ -26,7 +28,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cyclonedds = "1.7"
+cyclonedds = "1.8"
 ```
 
 ### Define a Topic Type
@@ -122,6 +124,11 @@ async fn consume<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
 | Matched Endpoint Data | Yes | No | **Yes** |
 | Zero-copy Write Loan | No | Yes | **Yes** |
 | DDS Security | Yes | No | **Yes** (`SecurityConfig` + `--features security`) |
+| Request-Reply Pattern | No | No | **Yes** (`Requester` / `Replier`) |
+| Connection Pooling | No | No | **Yes** (`ParticipantPool`) |
+| Serde Integration | No | No | **Yes** (`SerdeSample<T>` + `--features serde`) |
+| WASM (Experimental) | No | No | **Yes** (`cyclonedds-wasm` crate) |
+| no_std / Embedded (Experimental) | No | No | **Yes** (`--features no_std`) |
 
 ## Workspace Crates
 
@@ -136,6 +143,7 @@ async fn consume<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
 | `cargo-cyclonedds` | Cargo plugin (`cargo cyclonedds generate <idl>`) |
 | `cyclonedds-bench` | Criterion benchmarks (latency, throughput, CDR) |
 | `cyclonedds-test-suite` | Integration tests |
+| `cyclonedds-wasm` | Experimental WebAssembly bindings (WebSocket transport) |
 
 ## Build
 
@@ -226,10 +234,67 @@ cargo run --example pub
 - [FAQ](docs/faq.md) — frequently asked questions and troubleshooting
 - [Migration from Python](docs/migration-from-python.md) — guide for `cyclonedds-python` users
 
+## WASM Support (Experimental)
+
+The `cyclonedds-wasm` crate provides a DDS-compatible API for WebAssembly:
+
+```toml
+[dependencies]
+cyclonedds-wasm = "0.1"
+```
+
+```rust
+use cyclonedds_wasm::*;
+
+let participant = WasmDomainParticipant::new("ws://localhost:8080/dds").unwrap();
+let topic = participant.create_topic::<MyMessage>("HelloWorld").unwrap();
+let writer = participant.create_writer(&topic).unwrap();
+writer.write(&MyMessage { id: 1, text: "hello".to_string() }).unwrap();
+```
+
+> **Note:** This is not a full DDS implementation. It uses JSON over WebSocket rather than RTPS/CDR. A DDS-to-WebSocket bridge is required to communicate with native DDS participants.
+
+## Embedded / no_std (Experimental)
+
+When the `no_std` feature is enabled, `cyclonedds` exports only pure-Rust DDS types and constants without the CycloneDDS C FFI:
+
+```toml
+[dependencies]
+cyclonedds = { version = "1.8", default-features = false, features = ["no_std"] }
+```
+
+```rust
+#![no_std]
+extern crate alloc;
+
+use cyclonedds::{DdsType, adr, TYPE_4BY, OP_RTS};
+
+#[repr(C)]
+pub struct SensorReading {
+    pub id: i32,
+    pub value: f32,
+}
+
+impl DdsType for SensorReading {
+    fn type_name() -> &'static str { "SensorReading" }
+    fn ops() -> alloc::vec::Vec<u32> {
+        let mut ops = alloc::vec::Vec::new();
+        ops.extend(adr(TYPE_4BY | (1 << 2), 0));   // id @ offset 0
+        ops.extend(adr(TYPE_4BY, 4));              // value @ offset 4
+        ops.push(OP_RTS);
+        ops
+    }
+}
+```
+
+This is useful for defining DDS-compatible types on embedded systems (e.g., `thumbv7em-none-eabihf`) where the full CycloneDDS C library cannot run. Actual CDR serialization must be performed manually or via a separate no-std serializer.
+
 ## Known Limitations
 
 - **CLI `publish`:** Supports string messages, JSON payloads, and dynamic types discovered at runtime. Complex nested structs may require using the Rust API directly for full control.
 - **DDS Security on Windows:** Requires OpenSSL to be installed and `OPENSSL_ROOT_DIR` configured. The `security` feature is disabled by default on Windows CI to avoid build issues.
+- **WASM:** Not a full DDS implementation — requires a WebSocket bridge to communicate with native DDS.
+- **no_std:** No actual DDS networking. Only type definitions and CDR opcode constants are available.
 
 ## Benchmarks
 

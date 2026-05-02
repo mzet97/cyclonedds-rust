@@ -188,8 +188,7 @@ O v1.7 fechou robustez, performance, diagnostics e ROS2 interop. O v11 foca em:
 | 5 | Serde integration | 64 | Media | **Concluído** — `SerdeSample<T>` com feature `serde` + `postcard` |
 | 6 | tokio-console + OTel | 65 | Media | **Concluído** — `observability.rs` com JSON logging e tokio-console |
 | 7 | Connection pooling / discovery | 66 | Alta | **Concluído** — `ParticipantPool` com discovery e health checks |
-| 8 | Playground web | 67 | Baixa | **Bloqueado** — depende da Fase 60 (WASM) |
-| 9 | Security production hardening | 68 | Alta | **Concluído** — CRL support + `docs/security-production.md` |
+| 8 | Security production hardening | 68 | Alta | **Concluído** — CRL support + `docs/security-production.md` |
 
 ---
 
@@ -199,12 +198,5 @@ Todas as fases do ROADMAP v11 foram implementadas (algumas em modo experimental/
 
 - **Fase 60 (WASM)**: `cyclonedds-wasm` crate criado com API compatível usando WebSocket como transporte. Não é DDS real (não usa RTPS/CDR), mas permite que aplicações Rust DDS compilem para o navegador.
 - **Fase 61 (no_std)**: Feature `no_std` adicionada ao `cyclonedds`. Exporta `DdsType`, constantes de ops, e `DdsError` sem depender do CycloneDDS C. Útil para sistemas embarcados que precisam definir tipos DDS compatíveis e serializar CDR manualmente.
-- **Fase 67 (Playground)**: Continua bloqueada até que exista um DDS bridge WebSocket funcional em produção.
 
 Para uma implementação DDS completa em WASM/embedded no futuro, seria necessário reescrever o wire protocol RTPS em Rust puro (escopo de meses).
-
-### Backlog para v1.9 (futuro)
-- Dynamic type discovery aprimorado
-- DDS-RPC completo (mais allém do Request-Reply básico)
-- Plug-in de transporte customizável (UDP multicast tuning, shared memory Iceoryx)
-- Métricas Prometheus nativas no `cyclonedds-cli`
