@@ -59,7 +59,7 @@ fn zero_copy_loan_write_and_read() {
     // Read back
     let start = std::time::Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
-        for sample in reader.take().unwrap() {
+        if let Some(sample) = reader.take().unwrap().into_iter().next() {
             assert_eq!(sample.id, 42);
             assert_eq!(sample.value, 12345);
             return;
