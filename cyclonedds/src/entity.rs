@@ -195,6 +195,16 @@ pub trait DdsEntity {
         }
     }
 
+    /// Get the set of triggered status bits that have changed since the
+    /// last time they were read.
+    fn status_changes(&self) -> DdsResult<u32> {
+        unsafe {
+            let mut changes: u32 = 0;
+            check(dds_get_status_changes(self.entity(), &mut changes))?;
+            Ok(changes)
+        }
+    }
+
     fn triggered(&self) -> DdsResult<bool> {
         unsafe {
             let ret = dds_triggered(self.entity());

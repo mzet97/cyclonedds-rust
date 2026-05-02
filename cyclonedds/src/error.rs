@@ -69,6 +69,18 @@ impl DdsError {
             DdsError::Unsupported(_) | DdsError::Other(_) => None,
         }
     }
+
+    /// Returns `true` if this error is likely transient and the operation
+    /// may succeed on retry (e.g. timeout, temporary resource exhaustion).
+    pub fn is_transient(&self) -> bool {
+        matches!(
+            self,
+            DdsError::Timeout
+                | DdsError::OutOfResources
+                | DdsError::OutOfMemory
+                | DdsError::ReturnCode(_)
+        )
+    }
 }
 
 pub fn err_nr(code: i32) -> i32 {

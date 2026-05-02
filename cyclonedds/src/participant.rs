@@ -60,6 +60,29 @@ impl DomainParticipant {
         Self::with_qos_and_listener(domain_id, None, None)
     }
 
+    /// Create a new participant with retry on transient errors.
+    ///
+    /// Retries up to `max_retries` times with exponential backoff
+    /// starting at `base_delay_ms`.
+    pub fn new_with_retry(
+        domain_id: u32,
+        max_retries: u32,
+        base_delay_ms: u64,
+    ) -> DdsResult<Self> {
+        let mut delay = std::time::Duration::from_millis(base_delay_ms);
+        for attempt in 0..=max_retries {
+            match Self::new(domain_id) {
+                Ok(p) => return Ok(p),
+                Err(e) if attempt < max_retries && e.is_transient() => {
+                    std::thread::sleep(delay);
+                    delay *= 2;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(DdsError::Timeout)
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(qos)))]
     pub fn with_qos(domain_id: u32, qos: Option<&Qos>) -> DdsResult<Self> {
         Self::with_qos_and_listener(domain_id, qos, None)

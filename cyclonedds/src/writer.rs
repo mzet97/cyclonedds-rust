@@ -70,6 +70,31 @@ impl<T: DdsType> DataWriter<T> {
         self.with_native_ptr(data, |ptr| unsafe { check(dds_write(self.entity, ptr)) })
     }
 
+    /// Write a sample with retry on transient errors.
+    ///
+    /// Retries up to `max_retries` times with exponential backoff
+    /// starting at `base_delay_ms`.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data)))]
+    pub fn write_with_retry(
+        &self,
+        data: &T,
+        max_retries: u32,
+        base_delay_ms: u64,
+    ) -> DdsResult<()> {
+        let mut delay = std::time::Duration::from_millis(base_delay_ms);
+        for attempt in 0..=max_retries {
+            match self.write(data) {
+                Ok(()) => return Ok(()),
+                Err(e) if attempt < max_retries && e.is_transient() => {
+                    std::thread::sleep(delay);
+                    delay *= 2;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(crate::DdsError::Timeout)
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data)))]
     pub fn write_dispose(&self, data: &T) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {

@@ -29,8 +29,8 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 - Expor `dds_reset_status()` e `dds_get_status_changes()` de forma mais ergonômica.
 
 **Critérios de aceitacao:**
-- [ ] `writer.write_with_retry(data, max_retries)` funciona.
-- [ ] Teste simula falha transiente e recovery.
+- [x] `writer.write_with_retry(data, max_retries)` funciona.
+- [x] Teste simula falha transiente e recovery.
 
 ---
 
@@ -140,7 +140,7 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 
 | # | Item | Fase | Prioridade | Status |
 |---|---|---|---|---|
-| 1 | Error handling e recovery | 50 | Alta | Pendente |
+| 1 | Error handling e recovery | 50 | Alta | **Completo** |
 | 2 | Async timeouts refinados | 51 | Media | Pendente |
 | 3 | DDS Security hardening | 52 | Alta | Pendente |
 | 4 | Profiling e diagnostics CLI | 53 | Media | Pendente |
