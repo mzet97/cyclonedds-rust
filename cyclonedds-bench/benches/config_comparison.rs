@@ -17,7 +17,7 @@ fn bench_reliability_modes(c: &mut Criterion) {
         .create_topic_with_qos::<ConfigMsg>(
             &topic_name,
             &QosBuilder::new()
-                .reliability(Reliability::BestEffort)
+                .reliability(Reliability::BestEffort, 0)
                 .build()
                 .unwrap(),
         )
