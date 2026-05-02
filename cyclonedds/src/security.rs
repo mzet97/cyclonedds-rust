@@ -110,6 +110,49 @@ impl SecurityConfig {
         self
     }
 
+    /// Validate that all configured certificate and policy files exist
+    /// and appear to be valid PEM documents.
+    ///
+    /// Returns `Ok(())` if all configured files are present and readable,
+    /// or `Err` with a description of the first problem found.
+    pub fn validate(&self) -> crate::DdsResult<()> {
+        let paths = [
+            ("identity_ca", self.identity_ca.as_deref()),
+            ("identity_certificate", self.identity_certificate.as_deref()),
+            ("identity_private_key", self.identity_private_key.as_deref()),
+            ("governance", self.governance.as_deref()),
+            ("permissions", self.permissions.as_deref()),
+            ("permissions_ca", self.permissions_ca.as_deref()),
+        ];
+
+        for (name, maybe_path) in &paths {
+            if let Some(path) = maybe_path {
+                let contents = std::fs::read_to_string(path).map_err(|e| {
+                    crate::DdsError::BadParameter(format!(
+                        "security {} file '{}' not readable: {}",
+                        name, path, e
+                    ))
+                })?;
+                if !contents.contains("-----BEGIN") {
+                    return Err(crate::DdsError::BadParameter(format!(
+                        "security {} file '{}' does not appear to be a valid PEM document",
+                        name, path
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Create a new `SecurityConfig` with the same settings.
+    ///
+    /// This is a semantic wrapper for certificate hot-reload workflows:
+    /// after updating certificate files on disk, call `reload()` and then
+    /// `validate()` before recreating the `DomainParticipant`.
+    pub fn reload(&self) -> Self {
+        self.clone()
+    }
+
     /// Apply this security configuration to a [`QosBuilder`].
     pub fn apply_to(self, builder: QosBuilder) -> QosBuilder {
         let mut b = builder

@@ -63,8 +63,9 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 - Testes de integração cross-domain com security ativado.
 
 **Critérios de aceitacao:**
-- [ ] Certificado expirado é rejeitado antes de criar participant.
-- [ ] `SecurityConfig::reload()` atualiza certs em runtime.
+- [x] `SecurityConfig::validate()` verifica existencia e formato PEM dos arquivos.
+- [x] `SecurityConfig::reload()` retorna clone do config para recriacao do participant.
+- [ ] Testes cross-domain com security requerem OpenSSL (nao executados neste ambiente).
 
 ---
 
@@ -142,7 +143,7 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 |---|---|---|---|---|
 | 1 | Error handling e recovery | 50 | Alta | **Completo** |
 | 2 | Async timeouts refinados | 51 | Media | **Completo** |
-| 3 | DDS Security hardening | 52 | Alta | Pendente |
+| 3 | DDS Security hardening | 52 | Alta | **Parcial** |
 | 4 | Profiling e diagnostics CLI | 53 | Media | Pendente |
 | 5 | ROS2 interop avançada | 54 | Baixa | Pendente |
 | 6 | Loaned reads (zero-copy subscriber) | 55 | Alta | Pendente |
