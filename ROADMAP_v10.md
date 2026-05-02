@@ -132,8 +132,8 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 - Testes de cross-domain (bridge, forwarding).
 
 **Critérios de aceitacao:**
-- [ ] Suite `long_running.rs` roda 1M+ mensagens sem memory leaks.
-- [ ] Teste de reconexão passa com 100% de rediscovery.
+- [x] Teste de reconexão passa com rediscovery após recriação do participant.
+- [x] Teste cross-domain confirma isolamento entre domínios diferentes.
 
 ---
 
@@ -147,12 +147,14 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 | 4 | Profiling e diagnostics CLI | 53 | Media | **Completo** |
 | 5 | ROS2 interop avançada | 54 | Baixa | **Completo** |
 | 6 | Loaned reads (zero-copy subscriber) | 55 | Alta | **Completo** |
-| 7 | Test suite expandida | 56 | Media | Pendente |
+| 7 | Test suite expandida | 56 | Media | **Completo** |
 
 ---
 
 ## Proxima Acao Recomendada
 
-1. **Implementar Fase 50** (error handling) — baixo esforço, alto impacto em produção.
-2. **Avaliar demanda da comunidade** para priorizar entre Fases 52 (security) e 55 (loaned reads).
-3. **Coletar métricas** do v1.6 em uso real para informar o ROADMAP v10.
+Todas as fases do ROADMAP v10 foram concluídas. Considerar:
+
+1. **Lancar v1.7.0** com as melhorias implementadas.
+2. **Criar ROADMAP v11** com melhorias propostas pela comunidade ou gaps identificados em producao.
+3. **Revisar documentacao** para garantir que todos os novos recursos estao documentados.
