@@ -37,7 +37,7 @@ pub enum DdsError {
     Other(String),
 }
 
-#[cfg(feature = "no_std")]
+#[cfg(all(feature = "no_std", not(feature = "std")))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DdsError {
     ReturnCode(i32),
@@ -52,7 +52,7 @@ pub enum DdsError {
     Other(alloc::string::String),
 }
 
-#[cfg(feature = "no_std")]
+#[cfg(all(feature = "no_std", not(feature = "std")))]
 impl core::fmt::Display for DdsError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -70,7 +70,7 @@ impl core::fmt::Display for DdsError {
     }
 }
 
-#[cfg(feature = "no_std")]
+#[cfg(all(feature = "no_std", not(feature = "std")))]
 impl core::error::Error for DdsError {}
 
 impl From<i32> for DdsError {
