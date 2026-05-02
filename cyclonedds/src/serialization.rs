@@ -141,7 +141,7 @@ impl<'a, T: DdsType> CdrSerializer<'a, T> {
     /// Serialize `sample` into a pre-allocated buffer, returning the number
     /// of bytes written.
     ///
-    /// This avoids the intermediate allocation performed by [`serialize`].
+    /// This avoids the intermediate allocation performed by `serialize`.
     /// If `buf` is too small, an error is returned.
     pub fn serialize_to_buffer(
         sample: &T,
