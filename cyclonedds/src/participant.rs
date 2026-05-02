@@ -8,7 +8,7 @@ use crate::{
     listener::Listener,
     xtypes::{FindScope, SertypeHandle, TopicDescriptor, TypeInfo},
     DataReader, DdsError, DdsResult, DynamicType, DynamicTypeBuilder, History, Publisher, Qos,
-    Reliability, Subscriber, Topic, UntypedTopic,
+    QosBuilder, Reliability, Subscriber, Topic, UntypedTopic,
 };
 use cyclonedds_rust_sys::*;
 
@@ -477,6 +477,43 @@ impl DomainParticipant {
     pub fn discovered_topics(&self) -> DdsResult<Vec<BuiltinTopicSample>> {
         let reader = self.create_builtin_topic_reader()?;
         reader.take()
+    }
+
+    // ── ROS2 helpers ──
+
+    /// Generate a ROS2-compatible topic name.
+    ///
+    /// ROS2 topics are prefixed with `rt/` (for "real-time" topics).
+    ///
+    /// # Example
+    /// ```
+    /// use cyclonedds::DomainParticipant;
+    /// assert_eq!(DomainParticipant::ros2_topic_name("cmd_vel"), "rt/cmd_vel");
+    /// ```
+    pub fn ros2_topic_name(topic: &str) -> String {
+        format!("rt/{}", topic)
+    }
+
+    /// Create a QoS profile matching ROS2 "reliable" defaults.
+    ///
+    /// Maps to DDS Reliable reliability + Volatile durability.
+    pub fn ros2_qos_reliable() -> Qos {
+        QosBuilder::new()
+            .reliability(Reliability::Reliable, 1_000_000_000)
+            .history(History::KeepLast(10))
+            .build()
+            .unwrap_or_else(|_| QosBuilder::new().build().unwrap())
+    }
+
+    /// Create a QoS profile matching ROS2 "best-effort" defaults.
+    ///
+    /// Maps to DDS Best-Effort reliability + Volatile durability.
+    pub fn ros2_qos_best_effort() -> Qos {
+        QosBuilder::new()
+            .reliability(Reliability::BestEffort, 0)
+            .history(History::KeepLast(10))
+            .build()
+            .unwrap_or_else(|_| QosBuilder::new().build().unwrap())
     }
 }
 

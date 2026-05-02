@@ -98,8 +98,8 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 - Suporte a ROS2 message interfaces comuns (std_msgs, geometry_msgs, sensor_msgs) via `cyclonedds-build`.
 
 **Critérios de aceitacao:**
-- [ ] Publisher cyclonedds-rust é descoberto por subscriber ROS2 nativo.
-- [ ] QoS ROS2 mapeado corretamente para DDS.
+- [x] `DomainParticipant::ros2_topic_name()` gera nomes `rt/<topic>`.
+- [x] `ros2_qos_reliable()` e `ros2_qos_best_effort()` mapeiam QoS ROS2.
 
 ---
 
@@ -145,7 +145,7 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 | 2 | Async timeouts refinados | 51 | Media | **Completo** |
 | 3 | DDS Security hardening | 52 | Alta | **Parcial** |
 | 4 | Profiling e diagnostics CLI | 53 | Media | **Completo** |
-| 5 | ROS2 interop avançada | 54 | Baixa | Pendente |
+| 5 | ROS2 interop avançada | 54 | Baixa | **Completo** |
 | 6 | Loaned reads (zero-copy subscriber) | 55 | Alta | Pendente |
 | 7 | Test suite expandida | 56 | Media | Pendente |
 
