@@ -233,13 +233,376 @@ fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> Vec<DynamicFieldSchema
         match opcode {
             OP_ADR => {
                 let primary = op & DDS_OP_TYPE_MASK;
-                let subtype = (op >> 8) & DDS_OP_SUBTYPE_MASK;
+                let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
+
+                let field_schema = match primary {
+                    TYPE_1BY => {
+                        if op & OP_FLAG_SGN != 0 {
+                            Sch::Primitive(DynamicPrimitiveKind::Int8)
+                        } else {
+                            Sch::Primitive(DynamicPrimitiveKind::UInt8)
+                        }
+                    }
+                    TYPE_2BY => {
+                        if op & OP_FLAG_SGN != 0 {
+                            Sch::Primitive(DynamicPrimitiveKind::Int16)
+                        } else {
+                            Sch::Primitive(DynamicPrimitiveKind::UInt16)
+                        }
+                    }
+                    TYPE_4BY => {
+                        if subtype == SUBTYPE_ENU {
+                            Sch::Enum {
+                                name: String::new(),
+                                literals: Vec::new(),
+                                bit_bound: None,
+                            }
+                        } else if op & OP_FLAG_FP != 0 {
+                            Sch::Primitive(DynamicPrimitiveKind::Float32)
+                        } else if op & OP_FLAG_SGN != 0 {
+                            Sch::Primitive(DynamicPrimitiveKind::Int32)
+                        } else {
+                            Sch::Primitive(DynamicPrimitiveKind::UInt32)
+                        }
+                    }
+                    TYPE_8BY => {
+                        if op & OP_FLAG_FP != 0 {
+                            Sch::Primitive(DynamicPrimitiveKind::Float64)
+                        } else if op & OP_FLAG_SGN != 0 {
+                            Sch::Primitive(DynamicPrimitiveKind::Int64)
+                        } else {
+                            Sch::Primitive(DynamicPrimitiveKind::UInt64)
+                        }
+                    }
+                    TYPE_STR => Sch::String { bound: None },
+                    TYPE_BST => {
+                        let bound = if i + 2 < ops.len() { ops[i + 2] } else { 0 };
+                        Sch::String { bound: Some(bound) }
+                    }
+                    TYPE_SEQ => Sch::Sequence {
+                        name: String::new(),
+                        bound: None,
+                        element: Box::new(Sch::Primitive(DynamicPrimitiveKind::Int8)),
+                    },
+                    TYPE_ARR => Sch::Array {
+                        name: String::new(),
+                        bounds: vec![0],
+                        element: Box::new(Sch::Primitive(DynamicPrimitiveKind::Int8)),
+                    },
+                    TYPE_EXT => Sch::Struct {
+                        name: String::new(),
+                        base: None,
+                        fields: Vec::new(),
+                        extensibility: None,
+                        autoid: None,
+                        nested: true,
+                    },
+                    _ => Sch::Primitive(DynamicPrimitiveKind::Int8),
+                };
+
+                let is_key = op & OP_FLAG_KEY != 0;
+                let is_optional = op & OP_FLAG_OPT != 0;
+
+                fields.push(DynamicFieldSchema {
+                    name: format!("field_{}", field_index),
+                    member_id: field_index,
+                    value: field_schema,
+                    optional: is_optional,
+                    key: is_key,
+                    external: false,
+                    must_understand: false,
+                    hash_id_name: None,
+                });
+
+                field_index += 1;
+
+                // Advance past this ADR op
                 i += match primary {
                     TYPE_BST => 3,
-                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
-                    TYPE_SEQ => 2,
-                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
-                    TYPE_BSQ => 3,
+                    TYPE_SEQ => {
+                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
+                            3
+                        } else {
+                            2
+                        }
+                    }
+                    TYPE_BSQ => {
+                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
+                            4
+                        } else {
+                            3
+                        }
+                    }
+                    _ => 2,
+                };
+            }
+            OP_RTS | OP_DLC | OP_JEQ4 | OP_KOF | OP_MID => {
+                i += 1;
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    fields
+}
+
+// ---------------------------------------------------------------------------
+// DynamicData CDR I/O helpers
+// ---------------------------------------------------------------------------
+
+/// Serialize a `DynamicData` value to CDR bytes using the topic descriptor
+/// obtained from a dynamic type registration.
+///
+/// This writes the dynamic value into a native sample buffer matching the
+/// topic descriptor's layout, then serializes it to CDR.
+///
+/// Returns the CDR bytes (including encoding header).
+pub fn dynamic_data_to_cdr(
+    data: &crate::DynamicData,
+    descriptor: &TopicDescriptor,
+) -> DdsResult<Vec<u8>> {
+    use cyclonedds_rust_sys::*;
+    use std::ffi::c_void;
+
+    let size = descriptor.size() as usize;
+    let align = std::cmp::max(descriptor.align() as usize, 1);
+
+    let layout = std::alloc::Layout::from_size_align(size, align)
+        .map_err(|_| DdsError::BadParameter("invalid type layout for dynamic data".into()))?;
+    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
+    if buf.is_null() {
+        return Err(DdsError::OutOfMemory);
+    }
+
+    // Write the DynamicValue into the native buffer
+    write_value_to_native(data.value(), buf, descriptor.ops(), 0);
+
+    // Build CDR stream descriptor from topic descriptor ops
+    let ops = descriptor.ops();
+    let keys = descriptor.key_descriptors();
+
+    let key_names: Vec<std::ffi::CString> = keys
+        .iter()
+        .map(|k| std::ffi::CString::new(k.name.as_str()).unwrap())
+        .collect();
+    let c_keys: Vec<dds_key_descriptor> = keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| dds_key_descriptor {
+            m_name: key_names[i].as_ptr(),
+            m_offset: k.offset,
+            m_idx: k.index,
+        })
+        .collect();
+
+    unsafe {
+        let mut cdr_desc: dds_cdrstream_desc = std::mem::zeroed();
+        dds_cdrstream_desc_init(
+            &mut cdr_desc,
+            &dds_cdrstream_default_allocator,
+            descriptor.size(),
+            descriptor.align(),
+            descriptor.flagset(),
+            ops.as_ptr(),
+            if c_keys.is_empty() {
+                std::ptr::null()
+            } else {
+                c_keys.as_ptr()
+            },
+            c_keys.len() as u32,
+        );
+
+        let mut os: dds_ostream_t = std::mem::zeroed();
+        dds_ostream_init(
+            &mut os,
+            &dds_cdrstream_default_allocator,
+            0,
+            1, // XCDR1
+        );
+
+        let ok = dds_stream_write_sample(
+            &mut os,
+            &dds_cdrstream_default_allocator,
+            buf as *const c_void,
+            &cdr_desc,
+        );
+
+        let result = if ok {
+            let len = os.m_index as usize;
+            let mut bytes = vec![0u8; len];
+            std::ptr::copy_nonoverlapping(os.m_buffer, bytes.as_mut_ptr(), len);
+            Ok(bytes)
+        } else {
+            Err(DdsError::Unsupported(
+                "CDR serialization of dynamic data failed".into(),
+            ))
+        };
+
+        dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+        dds_cdrstream_desc_fini(&mut cdr_desc, &dds_cdrstream_default_allocator);
+
+        // Free the native sample (dds_stream_free_sample handles any heap allocations)
+        dds_stream_free_sample(
+            buf as *mut c_void,
+            &dds_cdrstream_default_allocator,
+            ops.as_ptr(),
+        );
+        std::alloc::dealloc(buf, layout);
+
+        result
+    }
+}
+
+/// Deserialize CDR bytes into a `DynamicData` value using the given schema
+/// and topic descriptor.
+///
+/// This reads CDR bytes into a native sample buffer matching the topic
+/// descriptor's layout, then extracts the field values into a `DynamicValue`.
+pub fn cdr_to_dynamic_data(
+    cdr_data: &[u8],
+    schema: &crate::DynamicTypeSchema,
+    descriptor: &TopicDescriptor,
+) -> DdsResult<crate::DynamicData> {
+    use cyclonedds_rust_sys::*;
+    use std::ffi::c_void;
+
+    let size = descriptor.size() as usize;
+    let align = std::cmp::max(descriptor.align() as usize, 1);
+
+    let layout = std::alloc::Layout::from_size_align(size, align)
+        .map_err(|_| DdsError::BadParameter("invalid type layout for dynamic data".into()))?;
+    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
+    if buf.is_null() {
+        return Err(DdsError::OutOfMemory);
+    }
+
+    let ops = descriptor.ops();
+    let keys = descriptor.key_descriptors();
+
+    let key_names: Vec<std::ffi::CString> = keys
+        .iter()
+        .map(|k| std::ffi::CString::new(k.name.as_str()).unwrap())
+        .collect();
+    let c_keys: Vec<dds_key_descriptor> = keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| dds_key_descriptor {
+            m_name: key_names[i].as_ptr(),
+            m_offset: k.offset,
+            m_idx: k.index,
+        })
+        .collect();
+
+    unsafe {
+        let mut cdr_desc: dds_cdrstream_desc = std::mem::zeroed();
+        dds_cdrstream_desc_init(
+            &mut cdr_desc,
+            &dds_cdrstream_default_allocator,
+            descriptor.size(),
+            descriptor.align(),
+            descriptor.flagset(),
+            ops.as_ptr(),
+            if c_keys.is_empty() {
+                std::ptr::null()
+            } else {
+                c_keys.as_ptr()
+            },
+            c_keys.len() as u32,
+        );
+
+        let mut is: dds_istream_t = std::mem::zeroed();
+        dds_istream_init(
+            &mut is,
+            cdr_data.len() as u32,
+            cdr_data.as_ptr() as *const c_void,
+            1, // XCDR1
+        );
+
+        dds_stream_read_sample(
+            &mut is,
+            buf as *mut c_void,
+            &dds_cdrstream_default_allocator,
+            &cdr_desc,
+        );
+
+        // Extract values from the native buffer into a DynamicValue
+        let value = read_value_from_native_public(buf, schema, ops, 0);
+
+        dds_stream_free_sample(
+            buf as *mut c_void,
+            &dds_cdrstream_default_allocator,
+            ops.as_ptr(),
+        );
+        std::alloc::dealloc(buf, layout);
+        dds_cdrstream_desc_fini(&mut cdr_desc, &dds_cdrstream_default_allocator);
+        dds_istream_fini(&mut is);
+
+        Ok(crate::DynamicData::from_value(schema, value)?)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Native buffer <-> DynamicValue conversion
+// ---------------------------------------------------------------------------
+
+/// Write a `DynamicValue` into a native sample buffer at the given base offset,
+/// following the ops array to determine field positions.
+pub(crate) fn write_value_to_native(
+    value: &crate::DynamicValue,
+    base: *mut u8,
+    ops: &[u32],
+    ops_start: usize,
+) {
+    use crate::dynamic_value::DynamicValue as DV;
+    use crate::topic::*;
+
+    let struct_fields = match value {
+        DV::Struct(fields) => fields,
+        _ => return,
+    };
+
+    let mut i = ops_start;
+    while i < ops.len() {
+        let op = ops[i];
+        let opcode = op & DDS_OP_MASK;
+
+        match opcode {
+            OP_ADR => {
+                let primary = op & DDS_OP_TYPE_MASK;
+                let offset = if i + 1 < ops.len() {
+                    ops[i + 1] as usize
+                } else {
+                    0
+                };
+                let dst = unsafe { base.add(offset) };
+
+                let field_name = format!("field_{}", (i - ops_start) / 2);
+                let field_val = struct_fields.get(&field_name);
+
+                if let Some(val) = field_val {
+                    write_primitive_to_native(dst, val, primary, op);
+                }
+
+                // Advance
+                let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
+                i += match primary {
+                    TYPE_BST => 3,
+                    TYPE_SEQ => {
+                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
+                            3
+                        } else {
+                            2
+                        }
+                    }
+                    TYPE_BSQ => {
+                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
+                            4
+                        } else {
+                            3
+                        }
+                    }
                     _ => 2,
                 };
             }
@@ -267,16 +630,16 @@ fn write_primitive_to_native(
         match (primary_type, val) {
             (TYPE_1BY, DV::Bool(b)) => {
                 let v: u8 = if *b { 1 } else { 0 };
-                std::ptr::write(dst, v);
+                std::ptr::write(dst as *mut u8, v);
             }
             (TYPE_1BY, DV::Int8(v)) => {
                 std::ptr::write(dst as *mut i8, *v);
             }
             (TYPE_1BY, DV::UInt8(v)) => {
-                std::ptr::write(dst, *v);
+                std::ptr::write(dst as *mut u8, *v);
             }
             (TYPE_1BY, DV::Byte(v)) => {
-                std::ptr::write(dst, *v);
+                std::ptr::write(dst as *mut u8, *v);
             }
             (TYPE_2BY, DV::Int16(v)) => {
                 std::ptr::write(dst as *mut i16, *v);
@@ -376,10 +739,20 @@ pub(crate) fn read_value_from_native_public(
                 let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
                 i += match primary {
                     TYPE_BST => 3,
-                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
-                    TYPE_SEQ => 2,
-                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
-                    TYPE_BSQ => 3,
+                    TYPE_SEQ => {
+                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
+                            3
+                        } else {
+                            2
+                        }
+                    }
+                    TYPE_BSQ => {
+                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
+                            4
+                        } else {
+                            3
+                        }
+                    }
                     _ => 2,
                 };
             }
