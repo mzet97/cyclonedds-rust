@@ -25,12 +25,15 @@ async-stream = { version = "0.3", optional = true }
 futures-core = { version = "0.3", optional = true }
 futures-util = { version = "0.3", optional = true }
 tracing = { version = "0.1", optional = true }
+postcard = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 default = ["async"]
 async = ["tokio", "async-stream", "futures-core", "futures-util"]
 security = ["cyclonedds-rust-sys/security"]
 tracing = ["dep:tracing"]
+serde = ["dep:postcard", "dep:serde"]
 
 [dev-dependencies]
 cyclonedds-derive = { workspace = true }

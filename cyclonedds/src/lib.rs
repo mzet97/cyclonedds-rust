@@ -59,6 +59,8 @@ mod request_reply;
 mod qos_provider;
 mod reader;
 pub mod sample;
+#[cfg(feature = "serde")]
+mod serde_sample;
 #[cfg(feature = "security")]
 pub mod security;
 mod sequence;
@@ -104,6 +106,8 @@ pub use qos_provider::{QosKind, QosProvider};
 pub use request_reply::{Replier, RequestReply, Requester};
 pub use reader::DataReader;
 pub use sample::{Loan, Sample};
+#[cfg(feature = "serde")]
+pub use serde_sample::SerdeSample;
 #[cfg(feature = "security")]
 pub use security::SecurityConfig;
 pub use sequence::{DdsBoundedSequence, DdsSequence, DdsSequenceElement};
