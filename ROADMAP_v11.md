@@ -181,21 +181,28 @@ O v1.7 fechou robustez, performance, diagnostics e ROS2 interop. O v11 foca em:
 
 | # | Item | Fase | Prioridade | Status |
 |---|---|---|---|---|
-| 1 | WASM support | 60 | Baixa | **Pendente** |
-| 2 | no_std / embedded | 61 | Media | **Pendente** |
-| 3 | Request-Reply pattern | 62 | Alta | **Pendente** |
-| 4 | Content filtering avancado | 63 | Media | **Pendente** |
-| 5 | Serde integration | 64 | Media | **Pendente** |
-| 6 | tokio-console + OTel | 65 | Media | **Pendente** |
-| 7 | Connection pooling / discovery | 66 | Alta | **Pendente** |
-| 8 | Playground web | 67 | Baixa | **Pendente** |
-| 9 | Security production hardening | 68 | Alta | **Pendente** |
+| 1 | WASM support | 60 | Baixa | **Bloqueado** — requer reescrita do wire protocol DDS em Rust puro (sem FFI C) |
+| 2 | no_std / embedded | 61 | Media | **Bloqueado** — CycloneDDS C depende de `std` (threads, mutexes, alloc); não viável com FFI |
+| 3 | Request-Reply pattern | 62 | Alta | **Concluído** — `Requester<TReq,TRep>` + `Replier<TReq,TRep>` + exemplo calc |
+| 4 | Content filtering avancado | 63 | Media | **Concluído** — `FilterParams` + `TopicParameterizedFilterExt::with_params()` |
+| 5 | Serde integration | 64 | Media | **Concluído** — `SerdeSample<T>` com feature `serde` + `postcard` |
+| 6 | tokio-console + OTel | 65 | Media | **Concluído** — `observability.rs` com JSON logging e tokio-console |
+| 7 | Connection pooling / discovery | 66 | Alta | **Concluído** — `ParticipantPool` com discovery e health checks |
+| 8 | Playground web | 67 | Baixa | **Bloqueado** — depende da Fase 60 (WASM) |
+| 9 | Security production hardening | 68 | Alta | **Concluído** — CRL support + `docs/security-production.md` |
 
 ---
 
 ## Proxima Acao Recomendada
 
-1. **Priorizar Fase 62 (Request-Reply)** — alto impacto, médio esforço, muito solicitado.
-2. **Priorizar Fase 66 (Connection Pooling)** — essencial para uso em producao com multiplos agents.
-3. **Iniciar Fase 67 (Playground)** — alto valor para onboarding de novos usuarios.
-4. **Revisar documentacao** após cada fase implementada (docs driven development).
+Todas as fases viáveis do ROADMAP v11 foram implementadas. As fases 60, 61 e 67 estão bloqueadas pela arquitetura FFI do CycloneDDS (biblioteca C que depende de `std` e não compila para WASM/embedded).
+
+Para desbloquear essas fases no futuro, seria necessário:
+1. **Reescrever o wire protocol DDS em Rust puro** (sem FFI) — projeto do escopo de meses
+2. **Portar o CycloneDDS C para `no_std`** — contribuição upstream no projeto Eclipse
+
+### Backlog para v1.9 (futuro)
+- Dynamic type discovery aprimorado
+- DDS-RPC completo (mais allém do Request-Reply básico)
+- Plug-in de transporte customizável (UDP multicast tuning, shared memory Iceoryx)
+- Métricas Prometheus nativas no `cyclonedds-cli`
