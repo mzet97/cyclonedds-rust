@@ -33,7 +33,7 @@ console-subscriber = { version = "0.4", optional = true }
 [features]
 default = ["std", "async"]
 std = ["dep:cyclonedds-rust-sys", "dep:thiserror"]
-async = ["tokio", "async-stream", "futures-core", "futures-util"]
+async = ["std", "tokio", "async-stream", "futures-core", "futures-util"]
 security = ["cyclonedds-rust-sys/security", "std"]
 tracing = ["dep:tracing"]
 serde = ["dep:postcard", "dep:serde"]
