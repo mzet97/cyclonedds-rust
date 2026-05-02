@@ -187,6 +187,23 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// Diagnose DDS domain and output full state as JSON
+    Diagnose {
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+    },
+    /// Print Prometheus-compatible metrics for a topic
+    Metrics {
+        /// Topic name to monitor
+        topic: String,
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+        /// Number of samples to collect before printing
+        #[arg(long, default_value_t = 100)]
+        samples: usize,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -2316,6 +2333,154 @@ fn cmd_topology(domain_id: u32, output_path: Option<&str>) -> cyclonedds::DdsRes
 }
 
 // ---------------------------------------------------------------------------
+// diagnose command
+// ---------------------------------------------------------------------------
+
+fn cmd_diagnose(domain_id: u32) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+    let sub_reader = participant.create_builtin_subscription_reader()?;
+    let par_reader = participant.create_builtin_participant_reader()?;
+
+    std::thread::sleep(Duration::from_secs(2));
+
+    let participants: Vec<BuiltinParticipantSample> = par_reader.take().unwrap_or_default();
+    let publications: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+    let subscriptions: Vec<BuiltinEndpointSample> = sub_reader.take().unwrap_or_default();
+
+    let mut topics: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for p in &publications {
+        topics.insert(p.topic_name().to_string());
+    }
+    for s in &subscriptions {
+        topics.insert(s.topic_name().to_string());
+    }
+
+    let diag = serde_json::json!({
+        "domain_id": domain_id,
+        "participants": participants.len(),
+        "publications": publications.len(),
+        "subscriptions": subscriptions.len(),
+        "topics": topics.len(),
+        "topic_names": topics.into_iter().collect::<Vec<_>>(),
+        "participant_guids": participants.iter().map(|p| format_guid(&p.key())).collect::<Vec<_>>(),
+    });
+
+    println!("{}", serde_json::to_string_pretty(&diag).unwrap());
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// metrics command
+// ---------------------------------------------------------------------------
+
+fn cmd_metrics(topic_name: &str, domain_id: u32, max_samples: usize) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let subscriber = Subscriber::new(participant.entity())?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+
+    let endpoint = 'search: {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == topic_name {
+                    break 'search ep.clone();
+                }
+            }
+        }
+        println!(
+            "# No publication found for topic '{}' within timeout.",
+            topic_name
+        );
+        return Ok(());
+    };
+
+    let type_name = endpoint.type_name();
+    let type_info = endpoint.type_info()?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+
+    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let qos = QosBuilder::new()
+        .reliability(Reliability::Reliable, 10_000_000_000)
+        .build()?;
+
+    let reader_entity = unsafe {
+        check_entity(cyclonedds_rust_sys::dds_create_reader(
+            subscriber.entity(),
+            topic.entity(),
+            qos.as_ptr(),
+            std::ptr::null_mut(),
+        ))?
+    };
+
+    let mut received = 0usize;
+    let mut sample_times: Vec<u64> = Vec::new();
+    let start = std::time::Instant::now();
+
+    let max_buf: usize = 64;
+    let mut sdbuf: Vec<*mut cyclonedds_rust_sys::ddsi_serdata> =
+        vec![std::ptr::null_mut(); max_buf];
+    let mut infos: Vec<cyclonedds_rust_sys::dds_sample_info> =
+        vec![unsafe { std::mem::zeroed() }; max_buf];
+
+    while received < max_samples {
+        let n = unsafe {
+            cyclonedds_rust_sys::dds_takecdr(
+                reader_entity,
+                sdbuf.as_mut_ptr(),
+                max_buf as u32,
+                infos.as_mut_ptr() as *mut cyclonedds_rust_sys::dds_sample_info_t,
+                0,
+            )
+        };
+
+        if n > 0 {
+            let n = n as usize;
+            for i in 0..n {
+                if !sdbuf[i].is_null() {
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sdbuf[i]) };
+                }
+            }
+            received += n;
+            sample_times.push(start.elapsed().as_nanos() as u64);
+        }
+
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    let elapsed_sec = start.elapsed().as_secs_f64();
+    let throughput = received as f64 / elapsed_sec;
+
+    // Prometheus text format
+    println!("# HELP dds_topic_messages_total Total messages received on topic");
+    println!("# TYPE dds_topic_messages_total counter");
+    println!("dds_topic_messages_total{{topic=\"{}\"}} {}", topic_name, received);
+
+    println!("# HELP dds_topic_throughput Messages per second received on topic");
+    println!("# TYPE dds_topic_throughput gauge");
+    println!("dds_topic_throughput{{topic=\"{}\"}} {:.2}", topic_name, throughput);
+
+    if sample_times.len() >= 2 {
+        let mut intervals: Vec<u64> = sample_times.windows(2).map(|w| w[1] - w[0]).collect();
+        intervals.sort();
+        let p50 = intervals[intervals.len() / 2];
+        let p99 = intervals[intervals.len() * 99 / 100.min(intervals.len() - 1)];
+        println!("# HELP dds_topic_latency_ns Inter-message latency in nanoseconds");
+        println!("# TYPE dds_topic_latency_ns summary");
+        println!("dds_topic_latency_ns{{topic=\"{}\",quantile=\"0.5\"}} {}", topic_name, p50);
+        println!("dds_topic_latency_ns{{topic=\"{}\",quantile=\"0.99\"}} {}", topic_name, p99);
+    }
+
+    unsafe {
+        cyclonedds_rust_sys::dds_delete(reader_entity);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -2389,6 +2554,12 @@ fn main() {
             domain_dst,
             samples,
         } => cmd_bridge(&src_topic, &dst_topic, domain_src, domain_dst, samples),
+        Commands::Diagnose { domain_id } => cmd_diagnose(domain_id),
+        Commands::Metrics {
+            topic,
+            domain_id,
+            samples,
+        } => cmd_metrics(&topic, domain_id, samples),
     };
 
     if let Err(e) = result {

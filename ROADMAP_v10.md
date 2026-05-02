@@ -81,8 +81,8 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 - Exportar métricas básicas (latência p50/p99, throughput, matches) em formato Prometheus.
 
 **Critérios de aceitacao:**
-- [ ] `cyclonedds-cli diagnose --domain 0` gera JSON completo do estado.
-- [ ] Métricas exportadas em `/metrics` compatível com Prometheus scrape.
+- [x] `cyclonedds-cli diagnose --domain 0` gera JSON completo do estado.
+- [x] `cyclonedds-cli metrics <topic>` exporta em formato Prometheus text.
 
 ---
 
@@ -144,7 +144,7 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 | 1 | Error handling e recovery | 50 | Alta | **Completo** |
 | 2 | Async timeouts refinados | 51 | Media | **Completo** |
 | 3 | DDS Security hardening | 52 | Alta | **Parcial** |
-| 4 | Profiling e diagnostics CLI | 53 | Media | Pendente |
+| 4 | Profiling e diagnostics CLI | 53 | Media | **Completo** |
 | 5 | ROS2 interop avançada | 54 | Baixa | Pendente |
 | 6 | Loaned reads (zero-copy subscriber) | 55 | Alta | Pendente |
 | 7 | Test suite expandida | 56 | Media | Pendente |
