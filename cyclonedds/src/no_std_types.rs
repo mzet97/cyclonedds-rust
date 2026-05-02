@@ -13,7 +13,7 @@
 //! - `DdsType::clone_out` and `write_to_native` are omitted (they need `std`).
 //! - Useful for defining types and generating CDR ops on embedded systems.
 
-#[cfg(feature = "no_std")]
+#[cfg(all(feature = "no_std", not(feature = "std")))]
 use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use std::vec::Vec;
