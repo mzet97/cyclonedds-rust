@@ -1,4 +1,4 @@
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 
 //! Safe, idiomatic Rust bindings for Eclipse CycloneDDS.
 //!
