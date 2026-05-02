@@ -319,20 +319,10 @@ fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> Vec<DynamicFieldSchema
                 // Advance past this ADR op
                 i += match primary {
                     TYPE_BST => 3,
-                    TYPE_SEQ => {
-                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
-                            3
-                        } else {
-                            2
-                        }
-                    }
-                    TYPE_BSQ => {
-                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
-                            4
-                        } else {
-                            3
-                        }
-                    }
+                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
+                    TYPE_SEQ => 2,
+                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
+                    TYPE_BSQ => 3,
                     _ => 2,
                 };
             }
@@ -539,7 +529,7 @@ pub fn cdr_to_dynamic_data(
         dds_cdrstream_desc_fini(&mut cdr_desc, &dds_cdrstream_default_allocator);
         dds_istream_fini(&mut is);
 
-        Ok(crate::DynamicData::from_value(schema, value)?)
+        crate::DynamicData::from_value(schema, value)
     }
 }
 
@@ -589,20 +579,10 @@ pub(crate) fn write_value_to_native(
                 let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
                 i += match primary {
                     TYPE_BST => 3,
-                    TYPE_SEQ => {
-                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
-                            3
-                        } else {
-                            2
-                        }
-                    }
-                    TYPE_BSQ => {
-                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
-                            4
-                        } else {
-                            3
-                        }
-                    }
+                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
+                    TYPE_SEQ => 2,
+                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
+                    TYPE_BSQ => 3,
                     _ => 2,
                 };
             }
@@ -630,16 +610,16 @@ fn write_primitive_to_native(
         match (primary_type, val) {
             (TYPE_1BY, DV::Bool(b)) => {
                 let v: u8 = if *b { 1 } else { 0 };
-                std::ptr::write(dst as *mut u8, v);
+                std::ptr::write(dst, v);
             }
             (TYPE_1BY, DV::Int8(v)) => {
                 std::ptr::write(dst as *mut i8, *v);
             }
             (TYPE_1BY, DV::UInt8(v)) => {
-                std::ptr::write(dst as *mut u8, *v);
+                std::ptr::write(dst, *v);
             }
             (TYPE_1BY, DV::Byte(v)) => {
-                std::ptr::write(dst as *mut u8, *v);
+                std::ptr::write(dst, *v);
             }
             (TYPE_2BY, DV::Int16(v)) => {
                 std::ptr::write(dst as *mut i16, *v);
@@ -739,20 +719,10 @@ pub(crate) fn read_value_from_native_public(
                 let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
                 i += match primary {
                     TYPE_BST => 3,
-                    TYPE_SEQ => {
-                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
-                            3
-                        } else {
-                            2
-                        }
-                    }
-                    TYPE_BSQ => {
-                        if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR {
-                            4
-                        } else {
-                            3
-                        }
-                    }
+                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
+                    TYPE_SEQ => 2,
+                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
+                    TYPE_BSQ => 3,
                     _ => 2,
                 };
             }
