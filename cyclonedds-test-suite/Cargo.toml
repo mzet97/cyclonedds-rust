@@ -18,7 +18,8 @@ cyclonedds_sys = { package = "cyclonedds-rust-sys", path = "../cyclonedds-rust-s
 
 [dev-dependencies]
 cyclonedds-derive = { path = "../cyclonedds-derive" }
-tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+futures-util = "0.3"
 
 [features]
 security = ["cyclonedds/security", "cyclonedds_sys/security"]

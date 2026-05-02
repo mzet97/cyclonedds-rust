@@ -46,8 +46,8 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 - Documentar padrões de cancelamento em `docs/async-patterns.md`.
 
 **Critérios de aceitacao:**
-- [ ] Stream cancelado via `drop()` não causa leak de entidades DDS.
-- [ ] `reader.read_aiter().timeout(Duration::from_secs(5))` funciona.
+- [x] Stream cancelado via `drop()` não causa leak de entidades DDS.
+- [x] `reader.read_aiter_timeout(500_000_000)` funciona.
 
 ---
 
@@ -141,7 +141,7 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 | # | Item | Fase | Prioridade | Status |
 |---|---|---|---|---|
 | 1 | Error handling e recovery | 50 | Alta | **Completo** |
-| 2 | Async timeouts refinados | 51 | Media | Pendente |
+| 2 | Async timeouts refinados | 51 | Media | **Completo** |
 | 3 | DDS Security hardening | 52 | Alta | Pendente |
 | 4 | Profiling e diagnostics CLI | 53 | Media | Pendente |
 | 5 | ROS2 interop avançada | 54 | Baixa | Pendente |
