@@ -14,9 +14,12 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use cyclonedds_wasm::*;
 //! use wasm_bindgen::prelude::*;
+//!
+//! #[derive(Serialize, Deserialize)]
+//! struct MyMessage { id: i32, text: String }
 //!
 //! #[wasm_bindgen(start)]
 //! pub fn main() {
