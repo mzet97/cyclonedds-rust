@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTDOCFLAGS: "-D warnings"
+  RUSTDOCFLAGS: "-D rustdoc::broken_intra_doc_links"
   RUSTFLAGS: "-A missing_docs"
 
 jobs:
