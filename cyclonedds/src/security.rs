@@ -127,28 +127,16 @@ impl SecurityConfig {
             );
         }
         if let Some(path) = self.identity_private_key {
-            b = b.property(
-                "dds.sec.auth.private_key",
-                &format!("file:{}", path),
-            );
+            b = b.property("dds.sec.auth.private_key", &format!("file:{}", path));
         }
         if let Some(path) = self.governance {
-            b = b.property(
-                "dds.sec.access.governance",
-                &format!("file:{}", path),
-            );
+            b = b.property("dds.sec.access.governance", &format!("file:{}", path));
         }
         if let Some(path) = self.permissions {
-            b = b.property(
-                "dds.sec.access.permissions",
-                &format!("file:{}", path),
-            );
+            b = b.property("dds.sec.access.permissions", &format!("file:{}", path));
         }
         if let Some(path) = self.permissions_ca {
-            b = b.property(
-                "dds.sec.access.permissions_ca",
-                &format!("file:{}", path),
-            );
+            b = b.property("dds.sec.access.permissions_ca", &format!("file:{}", path));
         }
 
         b

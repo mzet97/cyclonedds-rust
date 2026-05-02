@@ -333,7 +333,12 @@ pub unsafe fn ddsi_serdata_size(d: *const ddsi_serdata) -> u32 {
 /// `d` must be a valid, non-null `ddsi_serdata` pointer.
 /// `buf` must point to a buffer of at least `sz` bytes.
 #[inline]
-pub unsafe fn ddsi_serdata_to_ser(d: *const ddsi_serdata, off: usize, sz: usize, buf: *mut ::std::ffi::c_void) {
+pub unsafe fn ddsi_serdata_to_ser(
+    d: *const ddsi_serdata,
+    off: usize,
+    sz: usize,
+    buf: *mut ::std::ffi::c_void,
+) {
     let ops = *(d as *const *const u8);
     let to_ser: unsafe extern "C" fn(*const ddsi_serdata, usize, usize, *mut ::std::ffi::c_void) =
         ::std::mem::transmute(*(ops as *const u8).add(48) as *const ::std::ffi::c_void);

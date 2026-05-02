@@ -3,6 +3,7 @@ use cyclonedds_rust_sys::*;
 
 #[cfg(feature = "async")]
 impl WaitSet {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub async fn wait_async(&self, timeout_ns: i64) -> DdsResult<Vec<i64>> {
         let entity = self.entity();
         tokio::task::spawn_blocking(move || {
@@ -23,6 +24,7 @@ impl WaitSet {
 
 #[cfg(feature = "async")]
 impl<T: DdsType> DataReader<T> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub async fn take_async(&self) -> DdsResult<Vec<T>> {
         let entity = self.entity();
         tokio::task::spawn_blocking(move || unsafe {
@@ -79,6 +81,7 @@ impl<T: DdsType> DataReader<T> {
     /// }
     /// # }
     /// ```
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn read_aiter(&self) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
         let entity = self.entity();
         async_stream::try_stream! {
@@ -156,6 +159,7 @@ impl<T: DdsType> DataReader<T> {
     /// }
     /// # }
     /// ```
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn read_aiter_batch(
         &self,
         max_samples: usize,
@@ -216,6 +220,7 @@ impl<T: DdsType> DataReader<T> {
     ///
     /// Like [`read_aiter`](Self::read_aiter) but removes samples from the
     /// reader history cache.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn take_aiter(&self) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
         let entity = self.entity();
         async_stream::try_stream! {

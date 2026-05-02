@@ -51,7 +51,9 @@ fn main() {
             emit_link_info(&lib_dir, link_kind);
             true
         } else {
-            println!("cargo:warning=CycloneDDS library not found — generating bindings without linking");
+            println!(
+                "cargo:warning=CycloneDDS library not found — generating bindings without linking"
+            );
             // Emit a dummy link so downstream code compiles for checking
             println!("cargo:rustc-link-lib=dylib=ddsc");
             false
@@ -73,11 +75,9 @@ fn main() {
 
     if prebuilt.exists() {
         // Strip static assertions that fail due to platform differences
-        let content = std::fs::read_to_string(&prebuilt)
-            .expect("couldn't read prebuilt bindings");
+        let content = std::fs::read_to_string(&prebuilt).expect("couldn't read prebuilt bindings");
         let stripped = strip_static_assertions_from_str(&content);
-        std::fs::write(&bindings_path, stripped)
-            .expect("couldn't write bindings");
+        std::fs::write(&bindings_path, stripped).expect("couldn't write bindings");
     } else {
         panic!(
             "No prebuilt bindings found at {}. Run bindgen on macOS/Linux first.",
@@ -183,7 +183,10 @@ fn try_resolve_cyclonedds_source(workspace_root: &Path) -> Result<PathBuf, Strin
     if let Some(source) = env::var_os("CYCLONEDDS_SRC") {
         let source = PathBuf::from(source);
         if !source.exists() {
-            return Err(format!("CYCLONEDDS_SRC does not exist: {}", source.display()));
+            return Err(format!(
+                "CYCLONEDDS_SRC does not exist: {}",
+                source.display()
+            ));
         }
         return Ok(source);
     }
@@ -199,9 +202,10 @@ fn try_resolve_cyclonedds_source(workspace_root: &Path) -> Result<PathBuf, Strin
     if vendor.exists() {
         Ok(vendor)
     } else {
-        Err(format!(
-            "CycloneDDS source not found. Set CYCLONEDDS_SRC or ensure vendor/cyclonedds exists.",
-        ))
+        Err(
+            "CycloneDDS source not found. Set CYCLONEDDS_SRC or ensure vendor/cyclonedds exists."
+                .to_string(),
+        )
     }
 }
 
@@ -218,20 +222,29 @@ fn resolve_cyclonedds_build_dir(source_dir: &Path, out_dir: &Path) -> PathBuf {
 }
 
 fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
+    let enable_security = env::var_os("CARGO_FEATURE_SECURITY").is_some();
+    let stamp = build_dir.join(".cargo_features_stamp");
+    let stamp_content = format!("security={}\n", enable_security);
+
+    // Check if library exists and feature stamp matches current configuration.
+    // If features changed (e.g., security toggled), we must reconfigure/rebuild.
     if find_ddsc_library(build_dir).is_some() {
-        return;
+        if let Ok(existing) = std::fs::read_to_string(&stamp) {
+            if existing == stamp_content {
+                return;
+            }
+        }
     }
 
     std::fs::create_dir_all(build_dir)
         .unwrap_or_else(|err| panic!("failed to create {}: {err}", build_dir.display()));
 
     let shared = if cfg!(target_os = "windows") {
-        "OFF"  // Windows: static linking avoids symbol-export issues with MSVC
+        "OFF" // Windows: static linking avoids symbol-export issues with MSVC
     } else {
         "ON"
     };
 
-    let enable_security = env::var_os("CARGO_FEATURE_SECURITY").is_some();
     let (security_flag, ssl_flag) = if enable_security {
         println!("cargo:warning=DDS Security enabled — ensure OpenSSL is installed");
         ("ON", "ON")
@@ -271,6 +284,10 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
         "CycloneDDS build finished but no ddsc library was found under {}",
         build_dir.display()
     );
+
+    // Write feature stamp so we can detect feature changes on subsequent builds.
+    std::fs::write(&stamp, stamp_content)
+        .unwrap_or_else(|err| panic!("failed to write feature stamp: {err}"));
 }
 
 fn find_ddsc_library(build_dir: &Path) -> Option<(PathBuf, &'static str)> {

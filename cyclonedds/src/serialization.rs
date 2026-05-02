@@ -69,10 +69,7 @@ impl<'a, T: DdsType> CdrSerializer<'a, T> {
     ///
     /// Builds a temporary `dds_cdrstream_desc` from the type's ops/keys/flagset,
     /// writes the sample into an output stream, and returns the resulting bytes.
-    pub fn serialize(
-        sample: &T,
-        encoding: CdrEncoding,
-    ) -> DdsResult<Vec<u8>> {
+    pub fn serialize(sample: &T, encoding: CdrEncoding) -> DdsResult<Vec<u8>> {
         let desc = CdrStreamDesc::new::<T>()?;
 
         unsafe {
@@ -109,10 +106,7 @@ impl<'a, T: DdsType> CdrSerializer<'a, T> {
     }
 
     /// Serialize only the key fields of `sample`.
-    pub fn serialize_key(
-        sample: &T,
-        encoding: CdrEncoding,
-    ) -> DdsResult<Vec<u8>> {
+    pub fn serialize_key(sample: &T, encoding: CdrEncoding) -> DdsResult<Vec<u8>> {
         let desc = CdrStreamDesc::new::<T>()?;
 
         unsafe {

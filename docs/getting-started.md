@@ -1,6 +1,6 @@
 # Getting Started
 
-Prerequisites: **Rust 1.70+**, **CMake 3.10+**, C/C++ compiler, **Clang** (for bindgen).
+Prerequisites: **Rust 1.85+**, **CMake 3.10+**, C/C++ compiler. Clang is only needed for maintainers regenerating FFI bindings.
 
 By default `cyclonedds-sys` builds the bundled CycloneDDS source from `vendor/`, so no system-level install is needed. Override with `CYCLONEDDS_SRC` or `CYCLONEDDS_BUILD`.
 
@@ -12,7 +12,7 @@ Linux: `sudo apt install cyclonedds-dev` | macOS: `brew install cyclonedds` | Wi
 
 ```toml
 [dependencies]
-cyclonedds = "0.1"  # async is enabled by default
+cyclonedds = "1.5"  # async is enabled by default
 ```
 
 ## Define a Topic Type

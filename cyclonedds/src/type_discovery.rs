@@ -7,7 +7,7 @@
 use crate::{
     dynamic_value::{DynamicFieldSchema, DynamicTypeSchema},
     xtypes::{FindScope, MatchedEndpoint, TopicDescriptor, TypeInfo},
-    DdsEntity, DdsError, DdsResult, DataReader, DataWriter,
+    DataReader, DataWriter, DdsEntity, DdsError, DdsResult,
 };
 use cyclonedds_rust_sys::*;
 use std::ffi::CStr;
@@ -37,7 +37,8 @@ impl DiscoveredType {
         participant_entity: dds_entity_t,
         topic_name: &str,
     ) -> DdsResult<crate::UntypedTopic> {
-        self.topic_descriptor.create_topic(participant_entity, topic_name)
+        self.topic_descriptor
+            .create_topic(participant_entity, topic_name)
     }
 
     /// Create a topic for this discovered type with QoS.
@@ -98,11 +99,8 @@ pub fn discover_type_from_endpoint(
 ) -> DdsResult<DiscoveredType> {
     let type_info = endpoint.type_info()?;
     let type_name = endpoint.type_name();
-    let descriptor = type_info.create_topic_descriptor(
-        participant_entity,
-        FindScope::Global,
-        timeout,
-    )?;
+    let descriptor =
+        type_info.create_topic_descriptor(participant_entity, FindScope::Global, timeout)?;
     let schema = type_schema_from_descriptor(&descriptor, &type_name)?;
 
     Ok(DiscoveredType {
@@ -115,6 +113,7 @@ pub fn discover_type_from_endpoint(
 /// Discover a type directly from a `TypeInfo` obtained from any entity.
 ///
 /// This resolves the type information into a topic descriptor and schema.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(type_info)))]
 pub fn discover_type_from_type_info(
     participant_entity: dds_entity_t,
     type_info: &TypeInfo,
@@ -219,9 +218,9 @@ fn type_schema_from_descriptor(
 /// a type. We extract field names from the key descriptors and types from
 /// the opcodes.
 fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> Vec<DynamicFieldSchema> {
-    use crate::topic::*;
-    use crate::dynamic_value::DynamicTypeSchema as Sch;
     use crate::dynamic_type::DynamicPrimitiveKind;
+    use crate::dynamic_value::DynamicTypeSchema as Sch;
+    use crate::topic::*;
 
     let mut fields = Vec::new();
     let mut i = 0usize;
@@ -436,7 +435,9 @@ pub fn dynamic_data_to_cdr(
             std::ptr::copy_nonoverlapping(os.m_buffer, bytes.as_mut_ptr(), len);
             Ok(bytes)
         } else {
-            Err(DdsError::Unsupported("CDR serialization of dynamic data failed".into()))
+            Err(DdsError::Unsupported(
+                "CDR serialization of dynamic data failed".into(),
+            ))
         };
 
         dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
@@ -554,8 +555,8 @@ pub(crate) fn write_value_to_native(
     ops: &[u32],
     ops_start: usize,
 ) {
-    use crate::topic::*;
     use crate::dynamic_value::DynamicValue as DV;
+    use crate::topic::*;
 
     let struct_fields = match value {
         DV::Struct(fields) => fields,
@@ -570,7 +571,11 @@ pub(crate) fn write_value_to_native(
         match opcode {
             OP_ADR => {
                 let primary = op & DDS_OP_TYPE_MASK;
-                let offset = if i + 1 < ops.len() { ops[i + 1] as usize } else { 0 };
+                let offset = if i + 1 < ops.len() {
+                    ops[i + 1] as usize
+                } else {
+                    0
+                };
                 let dst = unsafe { base.add(offset) };
 
                 let field_name = format!("field_{}", (i - ops_start) / 2);
@@ -618,8 +623,8 @@ fn write_primitive_to_native(
     primary_type: u32,
     _op: u32,
 ) {
-    use crate::topic::*;
     use crate::dynamic_value::DynamicValue as DV;
+    use crate::topic::*;
 
     unsafe {
         match (primary_type, val) {
@@ -694,8 +699,8 @@ pub(crate) fn read_value_from_native_public(
     ops: &[u32],
     ops_start: usize,
 ) -> crate::DynamicValue {
-    use crate::topic::*;
     use crate::dynamic_value::DynamicValue as DV;
+    use crate::topic::*;
     use std::collections::BTreeMap;
 
     let fields_schema = match schema {
@@ -714,7 +719,11 @@ pub(crate) fn read_value_from_native_public(
         match opcode {
             OP_ADR => {
                 let primary = op & DDS_OP_TYPE_MASK;
-                let offset = if i + 1 < ops.len() { ops[i + 1] as usize } else { 0 };
+                let offset = if i + 1 < ops.len() {
+                    ops[i + 1] as usize
+                } else {
+                    0
+                };
                 let src = unsafe { base.add(offset) };
 
                 let field_schema = fields_schema.get(field_idx);
@@ -766,8 +775,8 @@ fn read_primitive_from_native(
     op: u32,
     field_schema: Option<&crate::dynamic_value::DynamicFieldSchema>,
 ) -> crate::dynamic_value::DynamicValue {
-    use crate::topic::*;
     use crate::dynamic_value::DynamicValue as DV;
+    use crate::topic::*;
 
     unsafe {
         match primary_type {
@@ -803,9 +812,9 @@ fn read_primitive_from_native(
                     DV::Float32(std::ptr::read(src as *const f32))
                 } else if let Some(fs) = field_schema {
                     match &fs.value {
-                        crate::DynamicTypeSchema::Enum { .. } => {
-                            DV::Enum { value: std::ptr::read(src as *const i32) }
-                        }
+                        crate::DynamicTypeSchema::Enum { .. } => DV::Enum {
+                            value: std::ptr::read(src as *const i32),
+                        },
                         _ => {
                             let v = std::ptr::read(src as *const i32);
                             let vu = std::ptr::read(src as *const u32);
@@ -844,11 +853,7 @@ fn read_primitive_from_native(
                 if ptr.is_null() {
                     DV::String(String::new())
                 } else {
-                    DV::String(
-                        CStr::from_ptr(ptr)
-                            .to_string_lossy()
-                            .into_owned(),
-                    )
+                    DV::String(CStr::from_ptr(ptr).to_string_lossy().into_owned())
                 }
             }
             TYPE_BST => {
@@ -867,8 +872,8 @@ fn read_primitive_from_native(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dynamic_value::{DynamicTypeSchema, DynamicValue};
     use crate::dynamic_type::DynamicPrimitiveKind;
+    use crate::dynamic_value::{DynamicTypeSchema, DynamicValue};
 
     #[test]
     fn dynamic_data_get_set_primitives() {

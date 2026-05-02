@@ -1,0 +1,19 @@
+[package]
+name = "cyclonedds-fuzz"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.85"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+cyclonedds = { path = "../cyclonedds" }
+cyclonedds-derive = { path = "../cyclonedds-derive" }
+
+[[bin]]
+name = "cdr_deserialize"
+path = "fuzz_targets/cdr_deserialize.rs"
+test = false
+doc = false

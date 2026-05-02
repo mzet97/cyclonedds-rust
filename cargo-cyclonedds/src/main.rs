@@ -65,9 +65,8 @@ fn main() -> Result<()> {
                 anyhow::bail!("IDL file not found: {}", idl_file.display());
             }
 
-            let out_dir = output_dir.unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            });
+            let out_dir = output_dir
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
             std::fs::create_dir_all(&out_dir)
                 .with_context(|| format!("creating output directory {}", out_dir.display()))?;

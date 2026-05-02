@@ -3,7 +3,9 @@
 //! Run with:
 //!   cargo run --example shm_sub
 
-use cyclonedds::{DomainParticipant, Subscriber, QosBuilder, Topic, DataReader, DdsEntity, DdsTypeDerive};
+use cyclonedds::{
+    DataReader, DdsEntity, DdsTypeDerive, DomainParticipant, QosBuilder, Subscriber, Topic,
+};
 
 #[derive(DdsTypeDerive, Clone, Debug)]
 struct LargeMessage {
@@ -15,12 +17,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let subscriber = Subscriber::new(participant.entity())?;
 
-    let qos = QosBuilder::new()
-        .enable_iceoryx()
-        .build()?;
+    let qos = QosBuilder::new().enable_iceoryx().build()?;
 
     let topic = Topic::<LargeMessage>::new(participant.entity(), "LargeData")?;
-    let reader: DataReader<LargeMessage> = DataReader::with_qos(subscriber.entity(), topic.entity(), Some(&qos))?;
+    let reader: DataReader<LargeMessage> =
+        DataReader::with_qos(subscriber.entity(), topic.entity(), Some(&qos))?;
 
     println!("SHM subscriber started. Waiting for large messages via Iceoryx...");
 

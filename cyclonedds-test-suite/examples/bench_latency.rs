@@ -10,12 +10,17 @@ struct BenchMsg {
 
 impl BenchMsg {
     fn new(id: i32) -> Self {
-        Self { id, payload: [0u8; 256] }
+        Self {
+            id,
+            payload: [0u8; 256],
+        }
     }
 }
 
 impl DdsType for BenchMsg {
-    fn type_name() -> &'static str { "BenchMsg" }
+    fn type_name() -> &'static str {
+        "BenchMsg"
+    }
     fn ops() -> Vec<u32> {
         let mut ops = Vec::new();
         ops.extend(adr(TYPE_4BY | OP_FLAG_SGN, 0));

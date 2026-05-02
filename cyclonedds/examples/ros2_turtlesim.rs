@@ -17,7 +17,7 @@
 //!
 //! The turtle should move in a circle.
 
-use cyclonedds::{DomainParticipant, Publisher, Topic, DataWriter, DdsTypeDerive, DdsEntity};
+use cyclonedds::{DataWriter, DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Topic};
 
 #[derive(DdsTypeDerive, Clone, Debug)]
 struct Vector3 {
@@ -44,13 +44,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Make sure turtlesim is running: ros2 run turtlesim turtlesim_node");
 
     let twist = Twist {
-        linear: Vector3 { x: 2.0, y: 0.0, z: 0.0 },
-        angular: Vector3 { x: 0.0, y: 0.0, z: 1.8 },
+        linear: Vector3 {
+            x: 2.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        angular: Vector3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.8,
+        },
     };
 
     for i in 0..100 {
         writer.write(&twist)?;
-        println!("Published Twist #{} — linear.x={}, angular.z={}", i, twist.linear.x, twist.angular.z);
+        println!(
+            "Published Twist #{} — linear.x={}, angular.z={}",
+            i, twist.linear.x, twist.angular.z
+        );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 

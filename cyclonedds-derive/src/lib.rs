@@ -878,32 +878,66 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let disc_ty: Type = input
         .attrs
         .iter()
-        .find(|a| a.path().segments.last().map(|s| s.ident == "dds_discriminant").unwrap_or(false))
-        .ok_or_else(|| syn::Error::new_spanned(&input.ident, "DdsUnion requires #[dds_discriminant(Type)] attribute"))?
+        .find(|a| {
+            a.path()
+                .segments
+                .last()
+                .map(|s| s.ident == "dds_discriminant")
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| {
+            syn::Error::new_spanned(
+                &input.ident,
+                "DdsUnion requires #[dds_discriminant(Type)] attribute",
+            )
+        })?
         .parse_args()?;
 
-    let (disc_typecode, _disc_size) = discriminant_info(&disc_ty)
-        .ok_or_else(|| syn::Error::new_spanned(&disc_ty, "unsupported discriminant type; expected bool, u8, i8, u16, i16, u32, i32, u64, or i64"))?;
+    let (disc_typecode, _disc_size) = discriminant_info(&disc_ty).ok_or_else(|| {
+        syn::Error::new_spanned(
+            &disc_ty,
+            "unsupported discriminant type; expected bool, u8, i8, u16, i16, u32, i32, u64, or i64",
+        )
+    })?;
 
     // Parse variants
-    let mut cases: Vec<(/*value*/ i64, /*variant ident*/ syn::Ident, /*field type*/ Type, /*is_default*/ bool)> = Vec::new();
+    let mut cases: Vec<(
+        /*value*/ i64,
+        /*variant ident*/ syn::Ident,
+        /*field type*/ Type,
+        /*is_default*/ bool,
+    )> = Vec::new();
     let mut default_variant_idx: Option<usize> = None;
 
     for (i, variant) in data.variants.iter().enumerate() {
         let is_default = variant.attrs.iter().any(|a| {
-            a.path().segments.last().map(|s| s.ident == "dds_default").unwrap_or(false)
+            a.path()
+                .segments
+                .last()
+                .map(|s| s.ident == "dds_default")
+                .unwrap_or(false)
         });
 
         let case_value = if is_default {
             // default case does not need a value; we use a sentinel
             -1i64
         } else {
-            let case_attr = variant.attrs.iter().find(|a| {
-                a.path().segments.last().map(|s| s.ident == "dds_case").unwrap_or(false)
-            }).ok_or_else(|| syn::Error::new_spanned(
-                variant,
-                "DdsUnion variant must have #[dds_case(N)] or #[dds_default]",
-            ))?;
+            let case_attr = variant
+                .attrs
+                .iter()
+                .find(|a| {
+                    a.path()
+                        .segments
+                        .last()
+                        .map(|s| s.ident == "dds_case")
+                        .unwrap_or(false)
+                })
+                .ok_or_else(|| {
+                    syn::Error::new_spanned(
+                        variant,
+                        "DdsUnion variant must have #[dds_case(N)] or #[dds_default]",
+                    )
+                })?;
 
             let expr: Expr = case_attr.parse_args()?;
             parse_int_literal(&expr)?
@@ -924,7 +958,10 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
         if is_default {
             if default_variant_idx.is_some() {
-                return Err(syn::Error::new_spanned(variant, "DdsUnion can have at most one #[dds_default] variant"));
+                return Err(syn::Error::new_spanned(
+                    variant,
+                    "DdsUnion can have at most one #[dds_default] variant",
+                ));
             }
             default_variant_idx = Some(i);
         }
@@ -933,14 +970,18 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     }
 
     if cases.is_empty() {
-        return Err(syn::Error::new_spanned(&input.ident, "DdsUnion enum must have at least one variant"));
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "DdsUnion enum must have at least one variant",
+        ));
     }
 
     let n_cases = cases.len();
     let has_default = default_variant_idx.is_some();
 
     // Generate native union fields
-    let union_arm_names: Vec<syn::Ident> = cases.iter()
+    let union_arm_names: Vec<syn::Ident> = cases
+        .iter()
         .map(|(_, ident, _, _)| format_ident!("{}_arm", ident.to_string().to_lowercase()))
         .collect();
     let union_arm_types: Vec<&Type> = cases.iter().map(|(_, _, ty, _)| ty).collect();
@@ -1020,7 +1061,8 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     // For the default sentinel, we pick a value that's not any of the explicit case values.
     // We just use the max case value + 1 (or 0 if no cases).
     let default_sentinel = if has_default {
-        let max_case = case_values.iter()
+        let max_case = case_values
+            .iter()
             .filter(|v| **v >= 0)
             .max()
             .map(|v| *v as u32)
@@ -1047,9 +1089,9 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     // This simplifies offset calculation significantly.
 
     // Verify no composite types for this first version
-    let has_composite = cases.iter().any(|(_, _, ty, _)| {
-        !is_direct_string(ty) && case_member_typecode(ty).is_none()
-    });
+    let has_composite = cases
+        .iter()
+        .any(|(_, _, ty, _)| !is_direct_string(ty) && case_member_typecode(ty).is_none());
 
     if has_composite {
         return Err(syn::Error::new_spanned(
@@ -1088,9 +1130,10 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         }
     }
 
-    let ordered_case_ops: Vec<TokenStream2> = ordered_case_indices.iter().map(|&idx| {
-        case_ops_parts[idx].clone()
-    }).collect();
+    let ordered_case_ops: Vec<TokenStream2> = ordered_case_indices
+        .iter()
+        .map(|&idx| case_ops_parts[idx].clone())
+        .collect();
 
     // Now recompute the JEQ4 entries with correct indices.
     // For non-default case at original index `i`, its position in ordered_case_indices
@@ -1101,20 +1144,24 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         case_jump_targets[orig_idx] = target;
     }
 
-    let jeq4_entries_fixed: Vec<TokenStream2> = cases.iter().enumerate().map(|(i, (_val, _, _, is_default))| {
-        if *is_default {
-            quote! {}
-        } else {
-            let val = *_val as u32;
-            let target = case_jump_targets[i];
-            quote! {
-                __ops.push(cyclonedds::OP_JEQ4);
-                __ops.push(#val);
-                __ops.push(0u32);
-                __ops.push(#target);
+    let jeq4_entries_fixed: Vec<TokenStream2> = cases
+        .iter()
+        .enumerate()
+        .map(|(i, (_val, _, _, is_default))| {
+            if *is_default {
+                quote! {}
+            } else {
+                let val = *_val as u32;
+                let target = case_jump_targets[i];
+                quote! {
+                    __ops.push(cyclonedds::OP_JEQ4);
+                    __ops.push(#val);
+                    __ops.push(0u32);
+                    __ops.push(#target);
+                }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     // Generate the clone_out native reading: read discriminator, then read the correct union arm
     let clone_out_arms: Vec<TokenStream2> = cases.iter().enumerate().map(|(i, (_, _, _, is_default))| {
@@ -1138,40 +1185,44 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     }).collect();
 
     // Generate write_to_native arms
-    let write_arms: Vec<TokenStream2> = cases.iter().enumerate().map(|(i, (_, _, _, is_default))| {
-        let variant = &variant_idents[i];
-        let arm_name = &union_arm_names[i];
-        let is_string = is_direct_string(&cases[i].2);
+    let write_arms: Vec<TokenStream2> = cases
+        .iter()
+        .enumerate()
+        .map(|(i, (_, _, _, is_default))| {
+            let variant = &variant_idents[i];
+            let arm_name = &union_arm_names[i];
+            let is_string = is_direct_string(&cases[i].2);
 
-        if *is_default {
-            quote! {
-                #name::#variant(ref value) => {
-                    __native.__disc = __disc_default_sentinel as #disc_ty;
-                    __native.__value.#arm_name = {
-                        if #is_string {
-                            cyclonedds::DdsString::new(value)?
-                        } else {
-                            ::std::clone::Clone::clone(value)
-                        }
-                    };
+            if *is_default {
+                quote! {
+                    #name::#variant(ref value) => {
+                        __native.__disc = __disc_default_sentinel as #disc_ty;
+                        __native.__value.#arm_name = {
+                            if #is_string {
+                                cyclonedds::DdsString::new(value)?
+                            } else {
+                                ::std::clone::Clone::clone(value)
+                            }
+                        };
+                    }
+                }
+            } else {
+                let val = case_values[i] as u32;
+                quote! {
+                    #name::#variant(ref value) => {
+                        __native.__disc = #val as #disc_ty;
+                        __native.__value.#arm_name = {
+                            if #is_string {
+                                cyclonedds::DdsString::new(value)?
+                            } else {
+                                ::std::clone::Clone::clone(value)
+                            }
+                        };
+                    }
                 }
             }
-        } else {
-            let val = case_values[i] as u32;
-            quote! {
-                #name::#variant(ref value) => {
-                    __native.__disc = #val as #disc_ty;
-                    __native.__value.#arm_name = {
-                        if #is_string {
-                            cyclonedds::DdsString::new(value)?
-                        } else {
-                            ::std::clone::Clone::clone(value)
-                        }
-                    };
-                }
-            }
-        }
-    }).collect();
+        })
+        .collect();
 
     let n_cases_literal = n_cases as u32;
     let union_header_word3 = if has_default {
@@ -1289,7 +1340,13 @@ fn derive_bitmask_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let bit_bound: u32 = input
         .attrs
         .iter()
-        .find(|a| a.path().segments.last().map(|s| s.ident == "bit_bound").unwrap_or(false))
+        .find(|a| {
+            a.path()
+                .segments
+                .last()
+                .map(|s| s.ident == "bit_bound")
+                .unwrap_or(false)
+        })
         .map(|a| {
             let expr: Expr = a.parse_args()?;
             parse_int_literal(&expr).map(|v| v as u32)
@@ -1310,7 +1367,10 @@ fn derive_bitmask_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     if n_fields > (bit_bound as usize) {
         return Err(syn::Error::new_spanned(
             &input.ident,
-            format!("DdsBitmask with bit_bound={} can have at most {} fields, found {}", bit_bound, bit_bound, n_fields),
+            format!(
+                "DdsBitmask with bit_bound={} can have at most {} fields, found {}",
+                bit_bound, bit_bound, n_fields
+            ),
         ));
     }
 
@@ -1333,7 +1393,11 @@ fn derive_bitmask_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         _ => unreachable!(),
     };
 
-    let max_value: u64 = if bit_bound == 64 { !0u64 } else { (1u64 << bit_bound) - 1 };
+    let max_value: u64 = if bit_bound == 64 {
+        !0u64
+    } else {
+        (1u64 << bit_bound) - 1
+    };
     let max_value_u32 = max_value as u32;
 
     // Bitmask ops: ADR | TYPE_ENU | (bit_bound << OP_FLAG_SZ_SHIFT), offset, max_value
@@ -1343,44 +1407,60 @@ fn derive_bitmask_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let native_name = format_ident!("__CycloneDdsNative{}", name);
 
     // Generate to_bits / from_bits helpers and individual flag accessors
-    let flag_getters: Vec<TokenStream2> = field_names.iter().enumerate().map(|(i, fname)| {
-        let mask = 1u64 << i;
-        quote! {
-            pub fn #fname(&self) -> bool {
-                (self.__bits & #mask) != 0
-            }
-        }
-    }).collect();
-
-    let flag_setters: Vec<TokenStream2> = field_names.iter().enumerate().map(|(i, fname)| {
-        let method_name = format_ident!("set_{}", fname);
-        let mask = 1u64 << i;
-        quote! {
-            pub fn #method_name(&mut self, value: bool) {
-                if value {
-                    self.__bits |= #mask;
-                } else {
-                    self.__bits &= !#mask;
+    let flag_getters: Vec<TokenStream2> = field_names
+        .iter()
+        .enumerate()
+        .map(|(i, fname)| {
+            let mask = 1u64 << i;
+            quote! {
+                pub fn #fname(&self) -> bool {
+                    (self.__bits & #mask) != 0
                 }
             }
-        }
-    }).collect();
+        })
+        .collect();
+
+    let flag_setters: Vec<TokenStream2> = field_names
+        .iter()
+        .enumerate()
+        .map(|(i, fname)| {
+            let method_name = format_ident!("set_{}", fname);
+            let mask = 1u64 << i;
+            quote! {
+                pub fn #method_name(&mut self, value: bool) {
+                    if value {
+                        self.__bits |= #mask;
+                    } else {
+                        self.__bits &= !#mask;
+                    }
+                }
+            }
+        })
+        .collect();
 
     // Generate the to_bits field conversions (for DdsType::write_to_native, uses &self)
-    let to_bits_self: Vec<TokenStream2> = field_names.iter().enumerate().map(|(i, fname)| {
-        let mask = 1u64 << i;
-        quote! {
-            if self.#fname { bits |= #mask; }
-        }
-    }).collect();
+    let to_bits_self: Vec<TokenStream2> = field_names
+        .iter()
+        .enumerate()
+        .map(|(i, fname)| {
+            let mask = 1u64 << i;
+            quote! {
+                if self.#fname { bits |= #mask; }
+            }
+        })
+        .collect();
 
     // Generate the from_bits field conversions (static conversion from bits)
-    let from_bits_fields: Vec<TokenStream2> = field_names.iter().enumerate().map(|(i, fname)| {
-        let mask = 1u64 << i;
-        quote! {
-            #fname: (bits & #mask) != 0,
-        }
-    }).collect();
+    let from_bits_fields: Vec<TokenStream2> = field_names
+        .iter()
+        .enumerate()
+        .map(|(i, fname)| {
+            let mask = 1u64 << i;
+            quote! {
+                #fname: (bits & #mask) != 0,
+            }
+        })
+        .collect();
 
     // For the DdsType impl, the bitmask uses TYPE_ENU ops format.
     // The native struct is just the backing integer type.

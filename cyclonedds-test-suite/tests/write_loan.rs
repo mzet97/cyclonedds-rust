@@ -30,7 +30,9 @@ impl DdsType for LoanTestMsg {
 #[test]
 fn zero_copy_loan_write_and_read() {
     let participant = DomainParticipant::new(0).unwrap();
-    let topic = participant.create_topic::<LoanTestMsg>("loan_test").unwrap();
+    let topic = participant
+        .create_topic::<LoanTestMsg>("loan_test")
+        .unwrap();
     let publisher = participant.create_publisher().unwrap();
     let subscriber = participant.create_subscriber().unwrap();
     let writer = publisher.create_writer(&topic).unwrap();
@@ -72,7 +74,9 @@ fn zero_copy_loan_write_and_read() {
 #[test]
 fn zero_copy_loan_drop_without_write() {
     let participant = DomainParticipant::new(0).unwrap();
-    let topic = participant.create_topic::<LoanTestMsg>("loan_test_drop").unwrap();
+    let topic = participant
+        .create_topic::<LoanTestMsg>("loan_test_drop")
+        .unwrap();
     let publisher = participant.create_publisher().unwrap();
     let writer = publisher.create_writer(&topic).unwrap();
 

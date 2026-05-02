@@ -179,6 +179,9 @@ pub struct DynamicTypeBuilder {
     autoid: Option<DynamicTypeAutoId>,
     nested: Option<bool>,
     bit_bound: Option<u16>,
+    members: Vec<DynamicMemberBuilder>,
+    enum_literals: Vec<(String, DynamicEnumLiteralValue, bool)>,
+    bitmask_fields: Vec<(String, Option<u16>)>,
 }
 
 impl DynamicTypeBuilder {
@@ -304,6 +307,9 @@ impl DynamicTypeBuilder {
             autoid: None,
             nested: None,
             bit_bound: None,
+            members: Vec::new(),
+            enum_literals: Vec::new(),
+            bitmask_fields: Vec::new(),
         }
     }
 
@@ -369,6 +375,42 @@ impl DynamicTypeBuilder {
 
     pub fn bit_bound(mut self, bit_bound: u16) -> Self {
         self.bit_bound = Some(bit_bound);
+        self
+    }
+
+    /// Add a struct field to the builder.
+    pub fn add_field(mut self, name: impl Into<String>, type_spec: DynamicTypeSpec) -> Self {
+        self.members
+            .push(DynamicMemberBuilder::new(name, type_spec));
+        self
+    }
+
+    /// Add a union case to the builder.
+    pub fn add_union_case(
+        mut self,
+        name: impl Into<String>,
+        type_spec: DynamicTypeSpec,
+        labels: &[i32],
+    ) -> Self {
+        self.members
+            .push(DynamicMemberBuilder::new(name, type_spec).labels(labels));
+        self
+    }
+
+    /// Add an enum variant to the builder.
+    pub fn add_enum_variant(
+        mut self,
+        name: impl Into<String>,
+        value: DynamicEnumLiteralValue,
+        is_default: bool,
+    ) -> Self {
+        self.enum_literals.push((name.into(), value, is_default));
+        self
+    }
+
+    /// Add a bitmask field to the builder.
+    pub fn add_bitmask_field(mut self, name: impl Into<String>, position: Option<u16>) -> Self {
+        self.bitmask_fields.push((name.into(), position));
         self
     }
 
@@ -456,8 +498,22 @@ impl DynamicTypeBuilder {
         }
     }
 
-    pub fn build<E: DdsEntity>(self, entity: &E) -> DdsResult<DynamicType> {
-        DynamicType::create(entity.entity(), self)
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entity)))]
+    pub fn build<E: DdsEntity>(mut self, entity: &E) -> DdsResult<DynamicType> {
+        let members = std::mem::take(&mut self.members);
+        let enum_literals = std::mem::take(&mut self.enum_literals);
+        let bitmask_fields = std::mem::take(&mut self.bitmask_fields);
+        let mut dynamic_type = DynamicType::create(entity.entity(), self)?;
+        for member in members {
+            dynamic_type.add_member(member)?;
+        }
+        for (name, value, is_default) in enum_literals {
+            dynamic_type.add_enum_literal(&name, value, is_default)?;
+        }
+        for (name, position) in bitmask_fields {
+            dynamic_type.add_bitmask_field(&name, position)?;
+        }
+        Ok(dynamic_type)
     }
 }
 
@@ -589,6 +645,7 @@ impl DynamicType {
             autoid,
             nested,
             bit_bound,
+            ..
         } = builder;
 
         let name_cstr =

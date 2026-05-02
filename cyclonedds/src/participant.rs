@@ -55,18 +55,22 @@ impl DomainParticipant {
     /// use cyclonedds::DomainParticipant;
     /// let participant = DomainParticipant::new(0).unwrap();
     /// ```
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     pub fn new(domain_id: u32) -> DdsResult<Self> {
         Self::with_qos_and_listener(domain_id, None, None)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(qos)))]
     pub fn with_qos(domain_id: u32, qos: Option<&Qos>) -> DdsResult<Self> {
         Self::with_qos_and_listener(domain_id, qos, None)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(listener)))]
     pub fn with_listener(domain_id: u32, listener: &Listener) -> DdsResult<Self> {
         Self::with_qos_and_listener(domain_id, None, Some(listener))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(qos, listener)))]
     pub fn with_qos_and_listener(
         domain_id: u32,
         qos: Option<&Qos>,
@@ -205,8 +209,7 @@ impl DomainParticipant {
         dynamic_type: &mut DynamicType,
         data: &crate::DynamicData,
     ) -> DdsResult<()> {
-        let descriptor =
-            dynamic_type.register_topic_descriptor(self, FindScope::Global, 0)?;
+        let descriptor = dynamic_type.register_topic_descriptor(self, FindScope::Global, 0)?;
 
         let topic = descriptor.create_topic(self.entity, topic_name)?;
 
@@ -238,12 +241,7 @@ impl DomainParticipant {
             }
 
             // Write the DynamicValue into the native buffer
-            crate::type_discovery::write_value_to_native(
-                data.value(),
-                buf,
-                descriptor.ops(),
-                0,
-            );
+            crate::type_discovery::write_value_to_native(data.value(), buf, descriptor.ops(), 0);
 
             // Write via native pointer
             let ret = dds_write(writer.entity, buf as *const std::ffi::c_void);
@@ -279,8 +277,7 @@ impl DomainParticipant {
         max_samples: usize,
     ) -> DdsResult<Vec<crate::DynamicData>> {
         let schema = dynamic_type.schema().clone();
-        let descriptor =
-            dynamic_type.register_topic_descriptor(self, FindScope::Global, 0)?;
+        let descriptor = dynamic_type.register_topic_descriptor(self, FindScope::Global, 0)?;
 
         let topic = descriptor.create_topic(self.entity, topic_name)?;
 
@@ -427,12 +424,7 @@ impl DomainParticipant {
     }
 
     /// Set both *deaf* and *mute* on the participant simultaneously.
-    pub fn set_deaf_mute(
-        &self,
-        deaf: bool,
-        mute: bool,
-        duration: dds_duration_t,
-    ) -> DdsResult<()> {
+    pub fn set_deaf_mute(&self, deaf: bool, mute: bool, duration: dds_duration_t) -> DdsResult<()> {
         unsafe { crate::error::check(dds_domain_set_deafmute(self.entity, deaf, mute, duration)) }
     }
 

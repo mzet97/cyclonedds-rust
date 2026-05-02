@@ -225,22 +225,61 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                         }
                     }
                 } else {
-                    return Err(format!("Unexpected character: /"));
+                    return Err("Unexpected character: /".into());
                 }
             }
-            '{' => { chars.next(); tokens.push(Token::LBrace); }
-            '}' => { chars.next(); tokens.push(Token::RBrace); }
-            '(' => { chars.next(); tokens.push(Token::LParen); }
-            ')' => { chars.next(); tokens.push(Token::RParen); }
-            '[' => { chars.next(); tokens.push(Token::LBracket); }
-            ']' => { chars.next(); tokens.push(Token::RBracket); }
-            ';' => { chars.next(); tokens.push(Token::Semi); }
-            '<' => { chars.next(); tokens.push(Token::AngleOpen); }
-            '>' => { chars.next(); tokens.push(Token::AngleClose); }
-            ',' => { chars.next(); tokens.push(Token::Comma); }
-            '@' => { chars.next(); tokens.push(Token::At); }
-            '|' => { chars.next(); tokens.push(Token::Pipe); }
-            '=' => { chars.next(); tokens.push(Token::Assign); }
+            '{' => {
+                chars.next();
+                tokens.push(Token::LBrace);
+            }
+            '}' => {
+                chars.next();
+                tokens.push(Token::RBrace);
+            }
+            '(' => {
+                chars.next();
+                tokens.push(Token::LParen);
+            }
+            ')' => {
+                chars.next();
+                tokens.push(Token::RParen);
+            }
+            '[' => {
+                chars.next();
+                tokens.push(Token::LBracket);
+            }
+            ']' => {
+                chars.next();
+                tokens.push(Token::RBracket);
+            }
+            ';' => {
+                chars.next();
+                tokens.push(Token::Semi);
+            }
+            '<' => {
+                chars.next();
+                tokens.push(Token::AngleOpen);
+            }
+            '>' => {
+                chars.next();
+                tokens.push(Token::AngleClose);
+            }
+            ',' => {
+                chars.next();
+                tokens.push(Token::Comma);
+            }
+            '@' => {
+                chars.next();
+                tokens.push(Token::At);
+            }
+            '|' => {
+                chars.next();
+                tokens.push(Token::Pipe);
+            }
+            '=' => {
+                chars.next();
+                tokens.push(Token::Assign);
+            }
             ':' => {
                 chars.next();
                 if chars.peek() == Some(&':') {
@@ -276,11 +315,17 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 }
                 tokens.push(Token::StrLit(s));
             }
-            c if c.is_ascii_digit() || (c == '-' && chars.peek().map_or(false, |nc| nc.is_ascii_digit())) => {
+            c if c.is_ascii_digit()
+                || (c == '-' && chars.peek().map_or(false, |nc| nc.is_ascii_digit())) =>
+            {
                 let negative = c == '-';
-                if negative { chars.next(); }
+                if negative {
+                    chars.next();
+                }
                 let mut num = String::new();
-                if negative { num.push('-'); }
+                if negative {
+                    num.push('-');
+                }
                 // Handle hex prefix
                 // Consume '0' prefix if present
                 if chars.peek() == Some(&'0') {
@@ -289,7 +334,13 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 }
                 let is_hex = chars.peek() == Some(&'x') || chars.peek() == Some(&'X');
                 while let Some(&c) = chars.peek() {
-                    if c.is_ascii_digit() || (is_hex && (c == 'x' || c == 'X' || ('a'..='f').contains(&c) || ('A'..='F').contains(&c))) {
+                    if c.is_ascii_digit()
+                        || (is_hex
+                            && (c == 'x'
+                                || c == 'X'
+                                || ('a'..='f').contains(&c)
+                                || ('A'..='F').contains(&c)))
+                    {
                         num.push(c);
                         chars.next();
                     } else {
@@ -305,9 +356,13 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                     }
                 }
                 let val = if num.starts_with("-") {
-                    num[1..].parse::<i64>().map(|v| -v).map_err(|e| format!("Invalid integer: {}", e))?
+                    num[1..]
+                        .parse::<i64>()
+                        .map(|v| -v)
+                        .map_err(|e| format!("Invalid integer: {}", e))?
                 } else {
-                    num.parse::<i64>().map_err(|e| format!("Invalid integer: {}", e))?
+                    num.parse::<i64>()
+                        .map_err(|e| format!("Invalid integer: {}", e))?
                 };
                 tokens.push(Token::IntLit(val));
             }
@@ -568,11 +623,26 @@ impl<'a> Parser<'a> {
     fn parse_type_ref(&mut self) -> Result<IdlTypeRef, String> {
         match self.peek() {
             Some(Token::Ident(kw)) => match kw.as_str() {
-                "boolean" => { self.advance(); Ok(IdlTypeRef::Primitive(PrimitiveType::Boolean)) }
-                "octet" => { self.advance(); Ok(IdlTypeRef::Primitive(PrimitiveType::Octet)) }
-                "char" => { self.advance(); Ok(IdlTypeRef::Primitive(PrimitiveType::Char)) }
-                "wchar" => { self.advance(); Ok(IdlTypeRef::Primitive(PrimitiveType::Wchar)) }
-                "short" => { self.advance(); Ok(IdlTypeRef::Primitive(PrimitiveType::Short)) }
+                "boolean" => {
+                    self.advance();
+                    Ok(IdlTypeRef::Primitive(PrimitiveType::Boolean))
+                }
+                "octet" => {
+                    self.advance();
+                    Ok(IdlTypeRef::Primitive(PrimitiveType::Octet))
+                }
+                "char" => {
+                    self.advance();
+                    Ok(IdlTypeRef::Primitive(PrimitiveType::Char))
+                }
+                "wchar" => {
+                    self.advance();
+                    Ok(IdlTypeRef::Primitive(PrimitiveType::Wchar))
+                }
+                "short" => {
+                    self.advance();
+                    Ok(IdlTypeRef::Primitive(PrimitiveType::Short))
+                }
                 "unsigned" => {
                     self.advance();
                     match self.peek() {
@@ -603,8 +673,14 @@ impl<'a> Parser<'a> {
                         Ok(IdlTypeRef::Primitive(PrimitiveType::Long))
                     }
                 }
-                "float" => { self.advance(); Ok(IdlTypeRef::Primitive(PrimitiveType::Float)) }
-                "double" => { self.advance(); Ok(IdlTypeRef::Primitive(PrimitiveType::Double)) }
+                "float" => {
+                    self.advance();
+                    Ok(IdlTypeRef::Primitive(PrimitiveType::Float))
+                }
+                "double" => {
+                    self.advance();
+                    Ok(IdlTypeRef::Primitive(PrimitiveType::Double))
+                }
                 "string" => {
                     self.advance();
                     let bound = if self.peek() == Some(&Token::AngleOpen) {
@@ -813,7 +889,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    fn parse_typedef(&mut self, _annotations: Vec<IdlAnnotation>) -> Result<Option<IdlType>, String> {
+    fn parse_typedef(
+        &mut self,
+        _annotations: Vec<IdlAnnotation>,
+    ) -> Result<Option<IdlType>, String> {
         self.expect(&Token::Ident("typedef".into()))?;
         let ty = self.parse_type_ref()?;
         let name = self.expect_ident()?;
@@ -1024,12 +1103,10 @@ mod tests {
         assert_eq!(file.types.len(), 1);
         assert!(file.modules.contains_key("Geometry"));
         match &file.types[0] {
-            IdlType::Struct(s) => {
-                match &s.fields[0].ty {
-                    IdlTypeRef::Named(name) => assert_eq!(name, "Geometry::Point"),
-                    _ => panic!("Expected scoped named type"),
-                }
-            }
+            IdlType::Struct(s) => match &s.fields[0].ty {
+                IdlTypeRef::Named(name) => assert_eq!(name, "Geometry::Point"),
+                _ => panic!("Expected scoped named type"),
+            },
             _ => panic!("Expected struct"),
         }
     }

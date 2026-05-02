@@ -15,12 +15,18 @@ impl TestMessage {
         let encoded = text.as_bytes();
         let len = encoded.len().min(bytes.len().saturating_sub(1));
         bytes[..len].copy_from_slice(&encoded[..len]);
-        Self { id, value, text: bytes }
+        Self {
+            id,
+            value,
+            text: bytes,
+        }
     }
 }
 
 impl DdsType for TestMessage {
-    fn type_name() -> &'static str { "InteropTestMessage" }
+    fn type_name() -> &'static str {
+        "InteropTestMessage"
+    }
     fn ops() -> Vec<u32> {
         let mut ops = Vec::new();
         ops.extend(adr(TYPE_4BY | OP_FLAG_SGN, 0));
@@ -35,15 +41,16 @@ fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    let topic_name = std::env::var("DDS_TOPIC_NAME")
-        .unwrap_or_else(|_| "interop_test".to_string());
+    let topic_name = std::env::var("DDS_TOPIC_NAME").unwrap_or_else(|_| "interop_test".to_string());
     let count: i32 = std::env::var("DDS_PUB_COUNT")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(10);
 
     let participant = DomainParticipant::new(domain_id).unwrap();
-    let topic = participant.create_topic::<TestMessage>(&topic_name).unwrap();
+    let topic = participant
+        .create_topic::<TestMessage>(&topic_name)
+        .unwrap();
     let publisher = participant.create_publisher().unwrap();
     let writer = publisher.create_writer(&topic).unwrap();
 

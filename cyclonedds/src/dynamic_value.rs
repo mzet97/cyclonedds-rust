@@ -229,12 +229,9 @@ impl DynamicData {
                 value: DynamicValue::Struct(map.clone()),
                 schema: field_schema.value.clone(),
             }),
-            Some(DynamicValue::Null) if field_schema.optional => {
-                Err(DdsError::BadParameter(format!(
-                    "optional field '{}' is not set",
-                    name
-                )))
-            }
+            Some(DynamicValue::Null) if field_schema.optional => Err(DdsError::BadParameter(
+                format!("optional field '{}' is not set", name),
+            )),
             Some(v) => Err(DdsError::BadParameter(format!(
                 "field '{}' is {:?}, expected struct",
                 name, v
@@ -556,6 +553,255 @@ impl DynamicTypeSchema {
             DynamicTypeSchema::Union { cases, .. } => cases.iter().find(|case| case.name == name),
             _ => None,
         }
+    }
+
+    /// Check whether this type schema is assignable from `other` according to
+    /// DDS-XTypes assignability rules.
+    ///
+    /// Returns `true` if a DataWriter of type `other` can write samples that
+    /// are compatible with a DataReader of type `self`.
+    pub fn is_assignable_from(&self, other: &DynamicTypeSchema) -> bool {
+        match (self, other) {
+            // Primitives: exact match required
+            (DynamicTypeSchema::Primitive(a), DynamicTypeSchema::Primitive(b)) => a == b,
+
+            // String: self bound must be >= other bound (or unbounded)
+            (DynamicTypeSchema::String { bound: a }, DynamicTypeSchema::String { bound: b }) => {
+                match (a, b) {
+                    (None, _) => true,
+                    (Some(a_bound), Some(b_bound)) => a_bound >= b_bound,
+                    (Some(_), None) => false,
+                }
+            }
+
+            // Sequence: compatible bounds and element type
+            (
+                DynamicTypeSchema::Sequence {
+                    bound: a_bound,
+                    element: a_elem,
+                    ..
+                },
+                DynamicTypeSchema::Sequence {
+                    bound: b_bound,
+                    element: b_elem,
+                    ..
+                },
+            ) => {
+                let bound_ok = match (a_bound, b_bound) {
+                    (None, _) => true,
+                    (Some(a), Some(b)) => a >= b,
+                    (Some(_), None) => false,
+                };
+                bound_ok && a_elem.is_assignable_from(b_elem)
+            }
+
+            // Array: exact dimensions and compatible element
+            (
+                DynamicTypeSchema::Array {
+                    bounds: a_bounds,
+                    element: a_elem,
+                    ..
+                },
+                DynamicTypeSchema::Array {
+                    bounds: b_bounds,
+                    element: b_elem,
+                    ..
+                },
+            ) => a_bounds == b_bounds && a_elem.is_assignable_from(b_elem),
+
+            // Struct: extensibility-driven rules
+            (
+                DynamicTypeSchema::Struct {
+                    base: a_base,
+                    fields: a_fields,
+                    extensibility: a_ext,
+                    ..
+                },
+                DynamicTypeSchema::Struct {
+                    base: b_base,
+                    fields: b_fields,
+                    extensibility: b_ext,
+                    ..
+                },
+            ) => Self::is_struct_assignable_from(
+                a_base.as_deref(),
+                a_fields,
+                *a_ext,
+                b_base.as_deref(),
+                b_fields,
+                *b_ext,
+            ),
+
+            // Enum: exact literal set
+            (
+                DynamicTypeSchema::Enum {
+                    literals: a_literals,
+                    bit_bound: a_bb,
+                    ..
+                },
+                DynamicTypeSchema::Enum {
+                    literals: b_literals,
+                    bit_bound: b_bb,
+                    ..
+                },
+            ) => a_literals == b_literals && a_bb == b_bb,
+
+            // Bitmask: exact field set and bit bound
+            (
+                DynamicTypeSchema::Bitmask {
+                    fields: a_fields,
+                    bit_bound: a_bb,
+                    ..
+                },
+                DynamicTypeSchema::Bitmask {
+                    fields: b_fields,
+                    bit_bound: b_bb,
+                    ..
+                },
+            ) => a_fields == b_fields && a_bb == b_bb,
+
+            // Union: compatible discriminator and cases
+            (
+                DynamicTypeSchema::Union {
+                    discriminator: a_disc,
+                    cases: a_cases,
+                    ..
+                },
+                DynamicTypeSchema::Union {
+                    discriminator: b_disc,
+                    cases: b_cases,
+                    ..
+                },
+            ) => {
+                a_disc.is_assignable_from(b_disc)
+                    && a_cases.len() == b_cases.len()
+                    && a_cases.iter().zip(b_cases.iter()).all(|(a, b)| {
+                        a.name == b.name
+                            && a.labels == b.labels
+                            && a.default == b.default
+                            && a.value.is_assignable_from(&b.value)
+                    })
+            }
+
+            // Map: compatible bounds, key and value
+            (
+                DynamicTypeSchema::Map {
+                    bound: a_bound,
+                    key: a_key,
+                    value: a_val,
+                    ..
+                },
+                DynamicTypeSchema::Map {
+                    bound: b_bound,
+                    key: b_key,
+                    value: b_val,
+                    ..
+                },
+            ) => {
+                let bound_ok = match (a_bound, b_bound) {
+                    (None, _) => true,
+                    (Some(a), Some(b)) => a >= b,
+                    (Some(_), None) => false,
+                };
+                bound_ok && a_key.is_assignable_from(b_key) && a_val.is_assignable_from(b_val)
+            }
+
+            // Alias: resolve and compare
+            (DynamicTypeSchema::Alias { target, .. }, _) => target.is_assignable_from(other),
+            (_, DynamicTypeSchema::Alias { target, .. }) => self.is_assignable_from(target),
+
+            // Default: incompatible
+            _ => false,
+        }
+    }
+
+    fn is_struct_assignable_from(
+        a_base: Option<&DynamicTypeSchema>,
+        a_fields: &[DynamicFieldSchema],
+        a_ext: Option<DynamicTypeExtensibility>,
+        b_base: Option<&DynamicTypeSchema>,
+        b_fields: &[DynamicFieldSchema],
+        b_ext: Option<DynamicTypeExtensibility>,
+    ) -> bool {
+        use DynamicTypeExtensibility::*;
+
+        let a_ext = a_ext.unwrap_or(Final);
+        let b_ext = b_ext.unwrap_or(Final);
+
+        // Final: exact match required (same fields, same order)
+        if a_ext == Final {
+            return b_ext == Final
+                && a_base == b_base
+                && a_fields.len() == b_fields.len()
+                && a_fields.iter().zip(b_fields.iter()).all(|(a, b)| {
+                    a.name == b.name
+                        && a.value.is_assignable_from(&b.value)
+                        && a.optional == b.optional
+                        && a.key == b.key
+                });
+        }
+
+        // Appendable: other's fields must be a prefix of self's fields
+        if a_ext == Appendable {
+            // Bases must be assignable if present
+            if let (Some(a_b), Some(b_b)) = (a_base, b_base) {
+                if !a_b.is_assignable_from(b_b) {
+                    return false;
+                }
+            } else if a_base.is_some() || b_base.is_some() {
+                return false;
+            }
+
+            // Other's fields must match self's fields up to other's length
+            if b_fields.len() > a_fields.len() {
+                return false;
+            }
+            for (a_field, b_field) in a_fields.iter().zip(b_fields.iter()) {
+                if a_field.name != b_field.name
+                    || !a_field.value.is_assignable_from(&b_field.value)
+                    || a_field.optional != b_field.optional
+                    || a_field.key != b_field.key
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Mutable: relaxed matching by field name
+        if a_ext == Mutable {
+            // Bases must be assignable if present
+            if let (Some(a_b), Some(b_b)) = (a_base, b_base) {
+                if !a_b.is_assignable_from(b_b) {
+                    return false;
+                }
+            } else if a_base.is_some() || b_base.is_some() {
+                return false;
+            }
+
+            // All fields in other must exist in self with compatible type
+            for b_field in b_fields {
+                let Some(a_field) = a_fields.iter().find(|f| f.name == b_field.name) else {
+                    return false;
+                };
+                if !a_field.value.is_assignable_from(&b_field.value) {
+                    return false;
+                }
+            }
+
+            // All non-optional fields in self must exist in other
+            for a_field in a_fields {
+                if !a_field.optional {
+                    if !b_fields.iter().any(|f| f.name == a_field.name) {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        false
     }
 }
 

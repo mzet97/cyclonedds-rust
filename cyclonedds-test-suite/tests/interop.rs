@@ -10,7 +10,13 @@ fn cross_process_pub_sub_reliable() {
 
     // Build examples first
     let build_status = Command::new("cargo")
-        .args(["build", "--example", "interop_pub", "--example", "interop_sub"])
+        .args([
+            "build",
+            "--example",
+            "interop_pub",
+            "--example",
+            "interop_sub",
+        ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .status()
         .expect("failed to build examples");
@@ -19,8 +25,14 @@ fn cross_process_pub_sub_reliable() {
     let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("must be in workspace");
-    let pub_bin = workspace_root.join("target/debug/examples/interop_pub").to_string_lossy().to_string();
-    let sub_bin = workspace_root.join("target/debug/examples/interop_sub").to_string_lossy().to_string();
+    let pub_bin = workspace_root
+        .join("target/debug/examples/interop_pub")
+        .to_string_lossy()
+        .to_string();
+    let sub_bin = workspace_root
+        .join("target/debug/examples/interop_sub")
+        .to_string_lossy()
+        .to_string();
 
     let env_vars = [
         ("DDS_DOMAIN_ID", domain_id.to_string()),

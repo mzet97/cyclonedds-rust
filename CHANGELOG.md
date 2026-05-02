@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-02
+
+### Added
+
+- **Entity API**: `Entity::guid()` and `Entity::status()` for reading GUID and consolidated entity status (inconsistent topic, liveliness, deadline, matched, etc.).
+- **Zero-Copy Async**: `DataWriter::write_loan_async()` for async zero-copy writes with loaned buffers.
+- **CLI Multi-Topic**: `subscribe --topics "A,B,C"` for subscribing to multiple topics simultaneously with aggregated output.
+- **CLI Bridge**: `bridge <src> <dst> --domain-src <id> --domain-dst <id>` for forwarding samples between topics (optionally across domains).
+- **XTypes Assignability**: `DynamicTypeSchema::is_assignable_from()` implementing DDS-XTypes assignability rules for Final, Appendable, and Mutable structs.
+- **Dynamic Type Builder Factory**: `DynamicTypeBuilder::add_field()`, `add_union_case()`, `add_enum_variant()`, `add_bitmask_field()` for declarative dynamic type construction.
+- **Observability**: Optional `tracing` feature with `#[tracing::instrument]` spans on key DDS operations (write, read, discovery, waitset).
+- **Benchmarks**: `config_comparison.rs` benchmark comparing Reliable vs Best-Effort QoS configurations.
+- **Fuzzing**: `cargo-fuzz` setup in `fuzz/` with `cdr_deserialize` target for automated CDR deserialization testing.
+- **Documentation**: `docs/observability.md`, `docs/benchmarks.md`, `docs/fuzzing.md` guides.
+
+### Changed
+
+- Workspace version bumped to `1.6.0`.
+
 ## [1.5.0] - 2026-05-01
 
 ### Added

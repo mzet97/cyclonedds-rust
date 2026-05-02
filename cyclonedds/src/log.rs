@@ -108,10 +108,7 @@ unsafe extern "C" fn log_trampoline(_logdatum: *mut std::ffi::c_void, data: *con
         // size includes the trailing NUL in some CycloneDDS builds, but
         // to_string_lossy handles that gracefully.
         let bytes = std::slice::from_raw_parts(d.message as *const u8, d.size);
-        let s = bytes
-            .split(|&b| b == 0)
-            .next()
-            .unwrap_or(&[]);
+        let s = bytes.split(|&b| b == 0).next().unwrap_or(&[]);
         String::from_utf8_lossy(s).into_owned()
     };
 
@@ -172,7 +169,13 @@ pub fn set_log_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
     *slot = callback;
     let (cb, arg) = if slot.is_some() {
         (
-            Some(log_trampoline as unsafe extern "C" fn(*mut std::ffi::c_void, *const cyclonedds_rust_sys::dds_log_data_t)),
+            Some(
+                log_trampoline
+                    as unsafe extern "C" fn(
+                        *mut std::ffi::c_void,
+                        *const cyclonedds_rust_sys::dds_log_data_t,
+                    ),
+            ),
             std::ptr::null_mut::<std::ffi::c_void>(),
         )
     } else {
@@ -191,7 +194,13 @@ pub fn set_trace_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
     *slot = callback;
     let (cb, arg) = if slot.is_some() {
         (
-            Some(log_trampoline as unsafe extern "C" fn(*mut std::ffi::c_void, *const cyclonedds_rust_sys::dds_log_data_t)),
+            Some(
+                log_trampoline
+                    as unsafe extern "C" fn(
+                        *mut std::ffi::c_void,
+                        *const cyclonedds_rust_sys::dds_log_data_t,
+                    ),
+            ),
             std::ptr::null_mut::<std::ffi::c_void>(),
         )
     } else {

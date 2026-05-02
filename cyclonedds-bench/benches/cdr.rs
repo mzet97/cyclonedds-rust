@@ -23,7 +23,11 @@ struct Message {
 }
 
 fn bench_cdr_serialize(c: &mut Criterion) {
-    let point = Point { x: 1.0, y: 2.0, z: 3.0 };
+    let point = Point {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
     let pose = Pose {
         position: point.clone(),
         orientation: point.clone(),
@@ -54,7 +58,11 @@ fn bench_cdr_serialize(c: &mut Criterion) {
 }
 
 fn bench_cdr_deserialize(c: &mut Criterion) {
-    let point = Point { x: 1.0, y: 2.0, z: 3.0 };
+    let point = Point {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
     let pose = Pose {
         position: point.clone(),
         orientation: point.clone(),
@@ -71,25 +79,32 @@ fn bench_cdr_deserialize(c: &mut Criterion) {
 
     c.bench_function("cdr_deserialize_point", |b| {
         b.iter(|| {
-            let _: Point = CdrDeserializer::deserialize(black_box(&point_bytes), CdrEncoding::Xcdr1).unwrap();
+            let _: Point =
+                CdrDeserializer::deserialize(black_box(&point_bytes), CdrEncoding::Xcdr1).unwrap();
         })
     });
 
     c.bench_function("cdr_deserialize_pose", |b| {
         b.iter(|| {
-            let _: Pose = CdrDeserializer::deserialize(black_box(&pose_bytes), CdrEncoding::Xcdr1).unwrap();
+            let _: Pose =
+                CdrDeserializer::deserialize(black_box(&pose_bytes), CdrEncoding::Xcdr1).unwrap();
         })
     });
 
     c.bench_function("cdr_deserialize_message", |b| {
         b.iter(|| {
-            let _: Message = CdrDeserializer::deserialize(black_box(&msg_bytes), CdrEncoding::Xcdr1).unwrap();
+            let _: Message =
+                CdrDeserializer::deserialize(black_box(&msg_bytes), CdrEncoding::Xcdr1).unwrap();
         })
     });
 }
 
 fn bench_cdr_roundtrip(c: &mut Criterion) {
-    let point = Point { x: 1.0, y: 2.0, z: 3.0 };
+    let point = Point {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
 
     c.bench_function("cdr_roundtrip_point", |b| {
         b.iter(|| {
@@ -100,7 +115,11 @@ fn bench_cdr_roundtrip(c: &mut Criterion) {
 }
 
 fn bench_cdr_serialize_to_buffer(c: &mut Criterion) {
-    let point = Point { x: 1.0, y: 2.0, z: 3.0 };
+    let point = Point {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
     let pose = Pose {
         position: point.clone(),
         orientation: point.clone(),
@@ -121,7 +140,8 @@ fn bench_cdr_serialize_to_buffer(c: &mut Criterion) {
                 black_box(&point),
                 &mut point_buf,
                 CdrEncoding::Xcdr1,
-            ).unwrap();
+            )
+            .unwrap();
         })
     });
 
@@ -131,7 +151,8 @@ fn bench_cdr_serialize_to_buffer(c: &mut Criterion) {
                 black_box(&pose),
                 &mut pose_buf,
                 CdrEncoding::Xcdr1,
-            ).unwrap();
+            )
+            .unwrap();
         })
     });
 
@@ -141,19 +162,28 @@ fn bench_cdr_serialize_to_buffer(c: &mut Criterion) {
                 black_box(&msg),
                 &mut msg_buf,
                 CdrEncoding::Xcdr1,
-            ).unwrap();
+            )
+            .unwrap();
         })
     });
 }
 
 fn bench_pod_memcpy(c: &mut Criterion) {
     // Benchmark manual memcpy for a POD type as a comparison baseline.
-    let point = Point { x: 1.0, y: 2.0, z: 3.0 };
+    let point = Point {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
 
     c.bench_function("pod_memcpy_point", |b| {
         b.iter(|| {
             let src = black_box(&point);
-            let mut dst = Point { x: 0.0, y: 0.0, z: 0.0 };
+            let mut dst = Point {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            };
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     src as *const Point as *const u8,

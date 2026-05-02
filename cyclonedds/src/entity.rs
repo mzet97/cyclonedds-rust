@@ -1,6 +1,7 @@
 use crate::{
     error::{check, check_entity},
     statistics::Statistics,
+    status::EntityStatus,
     xtypes::{SertypeHandle, TypeInfo, TypeObject},
     DdsError, DdsResult, Qos,
 };
@@ -91,6 +92,67 @@ pub trait DdsEntity {
             check(dds_get_guid(self.entity(), &mut guid))?;
             Ok(guid)
         }
+    }
+
+    /// Convenience alias for [`Self::get_guid`].
+    fn guid(&self) -> DdsResult<dds_guid_t> {
+        self.get_guid()
+    }
+
+    /// Read a consolidated status snapshot for this entity.
+    ///
+    /// Each field is `Some` only when the corresponding status is supported
+    /// by the entity type (e.g. a `DataWriter` will have
+    /// `liveliness_lost` and `publication_matched`, but not `sample_lost`).
+    fn status(&self) -> DdsResult<EntityStatus> {
+        let mut s = EntityStatus::default();
+        unsafe {
+            let mut raw_it: dds_inconsistent_topic_status_t = std::mem::zeroed();
+            if dds_get_inconsistent_topic_status(self.entity(), &mut raw_it) == 0 {
+                s.inconsistent_topic = Some(raw_it.into());
+            }
+            let mut raw_ll: dds_liveliness_lost_status_t = std::mem::zeroed();
+            if dds_get_liveliness_lost_status(self.entity(), &mut raw_ll) == 0 {
+                s.liveliness_lost = Some(raw_ll.into());
+            }
+            let mut raw_lc: dds_liveliness_changed_status_t = std::mem::zeroed();
+            if dds_get_liveliness_changed_status(self.entity(), &mut raw_lc) == 0 {
+                s.liveliness_changed = Some(raw_lc.into());
+            }
+            let mut raw_odm: dds_offered_deadline_missed_status_t = std::mem::zeroed();
+            if dds_get_offered_deadline_missed_status(self.entity(), &mut raw_odm) == 0 {
+                s.offered_deadline_missed = Some(raw_odm.into());
+            }
+            let mut raw_oiq: dds_offered_incompatible_qos_status_t = std::mem::zeroed();
+            if dds_get_offered_incompatible_qos_status(self.entity(), &mut raw_oiq) == 0 {
+                s.offered_incompatible_qos = Some(raw_oiq.into());
+            }
+            let mut raw_rdm: dds_requested_deadline_missed_status_t = std::mem::zeroed();
+            if dds_get_requested_deadline_missed_status(self.entity(), &mut raw_rdm) == 0 {
+                s.requested_deadline_missed = Some(raw_rdm.into());
+            }
+            let mut raw_riq: dds_requested_incompatible_qos_status_t = std::mem::zeroed();
+            if dds_get_requested_incompatible_qos_status(self.entity(), &mut raw_riq) == 0 {
+                s.requested_incompatible_qos = Some(raw_riq.into());
+            }
+            let mut raw_sl: dds_sample_lost_status_t = std::mem::zeroed();
+            if dds_get_sample_lost_status(self.entity(), &mut raw_sl) == 0 {
+                s.sample_lost = Some(raw_sl.into());
+            }
+            let mut raw_sr: dds_sample_rejected_status_t = std::mem::zeroed();
+            if dds_get_sample_rejected_status(self.entity(), &mut raw_sr) == 0 {
+                s.sample_rejected = Some(raw_sr.into());
+            }
+            let mut raw_pm: dds_publication_matched_status_t = std::mem::zeroed();
+            if dds_get_publication_matched_status(self.entity(), &mut raw_pm) == 0 {
+                s.publication_matched = Some(raw_pm.into());
+            }
+            let mut raw_sm: dds_subscription_matched_status_t = std::mem::zeroed();
+            if dds_get_subscription_matched_status(self.entity(), &mut raw_sm) == 0 {
+                s.subscription_matched = Some(raw_sm.into());
+            }
+        }
+        Ok(s)
     }
 
     fn enable(&self) -> DdsResult<()> {

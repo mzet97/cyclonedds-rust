@@ -56,14 +56,17 @@ impl<T: DdsType> DataReader<T> {
 
     // ── Existing Vec<T>-returning methods (kept for backward compat) ──
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn read(&self) -> DdsResult<Vec<T>> {
         self.read_impl(false)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn take(&self) -> DdsResult<Vec<T>> {
         self.read_impl(true)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn read_impl(&self, take: bool) -> DdsResult<Vec<T>> {
         unsafe {
             let max_samples: usize = 256;

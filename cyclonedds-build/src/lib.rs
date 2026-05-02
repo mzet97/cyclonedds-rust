@@ -94,15 +94,12 @@ pub fn compile_idl_with_options(idl_path: &Path, options: &CompileOptions) -> Re
         .with_context(|| format!("Failed to read IDL file: {}", idl_path.display()))?;
 
     // Determine module name
-    let module_name = options
-        .module_name
-        .clone()
-        .unwrap_or_else(|| {
-            idl_path
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "idl_types".into())
-        });
+    let module_name = options.module_name.clone().unwrap_or_else(|| {
+        idl_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "idl_types".into())
+    });
 
     // Try idlc-based compilation first, then fall back to built-in parser
     let rust_code = if options.try_idlc {
@@ -124,8 +121,12 @@ pub fn compile_idl_with_options(idl_path: &Path, options: &CompileOptions) -> Re
         });
 
     // Ensure output directory exists
-    fs::create_dir_all(&output_dir)
-        .with_context(|| format!("Failed to create output directory: {}", output_dir.display()))?;
+    fs::create_dir_all(&output_dir).with_context(|| {
+        format!(
+            "Failed to create output directory: {}",
+            output_dir.display()
+        )
+    })?;
 
     // Write output file
     let output_file = output_dir.join(format!("{}.rs", module_name));
@@ -302,11 +303,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let idl_file = dir.path().join("test.idl");
         let mut f = fs::File::create(&idl_file).unwrap();
-        write!(f, r#"
+        write!(
+            f,
+            r#"
             struct Hello {{
                 string message;
             }};
-        "#).unwrap();
+        "#
+        )
+        .unwrap();
 
         let out_dir = dir.path().join("output");
         let options = CompileOptions {

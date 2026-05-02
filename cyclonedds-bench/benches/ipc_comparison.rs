@@ -1,5 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use cyclonedds::{DomainParticipant, Publisher, Subscriber, Topic, DataWriter, DataReader, DdsTypeDerive, DdsEntity};
+use cyclonedds::{
+    DataReader, DataWriter, DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Subscriber,
+    Topic,
+};
 use std::thread;
 use std::time::Duration;
 
@@ -20,8 +23,10 @@ fn bench_dds_latency(c: &mut Criterion) {
     let topic_pub = Topic::<PingPong>::new(participant.entity(), "PingPong").unwrap();
     let topic_sub = Topic::<PingPong>::new(participant.entity(), "PingPong").unwrap();
 
-    let writer: DataWriter<PingPong> = DataWriter::new(publisher.entity(), topic_pub.entity()).unwrap();
-    let reader: DataReader<PingPong> = DataReader::new(subscriber.entity(), topic_sub.entity()).unwrap();
+    let writer: DataWriter<PingPong> =
+        DataWriter::new(publisher.entity(), topic_pub.entity()).unwrap();
+    let reader: DataReader<PingPong> =
+        DataReader::new(subscriber.entity(), topic_sub.entity()).unwrap();
 
     thread::sleep(Duration::from_millis(200));
 
@@ -60,9 +65,5 @@ fn bench_std_channel_latency(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_dds_latency,
-    bench_std_channel_latency,
-);
+criterion_group!(benches, bench_dds_latency, bench_std_channel_latency,);
 criterion_main!(benches);

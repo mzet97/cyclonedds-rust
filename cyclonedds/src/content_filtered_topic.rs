@@ -18,7 +18,7 @@ use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::topic::{OP_RTS, OP_KOF};
+use crate::topic::{OP_KOF, OP_RTS};
 
 // ---------------------------------------------------------------------------
 // Opaque arg wrapper: keeps the closure + TypeId at a stable heap address
@@ -107,8 +107,7 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
         let participant = unsafe { dds_get_participant(topic.entity()) };
         check_entity(participant)?;
 
-        let (handle, desc_holder) =
-            Self::create_sibling_topic(participant, topic.entity())?;
+        let (handle, desc_holder) = Self::create_sibling_topic(participant, topic.entity())?;
 
         // Build the filter arg on the heap.
         let filter_arg: Box<FilterArg<T>> = Box::new(FilterArg {
@@ -123,8 +122,7 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
             dds_filter.f.sample_arg = Some(trampoline_filter_sample_arg::<T>);
             dds_filter.arg = arg_ptr;
 
-            let ret =
-                dds_set_topic_filter_extended(handle, &dds_filter as *const dds_topic_filter);
+            let ret = dds_set_topic_filter_extended(handle, &dds_filter as *const dds_topic_filter);
             if ret < 0 {
                 dds_delete(handle);
                 return Err(DdsError::from(ret));
@@ -159,8 +157,10 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
             dds_filter.f.sample_arg = Some(trampoline_filter_sample_arg::<T>);
             dds_filter.arg = arg_ptr;
 
-            let ret =
-                dds_set_topic_filter_extended(self.entity(), &dds_filter as *const dds_topic_filter);
+            let ret = dds_set_topic_filter_extended(
+                self.entity(),
+                &dds_filter as *const dds_topic_filter,
+            );
             check(ret)?;
         }
 
@@ -175,8 +175,10 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
             let mut dds_filter: dds_topic_filter = std::mem::zeroed();
             dds_filter.mode = dds_topic_filter_mode_DDS_TOPIC_FILTER_NONE;
 
-            let ret =
-                dds_set_topic_filter_extended(self.entity(), &dds_filter as *const dds_topic_filter);
+            let ret = dds_set_topic_filter_extended(
+                self.entity(),
+                &dds_filter as *const dds_topic_filter,
+            );
             check(ret)?;
         }
 
@@ -355,8 +357,10 @@ impl<T: DdsType + 'static> TopicFilterExt<T> for Topic<T> {
             dds_filter.f.sample_arg = Some(trampoline_filter_sample_arg::<T>);
             dds_filter.arg = arg_ptr;
 
-            let ret =
-                dds_set_topic_filter_extended(self.entity(), &dds_filter as *const dds_topic_filter);
+            let ret = dds_set_topic_filter_extended(
+                self.entity(),
+                &dds_filter as *const dds_topic_filter,
+            );
             if ret < 0 {
                 // Reconstruct the Box and drop it to free memory.
                 let _ = Box::from_raw(arg_ptr as *mut FilterArg<T>);
@@ -379,16 +383,14 @@ impl<T: DdsType + 'static> TopicFilterExt<T> for Topic<T> {
         unsafe {
             let mut old_fn: dds_topic_filter_arg_fn = None;
             let mut old_arg: *mut c_void = std::ptr::null_mut();
-            let _ = dds_get_topic_filter_and_arg(
-                self.entity(),
-                &mut old_fn,
-                &mut old_arg,
-            );
+            let _ = dds_get_topic_filter_and_arg(self.entity(), &mut old_fn, &mut old_arg);
 
             let mut dds_filter: dds_topic_filter = std::mem::zeroed();
             dds_filter.mode = dds_topic_filter_mode_DDS_TOPIC_FILTER_NONE;
-            let ret =
-                dds_set_topic_filter_extended(self.entity(), &dds_filter as *const dds_topic_filter);
+            let ret = dds_set_topic_filter_extended(
+                self.entity(),
+                &dds_filter as *const dds_topic_filter,
+            );
             check(ret)?;
 
             // Free the old arg if we got one.

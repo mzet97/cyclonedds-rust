@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use cyclonedds::*;
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,11 @@ struct Message16K {
     payload: [u8; 16384],
 }
 
-fn measure_roundtrip<T: DdsType + Clone>(c: &mut Criterion, name: &str, mut make_msg: impl FnMut(i32) -> T) {
+fn measure_roundtrip<T: DdsType + Clone>(
+    c: &mut Criterion,
+    name: &str,
+    mut make_msg: impl FnMut(i32) -> T,
+) {
     let participant = DomainParticipant::new(99).unwrap();
     let publisher = participant.create_publisher().unwrap();
     let subscriber = participant.create_subscriber().unwrap();

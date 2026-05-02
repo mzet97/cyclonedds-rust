@@ -4,10 +4,10 @@ use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use cyclonedds::{
-    BuiltinEndpointSample, BuiltinParticipantSample, DdsEntity, DdsTypeDerive as DdsType,
-    DomainParticipant, DataReader, DataWriter, Publisher, QosBuilder, Reliability,
-    Subscriber, WaitSet, STATUS_DATA_AVAILABLE,     discover_type_from_type_info,
-    dynamic_data_to_cdr, cdr_to_dynamic_data, DynamicData,
+    cdr_to_dynamic_data, discover_type_from_type_info, dynamic_data_to_cdr, BuiltinEndpointSample,
+    BuiltinParticipantSample, DataReader, DataWriter, DdsEntity, DdsTypeDerive as DdsType,
+    DomainParticipant, DynamicData, Publisher, QosBuilder, Reliability, Subscriber, WaitSet,
+    STATUS_DATA_AVAILABLE,
 };
 
 // ---------------------------------------------------------------------------
@@ -37,8 +37,11 @@ enum Commands {
     },
     /// Subscribe to a topic and print received samples
     Subscribe {
-        /// Topic name to subscribe to
-        topic: String,
+        /// Topic name to subscribe to (use --topics for multiple)
+        topic: Option<String>,
+        /// Comma-separated list of topics to subscribe to
+        #[arg(long)]
+        topics: Option<String>,
         /// DDS domain ID
         #[arg(long, default_value_t = 0)]
         domain_id: u32,
@@ -51,6 +54,22 @@ enum Commands {
         /// Simple filter expression (e.g. "id > 10")
         #[arg(long)]
         filter: Option<String>,
+    },
+    /// Bridge samples from one topic to another (optionally across domains)
+    Bridge {
+        /// Source topic name
+        src_topic: String,
+        /// Destination topic name
+        dst_topic: String,
+        /// Source DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_src: u32,
+        /// Destination DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_dst: u32,
+        /// Maximum number of samples to bridge (0 = unlimited)
+        #[arg(long, default_value_t = 0)]
+        samples: usize,
     },
     /// Run a ping-pong latency performance test
     Perf {
@@ -192,7 +211,9 @@ fn now_ns() -> u64 {
 }
 
 /// Check a DDS entity handle returned from an FFI call.
-fn check_entity(handle: cyclonedds_rust_sys::dds_entity_t) -> cyclonedds::DdsResult<cyclonedds_rust_sys::dds_entity_t> {
+fn check_entity(
+    handle: cyclonedds_rust_sys::dds_entity_t,
+) -> cyclonedds::DdsResult<cyclonedds_rust_sys::dds_entity_t> {
     if handle < 0 {
         Err(cyclonedds::DdsError::from(handle))
     } else {
@@ -319,16 +340,15 @@ fn cmd_subscribe(
     };
 
     let type_name = endpoint.type_name();
-    println!("Found publication: topic='{}', type='{}'", topic_name, type_name);
+    println!(
+        "Found publication: topic='{}', type='{}'",
+        topic_name, type_name
+    );
 
     // Discover the full type (schema + topic descriptor)
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
     let schema = discovered.type_schema;
     let topic_descriptor = &discovered.topic_descriptor;
 
@@ -435,7 +455,11 @@ fn cmd_subscribe(
                     }
                     if output_json {
                         let json_val = dynamic_value_to_json(data.value());
-                        println!("{}", serde_json::to_string_pretty(&json_val).unwrap_or_else(|_| format!("{:?}", data)));
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&json_val)
+                                .unwrap_or_else(|_| format!("{:?}", data))
+                        );
                     } else {
                         println!("[{}] {:?}", received, data);
                     }
@@ -450,6 +474,395 @@ fn cmd_subscribe(
     // Clean up reader entity
     unsafe {
         cyclonedds_rust_sys::dds_delete(reader_entity);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// subscribe-multi command
+// ---------------------------------------------------------------------------
+
+struct DiscoveredReader {
+    topic_name: String,
+    reader_entity: cyclonedds_rust_sys::dds_entity_t,
+    schema: cyclonedds::DynamicTypeSchema,
+    topic_descriptor: cyclonedds::TopicDescriptor,
+}
+
+fn cmd_subscribe_multi(
+    topics_str: &str,
+    domain_id: u32,
+    max_samples: usize,
+    output_json: bool,
+    filter: Option<&str>,
+) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let subscriber = Subscriber::new(participant.entity())?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+
+    let topic_names: Vec<&str> = topics_str.split(',').map(|s| s.trim()).collect();
+    println!(
+        "Subscribing to {} topics: {:?}",
+        topic_names.len(),
+        topic_names
+    );
+
+    let mut discovered_readers: Vec<DiscoveredReader> = Vec::new();
+
+    for topic_name in &topic_names {
+        let mut endpoint_opt: Option<BuiltinEndpointSample> = None;
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == *topic_name {
+                    endpoint_opt = Some(ep.clone());
+                    break;
+                }
+            }
+            if endpoint_opt.is_some() {
+                break;
+            }
+        }
+        let Some(endpoint) = endpoint_opt else {
+            println!("  WARN: No publication found for topic '{}'.", topic_name);
+            continue;
+        };
+
+        let type_name = endpoint.type_name();
+        let type_info = endpoint.type_info()?;
+        let discovered = discover_type_from_type_info(
+            participant.entity(),
+            &type_info,
+            &type_name,
+            5_000_000_000,
+        )?;
+        let schema = discovered.type_schema;
+        let topic_descriptor = discovered.topic_descriptor;
+
+        let topic = topic_descriptor.create_topic(participant.entity(), topic_name)?;
+        let qos = QosBuilder::new()
+            .reliability(Reliability::Reliable, 10_000_000_000)
+            .build()?;
+
+        let reader_entity = unsafe {
+            check_entity(cyclonedds_rust_sys::dds_create_reader(
+                subscriber.entity(),
+                topic.entity(),
+                qos.as_ptr(),
+                std::ptr::null_mut(),
+            ))?
+        };
+
+        discovered_readers.push(DiscoveredReader {
+            topic_name: topic_name.to_string(),
+            reader_entity,
+            schema,
+            topic_descriptor,
+        });
+    }
+
+    if discovered_readers.is_empty() {
+        println!("No topics could be discovered. Exiting.");
+        return Ok(());
+    }
+
+    let waitset = WaitSet::new(participant.entity())?;
+    for (i, dr) in discovered_readers.iter().enumerate() {
+        unsafe {
+            cyclonedds_rust_sys::dds_set_status_mask(dr.reader_entity, STATUS_DATA_AVAILABLE);
+        }
+        waitset.attach(dr.reader_entity, (i + 1) as i64)?;
+    }
+
+    println!(
+        "Subscribed to {} topic(s). Waiting for samples... (Ctrl+C to stop)",
+        discovered_readers.len()
+    );
+    let mut received = 0usize;
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    let _ = ctrlc::set_handler(move || {
+        r.store(false, Ordering::Relaxed);
+    });
+
+    while running.load(Ordering::Relaxed) {
+        if max_samples > 0 && received >= max_samples {
+            break;
+        }
+
+        if waitset.wait(1_000_000_000).is_err() {
+            continue;
+        }
+
+        for dr in &discovered_readers {
+            let max_buf: usize = 64;
+            let mut sdbuf: Vec<*mut cyclonedds_rust_sys::ddsi_serdata> =
+                vec![std::ptr::null_mut(); max_buf];
+            let mut infos: Vec<cyclonedds_rust_sys::dds_sample_info_t> =
+                vec![unsafe { std::mem::zeroed() }; max_buf];
+
+            let n = unsafe {
+                cyclonedds_rust_sys::dds_takecdr(
+                    dr.reader_entity,
+                    sdbuf.as_mut_ptr(),
+                    max_buf as u32,
+                    infos.as_mut_ptr() as *mut cyclonedds_rust_sys::dds_sample_info_t,
+                    0,
+                )
+            };
+
+            if n <= 0 {
+                continue;
+            }
+            let n = n as usize;
+
+            for i in 0..n {
+                let sd = sdbuf[i];
+                if sd.is_null() || !infos[i].valid_data {
+                    if !sd.is_null() {
+                        unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+                    }
+                    continue;
+                }
+
+                let size = unsafe { cyclonedds_rust_sys::ddsi_serdata_size(sd) } as usize;
+                let mut cdr_bytes = vec![0u8; size];
+                unsafe {
+                    cyclonedds_rust_sys::ddsi_serdata_to_ser(
+                        sd,
+                        0,
+                        size,
+                        cdr_bytes.as_mut_ptr() as *mut std::ffi::c_void,
+                    );
+                }
+                unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+
+                received += 1;
+                match cdr_to_dynamic_data(&cdr_bytes, &dr.schema, &dr.topic_descriptor) {
+                    Ok(data) => {
+                        if let Some(fexpr) = filter {
+                            if !eval_filter(data.value(), fexpr) {
+                                continue;
+                            }
+                        }
+                        if output_json {
+                            let json_val = dynamic_value_to_json(data.value());
+                            println!(
+                                "[{}] {}",
+                                dr.topic_name,
+                                serde_json::to_string_pretty(&json_val)
+                                    .unwrap_or_else(|_| format!("{:?}", data))
+                            );
+                        } else {
+                            println!("[{}] [{:?}] {:?}", dr.topic_name, received, data);
+                        }
+                    }
+                    Err(e) => println!(
+                        "[{}] [{:?}] <decode error: {:?}>",
+                        dr.topic_name, received, e
+                    ),
+                }
+            }
+        }
+    }
+
+    println!("Received {} samples total.", received);
+
+    for dr in discovered_readers {
+        unsafe {
+            cyclonedds_rust_sys::dds_delete(dr.reader_entity);
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// bridge command
+// ---------------------------------------------------------------------------
+
+fn cmd_bridge(
+    src_topic: &str,
+    dst_topic: &str,
+    domain_src: u32,
+    domain_dst: u32,
+    max_samples: usize,
+) -> cyclonedds::DdsResult<()> {
+    let participant_src = DomainParticipant::new(domain_src)?;
+    let subscriber = Subscriber::new(participant_src.entity())?;
+    let pub_reader = participant_src.create_builtin_publication_reader()?;
+
+    println!(
+        "Bridging '{}' (domain {}) -> '{}' (domain {})...",
+        src_topic, domain_src, dst_topic, domain_dst
+    );
+
+    let endpoint = 'search: {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == src_topic {
+                    break 'search ep.clone();
+                }
+            }
+        }
+        println!(
+            "No publication found for source topic '{}' within timeout.",
+            src_topic
+        );
+        return Ok(());
+    };
+
+    let type_name = endpoint.type_name();
+    let type_info = endpoint.type_info()?;
+    let discovered = discover_type_from_type_info(
+        participant_src.entity(),
+        &type_info,
+        &type_name,
+        5_000_000_000,
+    )?;
+
+    let topic_src = discovered.create_topic(participant_src.entity(), src_topic)?;
+    let qos = QosBuilder::new()
+        .reliability(Reliability::Reliable, 10_000_000_000)
+        .build()?;
+
+    let reader_entity = unsafe {
+        check_entity(cyclonedds_rust_sys::dds_create_reader(
+            subscriber.entity(),
+            topic_src.entity(),
+            qos.as_ptr(),
+            std::ptr::null_mut(),
+        ))?
+    };
+
+    let waitset = WaitSet::new(participant_src.entity())?;
+    unsafe {
+        cyclonedds_rust_sys::dds_set_status_mask(reader_entity, STATUS_DATA_AVAILABLE);
+    }
+    waitset.attach(reader_entity, 1)?;
+
+    let (_participant_dst, _publisher, writer_entity) = if domain_src == domain_dst {
+        let publisher = Publisher::new(participant_src.entity())?;
+        let topic_dst = discovered.create_topic(participant_src.entity(), dst_topic)?;
+        let writer = unsafe {
+            check_entity(cyclonedds_rust_sys::dds_create_writer(
+                publisher.entity(),
+                topic_dst.entity(),
+                qos.as_ptr(),
+                std::ptr::null_mut(),
+            ))?
+        };
+        (participant_src, publisher, writer)
+    } else {
+        let pd = DomainParticipant::new(domain_dst)?;
+        let publisher = Publisher::new(pd.entity())?;
+        let topic_dst = discovered.create_topic(pd.entity(), dst_topic)?;
+        let writer = unsafe {
+            check_entity(cyclonedds_rust_sys::dds_create_writer(
+                publisher.entity(),
+                topic_dst.entity(),
+                qos.as_ptr(),
+                std::ptr::null_mut(),
+            ))?
+        };
+        (pd, publisher, writer)
+    };
+
+    println!("Bridge active. Press Ctrl+C to stop.");
+    let mut bridged = 0usize;
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    let _ = ctrlc::set_handler(move || {
+        r.store(false, Ordering::Relaxed);
+    });
+
+    let max_buf: usize = 64;
+    let mut sdbuf: Vec<*mut cyclonedds_rust_sys::ddsi_serdata> =
+        vec![std::ptr::null_mut(); max_buf];
+    let mut infos: Vec<cyclonedds_rust_sys::dds_sample_info_t> =
+        vec![unsafe { std::mem::zeroed() }; max_buf];
+
+    while running.load(Ordering::Relaxed) {
+        if max_samples > 0 && bridged >= max_samples {
+            break;
+        }
+
+        if waitset.wait(1_000_000_000).is_err() {
+            continue;
+        }
+
+        let n = unsafe {
+            cyclonedds_rust_sys::dds_takecdr(
+                reader_entity,
+                sdbuf.as_mut_ptr(),
+                max_buf as u32,
+                infos.as_mut_ptr() as *mut cyclonedds_rust_sys::dds_sample_info_t,
+                0,
+            )
+        };
+
+        if n <= 0 {
+            continue;
+        }
+        let n = n as usize;
+
+        for i in 0..n {
+            let sd = sdbuf[i];
+            if sd.is_null() || !infos[i].valid_data {
+                if !sd.is_null() {
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+                }
+                continue;
+            }
+
+            let size = unsafe { cyclonedds_rust_sys::ddsi_serdata_size(sd) } as usize;
+            let mut cdr_bytes = vec![0u8; size];
+            unsafe {
+                cyclonedds_rust_sys::ddsi_serdata_to_ser(
+                    sd,
+                    0,
+                    size,
+                    cdr_bytes.as_mut_ptr() as *mut std::ffi::c_void,
+                );
+            }
+            unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sd) };
+
+            // Re-serialize the CDR bytes into a new serdata for the destination writer
+            // We need to create a DynamicData from CDR, then serialize back to CDR for the destination
+            match cdr_to_dynamic_data(
+                &cdr_bytes,
+                &discovered.type_schema,
+                &discovered.topic_descriptor,
+            ) {
+                Ok(data) => match dynamic_data_to_cdr(&data, &discovered.topic_descriptor) {
+                    Ok(cdr_out) => {
+                        unsafe {
+                            let _ = cyclonedds_rust_sys::dds_write(
+                                writer_entity,
+                                cdr_out.as_ptr() as *const std::ffi::c_void,
+                            );
+                        }
+                        bridged += 1;
+                        println!("[bridge {}] {} -> {}", bridged, src_topic, dst_topic);
+                    }
+                    Err(e) => println!("[bridge] serialize error: {:?}", e),
+                },
+                Err(e) => println!("[bridge] deserialize error: {:?}", e),
+            }
+        }
+    }
+
+    println!("Bridged {} samples.", bridged);
+
+    unsafe {
+        cyclonedds_rust_sys::dds_delete(reader_entity);
+        cyclonedds_rust_sys::dds_delete(writer_entity);
     }
 
     Ok(())
@@ -487,9 +900,7 @@ fn cmd_perf(domain_id: u32, num_samples: usize) -> cyclonedds::DdsResult<()> {
 
     // Wait for matching
     println!("Waiting for matching participant...");
-    println!(
-        "Run another instance with the same domain ID to perform the ping-pong test."
-    );
+    println!("Run another instance with the same domain ID to perform the ping-pong test.");
     println!();
 
     // Enable data available status
@@ -635,13 +1046,23 @@ fn format_type_schema(schema: &cyclonedds::DynamicTypeSchema) -> String {
         },
         DynamicTypeSchema::String { bound: None } => "string".into(),
         DynamicTypeSchema::String { bound: Some(b) } => format!("string<{}>", b),
-        DynamicTypeSchema::Sequence { element, bound: None, .. } => {
+        DynamicTypeSchema::Sequence {
+            element,
+            bound: None,
+            ..
+        } => {
             format!("sequence<{}>", format_type_schema(element))
         }
-        DynamicTypeSchema::Sequence { element, bound: Some(b), .. } => {
+        DynamicTypeSchema::Sequence {
+            element,
+            bound: Some(b),
+            ..
+        } => {
             format!("sequence<{}, {}>", format_type_schema(element), b)
         }
-        DynamicTypeSchema::Array { element, bounds, .. } => {
+        DynamicTypeSchema::Array {
+            element, bounds, ..
+        } => {
             let dims: Vec<String> = bounds.iter().map(|b| b.to_string()).collect();
             format!("{}[{}]", format_type_schema(element), dims.join("]["))
         }
@@ -649,11 +1070,30 @@ fn format_type_schema(schema: &cyclonedds::DynamicTypeSchema) -> String {
         DynamicTypeSchema::Enum { name, .. } => name.clone(),
         DynamicTypeSchema::Union { name, .. } => name.clone(),
         DynamicTypeSchema::Bitmask { name, .. } => name.clone(),
-        DynamicTypeSchema::Map { key, value, bound: None, .. } => {
-            format!("map<{}, {}>", format_type_schema(key), format_type_schema(value))
+        DynamicTypeSchema::Map {
+            key,
+            value,
+            bound: None,
+            ..
+        } => {
+            format!(
+                "map<{}, {}>",
+                format_type_schema(key),
+                format_type_schema(value)
+            )
         }
-        DynamicTypeSchema::Map { key, value, bound: Some(b), .. } => {
-            format!("map<{}, {}, {}>", format_type_schema(key), format_type_schema(value), b)
+        DynamicTypeSchema::Map {
+            key,
+            value,
+            bound: Some(b),
+            ..
+        } => {
+            format!(
+                "map<{}, {}, {}>",
+                format_type_schema(key),
+                format_type_schema(value),
+                b
+            )
         }
         DynamicTypeSchema::Alias { target, .. } => format_type_schema(target),
     }
@@ -664,7 +1104,13 @@ fn print_type_schema(schema: &cyclonedds::DynamicTypeSchema, indent: usize) {
     let prefix = "  ".repeat(indent);
 
     match schema {
-        DynamicTypeSchema::Struct { name, fields, extensibility, autoid, .. } => {
+        DynamicTypeSchema::Struct {
+            name,
+            fields,
+            extensibility,
+            autoid,
+            ..
+        } => {
             let ext = match extensibility {
                 Some(DynamicTypeExtensibility::Final) => " @final",
                 Some(DynamicTypeExtensibility::Appendable) => " @appendable",
@@ -676,7 +1122,13 @@ fn print_type_schema(schema: &cyclonedds::DynamicTypeSchema, indent: usize) {
                 Some(cyclonedds::DynamicTypeAutoId::Hash) => " @autoid(Hash)",
                 None => "",
             };
-            println!("{}{}struct {}{} {{", prefix, prefix, name, format!("{}{}", ext, autoid_str));
+            println!(
+                "{}{}struct {}{} {{",
+                prefix,
+                prefix,
+                name,
+                format!("{}{}", ext, autoid_str)
+            );
             for field in fields {
                 let mut attrs = Vec::new();
                 if field.key {
@@ -709,7 +1161,12 @@ fn print_type_schema(schema: &cyclonedds::DynamicTypeSchema, indent: usize) {
             }
             println!("{}}};", prefix);
         }
-        DynamicTypeSchema::Union { name, discriminator, cases, .. } => {
+        DynamicTypeSchema::Union {
+            name,
+            discriminator,
+            cases,
+            ..
+        } => {
             let disc = format_type_schema(discriminator);
             println!("{}union {} switch ({}) {{", prefix, name, disc);
             for case in cases {
@@ -764,21 +1221,26 @@ fn cmd_typeof(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
     };
 
     let type_name = endpoint.type_name();
-    println!("Found publication: topic='{}', type='{}'", topic_name, type_name);
+    println!(
+        "Found publication: topic='{}', type='{}'",
+        topic_name, type_name
+    );
 
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
 
     println!("\n=== Type Information ===");
     println!("Type name: {}", discovered.type_name);
     println!("Type info present: {}", type_info.is_present());
-    println!("Topic descriptor size: {} bytes", discovered.topic_descriptor.size());
-    println!("Topic descriptor align: {} bytes", discovered.topic_descriptor.align());
+    println!(
+        "Topic descriptor size: {} bytes",
+        discovered.topic_descriptor.size()
+    );
+    println!(
+        "Topic descriptor align: {} bytes",
+        discovered.topic_descriptor.align()
+    );
 
     println!("\n=== IDL-like Representation ===");
     print_type_schema(&discovered.type_schema, 0);
@@ -818,12 +1280,8 @@ fn cmd_discover(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
     println!("Type: {}", type_name);
 
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
 
     println!("Type schema discovered successfully.");
     println!("  Size: {} bytes", discovered.topic_descriptor.size());
@@ -841,9 +1299,7 @@ fn json_to_dynamic_value(
     json: &serde_json::Value,
     schema: &cyclonedds::DynamicTypeSchema,
 ) -> cyclonedds::DdsResult<cyclonedds::DynamicValue> {
-    use cyclonedds::{
-        DynamicPrimitiveKind, DynamicTypeSchema, DynamicValue,
-    };
+    use cyclonedds::{DynamicPrimitiveKind, DynamicTypeSchema, DynamicValue};
 
     match schema {
         DynamicTypeSchema::Primitive(kind) => match kind {
@@ -917,7 +1373,10 @@ fn json_to_dynamic_value(
             let mut map = std::collections::BTreeMap::new();
             for field in fields {
                 if let Some(val) = obj.get(&field.name) {
-                    map.insert(field.name.clone(), json_to_dynamic_value(val, &field.value)?);
+                    map.insert(
+                        field.name.clone(),
+                        json_to_dynamic_value(val, &field.value)?,
+                    );
                 } else if !field.optional {
                     return Err(cyclonedds::DdsError::BadParameter(format!(
                         "missing required field '{}'",
@@ -937,10 +1396,12 @@ fn json_to_dynamic_value(
                 .collect();
             Ok(DynamicValue::Sequence(items?))
         }
-        DynamicTypeSchema::Array { element, bounds, .. } => {
-            let arr = json.as_array().ok_or_else(|| {
-                cyclonedds::DdsError::BadParameter("expected array".into())
-            })?;
+        DynamicTypeSchema::Array {
+            element, bounds, ..
+        } => {
+            let arr = json
+                .as_array()
+                .ok_or_else(|| cyclonedds::DdsError::BadParameter("expected array".into()))?;
             let expected_len: usize = bounds.iter().map(|b| *b as usize).product();
             if arr.len() != expected_len {
                 return Err(cyclonedds::DdsError::BadParameter(format!(
@@ -987,10 +1448,16 @@ fn dynamic_value_to_json(value: &cyclonedds::DynamicValue) -> serde_json::Value 
         DynamicValue::UInt32(v) => serde_json::Value::Number((*v).into()),
         DynamicValue::Int64(v) => serde_json::Value::Number((*v).into()),
         DynamicValue::UInt64(v) => serde_json::Value::Number((*v).into()),
-        DynamicValue::Float32(v) => serde_json::Value::Number(serde_json::Number::from_f64(*v as f64).unwrap_or(0.into())),
-        DynamicValue::Float64(v) => serde_json::Value::Number(serde_json::Number::from_f64(*v).unwrap_or(0.into())),
+        DynamicValue::Float32(v) => {
+            serde_json::Value::Number(serde_json::Number::from_f64(*v as f64).unwrap_or(0.into()))
+        }
+        DynamicValue::Float64(v) => {
+            serde_json::Value::Number(serde_json::Number::from_f64(*v).unwrap_or(0.into()))
+        }
         DynamicValue::Char8(v) => serde_json::Value::String((*v as char).to_string()),
-        DynamicValue::Char16(v) => serde_json::Value::String(std::char::from_u32(*v as u32).unwrap_or('?').to_string()),
+        DynamicValue::Char16(v) => {
+            serde_json::Value::String(std::char::from_u32(*v as u32).unwrap_or('?').to_string())
+        }
         DynamicValue::String(s) => serde_json::Value::String(s.clone()),
         DynamicValue::Sequence(items) | DynamicValue::Array(items) => {
             serde_json::Value::Array(items.iter().map(dynamic_value_to_json).collect())
@@ -1004,21 +1471,36 @@ fn dynamic_value_to_json(value: &cyclonedds::DynamicValue) -> serde_json::Value 
         }
         DynamicValue::Enum { value } => serde_json::Value::Number((*value).into()),
         DynamicValue::Bitmask(v) => serde_json::Value::Number((*v).into()),
-        DynamicValue::Union { discriminator, field, value } => {
+        DynamicValue::Union {
+            discriminator,
+            field,
+            value,
+        } => {
             let mut map = serde_json::Map::new();
-            map.insert("discriminator".to_string(), serde_json::Value::Number((*discriminator).into()));
-            map.insert("field".to_string(), serde_json::Value::String(field.clone()));
+            map.insert(
+                "discriminator".to_string(),
+                serde_json::Value::Number((*discriminator).into()),
+            );
+            map.insert(
+                "field".to_string(),
+                serde_json::Value::String(field.clone()),
+            );
             map.insert("value".to_string(), dynamic_value_to_json(value));
             serde_json::Value::Object(map)
         }
         DynamicValue::Map(entries) => {
             // Represent as array of {key, value} objects since JSON keys are strings
-            serde_json::Value::Array(entries.iter().map(|(k, v)| {
-                let mut obj = serde_json::Map::new();
-                obj.insert("key".to_string(), dynamic_value_to_json(k));
-                obj.insert("value".to_string(), dynamic_value_to_json(v));
-                serde_json::Value::Object(obj)
-            }).collect())
+            serde_json::Value::Array(
+                entries
+                    .iter()
+                    .map(|(k, v)| {
+                        let mut obj = serde_json::Map::new();
+                        obj.insert("key".to_string(), dynamic_value_to_json(k));
+                        obj.insert("value".to_string(), dynamic_value_to_json(v));
+                        serde_json::Value::Object(obj)
+                    })
+                    .collect(),
+            )
         }
         DynamicValue::Null => serde_json::Value::Null,
     }
@@ -1115,15 +1597,14 @@ fn cmd_publish(
     };
 
     let type_name = endpoint.type_name();
-    println!("Found publication: topic='{}', type='{}'", topic_name, type_name);
+    println!(
+        "Found publication: topic='{}', type='{}'",
+        topic_name, type_name
+    );
 
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
 
     let topic = discovered.create_topic(participant.entity(), topic_name)?;
     let qos = QosBuilder::new()
@@ -1140,16 +1621,22 @@ fn cmd_publish(
     };
 
     if let Some(json_str) = json {
-        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
-            cyclonedds::DdsError::BadParameter(format!("invalid JSON: {}", e))
-        })?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str)
+            .map_err(|e| cyclonedds::DdsError::BadParameter(format!("invalid JSON: {}", e)))?;
         let dyn_value = json_to_dynamic_value(&json_value, &discovered.type_schema)?;
         let data = DynamicData::from_value(&discovered.type_schema, dyn_value)?;
         let cdr = dynamic_data_to_cdr(&data, &discovered.topic_descriptor)?;
 
         let unlimited = count == 0;
-        let prefix = if unlimited { String::new() } else { format!("{} ", count) };
-        println!("Publishing {}JSON message(s) to '{}'...", prefix, topic_name);
+        let prefix = if unlimited {
+            String::new()
+        } else {
+            format!("{} ", count)
+        };
+        println!(
+            "Publishing {}JSON message(s) to '{}'...",
+            prefix, topic_name
+        );
         let mut i = 0;
         while unlimited || i < count {
             unsafe {
@@ -1167,8 +1654,15 @@ fn cmd_publish(
     } else {
         let payload = message.unwrap_or_else(|| "Hello from cyclonedds-cli".to_string());
         let unlimited = count == 0;
-        let prefix = if unlimited { String::new() } else { format!("{} ", count) };
-        println!("Publishing {}string message(s) to '{}'...", prefix, topic_name);
+        let prefix = if unlimited {
+            String::new()
+        } else {
+            format!("{} ", count)
+        };
+        println!(
+            "Publishing {}string message(s) to '{}'...",
+            prefix, topic_name
+        );
         let mut i = 0;
         while unlimited || i < count {
             let msg = format!("{} [{}]", payload, i);
@@ -1198,11 +1692,7 @@ fn cmd_publish(
 // echo command
 // ---------------------------------------------------------------------------
 
-fn cmd_echo(
-    topic_name: &str,
-    domain_id: u32,
-    max_samples: usize,
-) -> cyclonedds::DdsResult<()> {
+fn cmd_echo(topic_name: &str, domain_id: u32, max_samples: usize) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
     let publisher = Publisher::new(participant.entity())?;
     let subscriber = Subscriber::new(participant.entity())?;
@@ -1220,18 +1710,17 @@ fn cmd_echo(
                 }
             }
         }
-        println!("No publication found for topic '{}' within timeout.", topic_name);
+        println!(
+            "No publication found for topic '{}' within timeout.",
+            topic_name
+        );
         return Ok(());
     };
 
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
 
     let topic = discovered.create_topic(participant.entity(), topic_name)?;
     let qos = QosBuilder::new()
@@ -1259,7 +1748,10 @@ fn cmd_echo(
     let schema = &discovered.type_schema;
     let topic_descriptor = &discovered.topic_descriptor;
 
-    println!("Echoing samples on '{}'... Press Ctrl+C to stop.", topic_name);
+    println!(
+        "Echoing samples on '{}'... Press Ctrl+C to stop.",
+        topic_name
+    );
 
     let mut received = 0;
     let max_buf: usize = 64;
@@ -1351,7 +1843,10 @@ fn cmd_record(
     let subscriber = Subscriber::new(participant.entity())?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
-    println!("Recording from topic '{}' to '{}'...", topic_name, output_path);
+    println!(
+        "Recording from topic '{}' to '{}'...",
+        topic_name, output_path
+    );
 
     let endpoint = 'search: {
         for _ in 0..20 {
@@ -1363,18 +1858,17 @@ fn cmd_record(
                 }
             }
         }
-        println!("No publication found for topic '{}' within timeout.", topic_name);
+        println!(
+            "No publication found for topic '{}' within timeout.",
+            topic_name
+        );
         return Ok(());
     };
 
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
 
     let topic = discovered.create_topic(participant.entity(), topic_name)?;
     let qos = QosBuilder::new()
@@ -1451,14 +1945,16 @@ fn cmd_record(
                 Ok(data) => {
                     received += 1;
                     let json_val = dynamic_value_to_json(data.value());
-                    let json_str = serde_json::to_string(&json_val)
-                        .unwrap_or_else(|_| format!("{:?}", data));
+                    let json_str =
+                        serde_json::to_string(&json_val).unwrap_or_else(|_| format!("{:?}", data));
                     if received > 1 {
-                        writeln!(file, ",")
-                            .map_err(|e| cyclonedds::DdsError::BadParameter(format!("write error: {}", e)))?;
+                        writeln!(file, ",").map_err(|e| {
+                            cyclonedds::DdsError::BadParameter(format!("write error: {}", e))
+                        })?;
                     }
-                    write!(file, "{}", json_str)
-                        .map_err(|e| cyclonedds::DdsError::BadParameter(format!("write error: {}", e)))?;
+                    write!(file, "{}", json_str).map_err(|e| {
+                        cyclonedds::DdsError::BadParameter(format!("write error: {}", e))
+                    })?;
                     println!("Recorded sample {}", received);
                 }
                 Err(e) => println!("<decode error: {:?}>", e),
@@ -1491,7 +1987,10 @@ fn cmd_replay(
     let publisher = Publisher::new(participant.entity())?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
-    println!("Replaying from '{}' to topic '{}'...", input_path, topic_name);
+    println!(
+        "Replaying from '{}' to topic '{}'...",
+        input_path, topic_name
+    );
 
     let endpoint = 'search: {
         for _ in 0..20 {
@@ -1503,18 +2002,17 @@ fn cmd_replay(
                 }
             }
         }
-        println!("No publication found for topic '{}' within timeout.", topic_name);
+        println!(
+            "No publication found for topic '{}' within timeout.",
+            topic_name
+        );
         return Ok(());
     };
 
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
 
     let topic = discovered.create_topic(participant.entity(), topic_name)?;
     let qos = QosBuilder::new()
@@ -1565,11 +2063,7 @@ fn cmd_replay(
 // monitor command
 // ---------------------------------------------------------------------------
 
-fn cmd_monitor(
-    topic_name: &str,
-    domain_id: u32,
-    interval_secs: u64,
-) -> cyclonedds::DdsResult<()> {
+fn cmd_monitor(topic_name: &str, domain_id: u32, interval_secs: u64) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
     let subscriber = Subscriber::new(participant.entity())?;
     let pub_reader = participant.create_builtin_publication_reader()?;
@@ -1586,18 +2080,17 @@ fn cmd_monitor(
                 }
             }
         }
-        println!("No publication found for topic '{}' within timeout.", topic_name);
+        println!(
+            "No publication found for topic '{}' within timeout.",
+            topic_name
+        );
         return Ok(());
     };
 
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
 
     let topic = discovered.create_topic(participant.entity(), topic_name)?;
     let qos = QosBuilder::new()
@@ -1665,17 +2158,16 @@ fn cmd_monitor(
 // health command
 // ---------------------------------------------------------------------------
 
-fn cmd_health(
-    topics_str: &str,
-    domain_id: u32,
-    timeout_secs: u64,
-) -> cyclonedds::DdsResult<()> {
+fn cmd_health(topics_str: &str, domain_id: u32, timeout_secs: u64) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
     let sub_reader = participant.create_builtin_subscription_reader()?;
 
     let topics: Vec<&str> = topics_str.split(',').map(|s| s.trim()).collect();
-    println!("Health check for topics: {:?} (timeout: {}s)", topics, timeout_secs);
+    println!(
+        "Health check for topics: {:?} (timeout: {}s)",
+        topics, timeout_secs
+    );
 
     let mut healthy = true;
 
@@ -1733,10 +2225,7 @@ fn cmd_health(
 // topology command
 // ---------------------------------------------------------------------------
 
-fn cmd_topology(
-    domain_id: u32,
-    output_path: Option<&str>,
-) -> cyclonedds::DdsResult<()> {
+fn cmd_topology(domain_id: u32, output_path: Option<&str>) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
     let sub_reader = participant.create_builtin_subscription_reader()?;
@@ -1791,7 +2280,9 @@ fn cmd_topology(
         ));
         dot.push_str(&format!(
             "  \"topic_{}\" -> \"pub_{}_{:?}\" [dir=back, label=\"publishes\"];\n",
-            safe_topic, safe_topic, p.key()
+            safe_topic,
+            safe_topic,
+            p.key()
         ));
     }
     dot.push('\n');
@@ -1805,7 +2296,9 @@ fn cmd_topology(
         ));
         dot.push_str(&format!(
             "  \"sub_{}_{:?}\" -> \"topic_{}\" [label=\"subscribes\"];\n",
-            safe_topic, s.key(), safe_topic
+            safe_topic,
+            s.key(),
+            safe_topic
         ));
     }
 
@@ -1834,11 +2327,21 @@ fn main() {
         Commands::Ps { domain_id } => cmd_ps(domain_id),
         Commands::Subscribe {
             topic,
+            topics,
             domain_id,
             samples,
             json,
             filter,
-        } => cmd_subscribe(&topic, domain_id, samples, json, filter.as_deref()),
+        } => {
+            if let Some(topics_str) = topics {
+                cmd_subscribe_multi(&topics_str, domain_id, samples, json, filter.as_deref())
+            } else if let Some(t) = topic {
+                cmd_subscribe(&t, domain_id, samples, json, filter.as_deref())
+            } else {
+                eprintln!("Error: either <TOPIC> or --topics must be provided");
+                std::process::exit(1);
+            }
+        }
         Commands::Perf { domain_id, samples } => cmd_perf(domain_id, samples),
         Commands::Typeof { topic, domain_id } => cmd_typeof(&topic, domain_id),
         Commands::Publish {
@@ -1879,6 +2382,13 @@ fn main() {
             timeout,
         } => cmd_health(&topics, domain_id, timeout),
         Commands::Topology { domain_id, output } => cmd_topology(domain_id, output.as_deref()),
+        Commands::Bridge {
+            src_topic,
+            dst_topic,
+            domain_src,
+            domain_dst,
+            samples,
+        } => cmd_bridge(&src_topic, &dst_topic, domain_src, domain_dst, samples),
     };
 
     if let Err(e) = result {

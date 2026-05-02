@@ -17,7 +17,9 @@
 //! Terminal 2:
 //!   cargo run --example shm_pub
 
-use cyclonedds::{DomainParticipant, Publisher, QosBuilder, Topic, DataWriter, DdsEntity, DdsTypeDerive};
+use cyclonedds::{
+    DataWriter, DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, QosBuilder, Topic,
+};
 
 #[derive(DdsTypeDerive, Clone, Debug)]
 struct LargeMessage {
@@ -29,9 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let publisher = Publisher::new(participant.entity())?;
 
-    let qos = QosBuilder::new()
-        .enable_iceoryx()
-        .build()?;
+    let qos = QosBuilder::new().enable_iceoryx().build()?;
 
     let topic = Topic::<LargeMessage>::new(participant.entity(), "LargeData")?;
     let writer = DataWriter::with_qos(publisher.entity(), topic.entity(), Some(&qos))?;

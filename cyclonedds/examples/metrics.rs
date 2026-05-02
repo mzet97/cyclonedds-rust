@@ -6,7 +6,7 @@
 //! Run with:
 //!   cargo run --example metrics
 
-use cyclonedds::{DomainParticipant, Publisher, Topic, DataWriter, DdsEntity, DdsTypeDerive};
+use cyclonedds::{DataWriter, DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Topic};
 
 #[derive(DdsTypeDerive, Clone, Debug)]
 struct HelloWorld {

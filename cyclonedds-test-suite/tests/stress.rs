@@ -3,8 +3,8 @@
 //! Run with:
 //!   cargo test --test stress -- --nocapture
 
-use cyclonedds::*;
 use cyclonedds::DdsTypeDerive;
+use cyclonedds::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -29,8 +29,10 @@ fn stress_test_million_messages() {
     let topic_pub = Topic::<StressMessage>::new(participant.entity(), "Stress").unwrap();
     let topic_sub = Topic::<StressMessage>::new(participant.entity(), "Stress").unwrap();
 
-    let writer: DataWriter<StressMessage> = DataWriter::new(publisher.entity(), topic_pub.entity()).unwrap();
-    let reader: DataReader<StressMessage> = DataReader::new(subscriber.entity(), topic_sub.entity()).unwrap();
+    let writer: DataWriter<StressMessage> =
+        DataWriter::new(publisher.entity(), topic_pub.entity()).unwrap();
+    let reader: DataReader<StressMessage> =
+        DataReader::new(subscriber.entity(), topic_sub.entity()).unwrap();
 
     // Wait for matching
     thread::sleep(Duration::from_millis(500));

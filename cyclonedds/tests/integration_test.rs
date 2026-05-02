@@ -428,17 +428,34 @@ fn test_guardcondition() {
 
     // Test read/take
     let read_result = guard.read();
-    assert!(read_result.is_ok(), "Failed to read GuardCondition: {:?}", read_result.err());
-    assert!(read_result.unwrap(), "GuardCondition should be triggered after read");
+    assert!(
+        read_result.is_ok(),
+        "Failed to read GuardCondition: {:?}",
+        read_result.err()
+    );
+    assert!(
+        read_result.unwrap(),
+        "GuardCondition should be triggered after read"
+    );
 
     let take_result = guard.take();
-    assert!(take_result.is_ok(), "Failed to take GuardCondition: {:?}", take_result.err());
-    assert!(take_result.unwrap(), "GuardCondition should be triggered after take");
+    assert!(
+        take_result.is_ok(),
+        "Failed to take GuardCondition: {:?}",
+        take_result.err()
+    );
+    assert!(
+        take_result.unwrap(),
+        "GuardCondition should be triggered after take"
+    );
 
     // After take, it should be reset
     let read_after_take = guard.read();
     assert!(read_after_take.is_ok());
-    assert!(!read_after_take.unwrap(), "GuardCondition should be reset after take");
+    assert!(
+        !read_after_take.unwrap(),
+        "GuardCondition should be reset after take"
+    );
 }
 
 // ── End-to-end pub/sub test ──
@@ -1322,14 +1339,28 @@ fn test_type_info_and_matched_endpoint_discovery() {
     let sub_handles = writer.matched_subscriptions().unwrap();
     assert!(!sub_handles.is_empty());
     let sub_data = writer.get_matched_subscription_data(sub_handles[0]);
-    assert!(sub_data.is_ok(), "get_matched_subscription_data failed: {:?}", sub_data.err());
-    assert!(sub_data.unwrap().topic_name().contains("test_type_info_and_matched_endpoint_discovery"));
+    assert!(
+        sub_data.is_ok(),
+        "get_matched_subscription_data failed: {:?}",
+        sub_data.err()
+    );
+    assert!(sub_data
+        .unwrap()
+        .topic_name()
+        .contains("test_type_info_and_matched_endpoint_discovery"));
 
     let pub_handles = reader.matched_publications().unwrap();
     assert!(!pub_handles.is_empty());
     let pub_data = reader.get_matched_publication_data(pub_handles[0]);
-    assert!(pub_data.is_ok(), "get_matched_publication_data failed: {:?}", pub_data.err());
-    assert!(pub_data.unwrap().topic_name().contains("test_type_info_and_matched_endpoint_discovery"));
+    assert!(
+        pub_data.is_ok(),
+        "get_matched_publication_data failed: {:?}",
+        pub_data.err()
+    );
+    assert!(pub_data
+        .unwrap()
+        .topic_name()
+        .contains("test_type_info_and_matched_endpoint_discovery"));
 }
 
 #[test]
@@ -3927,7 +3958,10 @@ async fn test_async_read_aiter() {
     let stream = reader.read_aiter();
     futures_util::pin_mut!(stream);
     let batch = stream.next().await;
-    assert!(batch.is_some(), "Expected at least one batch from read_aiter");
+    assert!(
+        batch.is_some(),
+        "Expected at least one batch from read_aiter"
+    );
     let samples = batch.unwrap().unwrap();
     assert!(!samples.is_empty(), "Expected at least one sample");
     assert_eq!(samples[0].id, 99);
@@ -3963,7 +3997,10 @@ async fn test_async_take_aiter() {
     let stream = reader.take_aiter();
     futures_util::pin_mut!(stream);
     let batch = stream.next().await;
-    assert!(batch.is_some(), "Expected at least one batch from take_aiter");
+    assert!(
+        batch.is_some(),
+        "Expected at least one batch from take_aiter"
+    );
     let samples = batch.unwrap().unwrap();
     assert!(!samples.is_empty(), "Expected at least one sample");
     assert_eq!(samples[0].id, 42);

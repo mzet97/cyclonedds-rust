@@ -187,6 +187,12 @@ cargo run --bin cyclonedds-cli -- health "HelloWorld,AnotherTopic"
 
 # Generate topology graph
 cargo run --bin cyclonedds-cli -- topology --output topology.dot
+
+# Subscribe to multiple topics simultaneously
+cargo run --bin cyclonedds-cli -- subscribe --topics "TopicA,TopicB" --json
+
+# Bridge samples from one topic to another (optionally across domains)
+cargo run --bin cyclonedds-cli -- bridge TopicA TopicB --domain-src 0 --domain-dst 1
 ```
 
 ## Examples
@@ -208,6 +214,9 @@ cargo run --example pub
 - [QoS Reference](docs/qos-reference.md) — all QoS policies and builder patterns
 - [ROS2 Integration](docs/ros2-integration.md) — communicating with ROS2 nodes
 - [Security Guide](docs/security-guide.md) — DDS Security setup and certificates
+- [Observability](docs/observability.md) — `tracing` integration for structured logs and spans
+- [Benchmarks](docs/benchmarks.md) — running performance benchmarks and comparisons
+- [Fuzzing](docs/fuzzing.md) — automated fuzz testing with `cargo-fuzz`
 - [FAQ](docs/faq.md) — frequently asked questions and troubleshooting
 - [Migration from Python](docs/migration-from-python.md) — guide for `cyclonedds-python` users
 

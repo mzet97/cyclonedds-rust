@@ -38,8 +38,7 @@ pub const STATUS_LIVELINESS_LOST: u32 = 1u32 << dds_status_id_DDS_LIVELINESS_LOS
 /// Liveliness changed status bit (reader).
 pub const STATUS_LIVELINESS_CHANGED: u32 = 1u32 << dds_status_id_DDS_LIVELINESS_CHANGED_STATUS_ID;
 /// Publication matched status bit (writer).
-pub const STATUS_PUBLICATION_MATCHED: u32 =
-    1u32 << dds_status_id_DDS_PUBLICATION_MATCHED_STATUS_ID;
+pub const STATUS_PUBLICATION_MATCHED: u32 = 1u32 << dds_status_id_DDS_PUBLICATION_MATCHED_STATUS_ID;
 /// Subscription matched status bit (reader).
 pub const STATUS_SUBSCRIPTION_MATCHED: u32 =
     1u32 << dds_status_id_DDS_SUBSCRIPTION_MATCHED_STATUS_ID;
@@ -90,7 +89,9 @@ impl From<dds_sample_rejected_status_kind> for SampleRejectedReason {
             x if x == dds_sample_rejected_status_kind_DDS_REJECTED_BY_SAMPLES_LIMIT => {
                 SampleRejectedReason::RejectedBySamplesLimit
             }
-            x if x == dds_sample_rejected_status_kind_DDS_REJECTED_BY_SAMPLES_PER_INSTANCE_LIMIT => {
+            x if x
+                == dds_sample_rejected_status_kind_DDS_REJECTED_BY_SAMPLES_PER_INSTANCE_LIMIT =>
+            {
                 SampleRejectedReason::RejectedBySamplesPerInstanceLimit
             }
             other => SampleRejectedReason::Unknown(other),
@@ -231,6 +232,38 @@ pub struct SubscriptionMatchedStatus {
     pub last_publication_handle: dds_instance_handle_t,
 }
 
+/// Consolidated status snapshot for any DDS entity.
+///
+/// Not all fields are populated for every entity type — each variant is
+/// `Option<T>` and is filled only when the underlying C API call succeeds.
+/// For example, a `DataWriter` will have `liveliness_lost` and
+/// `publication_matched`, but not `sample_lost`.
+#[derive(Debug, Clone, Default)]
+pub struct EntityStatus {
+    /// Inconsistent-topic status (Topic entities).
+    pub inconsistent_topic: Option<InconsistentTopicStatus>,
+    /// Liveliness-lost status (DataWriter entities).
+    pub liveliness_lost: Option<LivelinessLostStatus>,
+    /// Liveliness-changed status (DataReader entities).
+    pub liveliness_changed: Option<LivelinessChangedStatus>,
+    /// Offered-deadline-missed status (DataWriter entities).
+    pub offered_deadline_missed: Option<OfferedDeadlineMissedStatus>,
+    /// Offered-incompatible-QoS status (DataWriter entities).
+    pub offered_incompatible_qos: Option<OfferedIncompatibleQosStatus>,
+    /// Requested-deadline-missed status (DataReader entities).
+    pub requested_deadline_missed: Option<RequestedDeadlineMissedStatus>,
+    /// Requested-incompatible-QoS status (DataReader entities).
+    pub requested_incompatible_qos: Option<RequestedIncompatibleQosStatus>,
+    /// Sample-lost status (DataReader entities).
+    pub sample_lost: Option<SampleLostStatus>,
+    /// Sample-rejected status (DataReader entities).
+    pub sample_rejected: Option<SampleRejectedStatus>,
+    /// Publication-matched status (DataWriter entities).
+    pub publication_matched: Option<PublicationMatchedStatus>,
+    /// Subscription-matched status (DataReader entities).
+    pub subscription_matched: Option<SubscriptionMatchedStatus>,
+}
+
 // ---------------------------------------------------------------------------
 // Conversion helpers – C struct → Rust struct
 // ---------------------------------------------------------------------------
@@ -366,10 +399,7 @@ pub trait StatusExt: DdsEntity {
     fn inconsistent_topic_status(&self) -> DdsResult<InconsistentTopicStatus> {
         unsafe {
             let mut raw: dds_inconsistent_topic_status_t = std::mem::zeroed();
-            crate::error::check(dds_get_inconsistent_topic_status(
-                self.entity(),
-                &mut raw,
-            ))?;
+            crate::error::check(dds_get_inconsistent_topic_status(self.entity(), &mut raw))?;
             Ok(InconsistentTopicStatus::from(raw))
         }
     }
@@ -480,10 +510,7 @@ pub trait StatusExt: DdsEntity {
     fn publication_matched_status(&self) -> DdsResult<PublicationMatchedStatus> {
         unsafe {
             let mut raw: dds_publication_matched_status_t = std::mem::zeroed();
-            crate::error::check(dds_get_publication_matched_status(
-                self.entity(),
-                &mut raw,
-            ))?;
+            crate::error::check(dds_get_publication_matched_status(self.entity(), &mut raw))?;
             Ok(PublicationMatchedStatus::from(raw))
         }
     }
@@ -494,10 +521,7 @@ pub trait StatusExt: DdsEntity {
     fn subscription_matched_status(&self) -> DdsResult<SubscriptionMatchedStatus> {
         unsafe {
             let mut raw: dds_subscription_matched_status_t = std::mem::zeroed();
-            crate::error::check(dds_get_subscription_matched_status(
-                self.entity(),
-                &mut raw,
-            ))?;
+            crate::error::check(dds_get_subscription_matched_status(self.entity(), &mut raw))?;
             Ok(SubscriptionMatchedStatus::from(raw))
         }
     }

@@ -47,16 +47,13 @@ fn main() -> Result<()> {
 
     // Validate input file
     if !args.input.exists() {
-        anyhow::bail!(
-            "Input IDL file not found: {}",
-            args.input.display()
-        );
+        anyhow::bail!("Input IDL file not found: {}", args.input.display());
     }
 
     // Default output directory: current directory
-    let output_dir = args.output_dir.unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    });
+    let output_dir = args
+        .output_dir
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let options = CompileOptions {
         cyclonedds_home: args.cyclonedds_home,
@@ -65,12 +62,8 @@ fn main() -> Result<()> {
         module_name: args.module_name,
     };
 
-    compile_idl_with_options(&args.input, &options).with_context(|| {
-        format!(
-            "Failed to compile IDL file: {}",
-            args.input.display()
-        )
-    })?;
+    compile_idl_with_options(&args.input, &options)
+        .with_context(|| format!("Failed to compile IDL file: {}", args.input.display()))?;
 
     println!(
         "Successfully compiled {} -> {}/",

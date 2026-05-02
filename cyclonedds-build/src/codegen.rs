@@ -7,8 +7,7 @@
 //! - `DdsBitmask` for bitmasks
 
 use crate::idl_parser::{
-    IdlBitmask, IdlEnum, IdlFile, IdlStruct, IdlType, IdlTypeRef, IdlUnion,
-    PrimitiveType,
+    IdlBitmask, IdlEnum, IdlFile, IdlStruct, IdlType, IdlTypeRef, IdlUnion, PrimitiveType,
 };
 
 /// Generate a complete Rust source file from a parsed IDL file.
@@ -19,8 +18,11 @@ pub fn generate_rust(idl_file: &IdlFile, module_name: &str) -> String {
     output.push_str("// Source IDL module: ");
     output.push_str(module_name);
     output.push_str("\n\n");
-    output.push_str("#![allow(unused_imports, dead_code, non_camel_case_types, non_snake_case)]\n\n");
-    output.push_str("use cyclonedds::{DdsTypeDerive, DdsEnumDerive, DdsUnionDerive, DdsBitmaskDerive};\n");
+    output
+        .push_str("#![allow(unused_imports, dead_code, non_camel_case_types, non_snake_case)]\n\n");
+    output.push_str(
+        "use cyclonedds::{DdsTypeDerive, DdsEnumDerive, DdsUnionDerive, DdsBitmaskDerive};\n",
+    );
     output.push_str("use cyclonedds::{DdsSequence, DdsBoundedSequence, DdsString};\n\n");
 
     // Generate top-level types
@@ -207,7 +209,10 @@ fn type_ref_to_rust(ty: &IdlTypeRef) -> String {
             // Bounded strings use DdsString in the current derive macro
             "DdsString".to_string()
         }
-        IdlTypeRef::Sequence { element_type, bound: None } => {
+        IdlTypeRef::Sequence {
+            element_type,
+            bound: None,
+        } => {
             format!("DdsSequence<{}>", type_ref_to_rust(element_type))
         }
         IdlTypeRef::Sequence {
@@ -323,9 +328,18 @@ mod tests {
         let e = IdlEnum {
             name: "Color".into(),
             variants: vec![
-                IdlEnumVariant { name: "Red".into(), value: Some(0) },
-                IdlEnumVariant { name: "Green".into(), value: Some(1) },
-                IdlEnumVariant { name: "Blue".into(), value: Some(2) },
+                IdlEnumVariant {
+                    name: "Red".into(),
+                    value: Some(0),
+                },
+                IdlEnumVariant {
+                    name: "Green".into(),
+                    value: Some(1),
+                },
+                IdlEnumVariant {
+                    name: "Blue".into(),
+                    value: Some(2),
+                },
             ],
         };
         let code = generate_enum(&e);
@@ -336,11 +350,26 @@ mod tests {
 
     #[test]
     fn test_type_ref_mapping() {
-        assert_eq!(type_ref_to_rust(&IdlTypeRef::Primitive(PrimitiveType::Boolean)), "bool");
-        assert_eq!(type_ref_to_rust(&IdlTypeRef::Primitive(PrimitiveType::Long)), "i32");
-        assert_eq!(type_ref_to_rust(&IdlTypeRef::Primitive(PrimitiveType::UnsignedLongLong)), "u64");
-        assert_eq!(type_ref_to_rust(&IdlTypeRef::String { bound: None }), "String");
-        assert_eq!(type_ref_to_rust(&IdlTypeRef::Named("MyType".into())), "MyType");
+        assert_eq!(
+            type_ref_to_rust(&IdlTypeRef::Primitive(PrimitiveType::Boolean)),
+            "bool"
+        );
+        assert_eq!(
+            type_ref_to_rust(&IdlTypeRef::Primitive(PrimitiveType::Long)),
+            "i32"
+        );
+        assert_eq!(
+            type_ref_to_rust(&IdlTypeRef::Primitive(PrimitiveType::UnsignedLongLong)),
+            "u64"
+        );
+        assert_eq!(
+            type_ref_to_rust(&IdlTypeRef::String { bound: None }),
+            "String"
+        );
+        assert_eq!(
+            type_ref_to_rust(&IdlTypeRef::Named("MyType".into())),
+            "MyType"
+        );
     }
 
     #[test]

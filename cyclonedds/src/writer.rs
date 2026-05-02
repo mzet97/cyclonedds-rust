@@ -65,10 +65,12 @@ impl<T: DdsType> DataWriter<T> {
         }
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data)))]
     pub fn write(&self, data: &T) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe { check(dds_write(self.entity, ptr)) })
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data)))]
     pub fn write_dispose(&self, data: &T) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
             check(dds_writedispose(self.entity, ptr))
@@ -277,6 +279,35 @@ impl<T: DdsType> DataWriter<T> {
         encoding: crate::serialization::CdrEncoding,
     ) -> DdsResult<Vec<u8>> {
         CdrSerializer::serialize(data, encoding)
+    }
+
+    /// Request a loaned sample buffer and write it asynchronously.
+    ///
+    /// The `f` closure receives a mutable reference to the loaned sample,
+    /// allowing the caller to populate it in place. The sample is then
+    /// published in a single zero-copy operation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use cyclonedds::*;
+    ///
+    /// # #[derive(DdsTypeDerive)]
+    /// # struct HelloWorld { id: i32, message: DdsString }
+    /// # async fn example(writer: &DataWriter<HelloWorld>) -> DdsResult<()> {
+    /// writer.write_loan_async(|sample| {
+    ///     sample.id = 42;
+    /// }).await
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, f)))]
+    pub async fn write_loan_async<F>(&self, f: F) -> DdsResult<()>
+    where
+        F: FnOnce(&mut T),
+    {
+        let mut loan = self.request_loan()?;
+        f(loan.get_mut());
+        WriteLoan::write(loan)
     }
 }
 
