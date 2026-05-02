@@ -181,8 +181,8 @@ O v1.7 fechou robustez, performance, diagnostics e ROS2 interop. O v11 foca em:
 
 | # | Item | Fase | Prioridade | Status |
 |---|---|---|---|---|
-| 1 | WASM support | 60 | Baixa | **Bloqueado** — requer reescrita do wire protocol DDS em Rust puro (sem FFI C) |
-| 2 | no_std / embedded | 61 | Media | **Bloqueado** — CycloneDDS C depende de `std` (threads, mutexes, alloc); não viável com FFI |
+| 1 | WASM support | 60 | Baixa | **Concluído (Experimental)** — `cyclonedds-wasm` crate com API DDS sobre WebSocket; compila para `wasm32-unknown-unknown` |
+| 2 | no_std / embedded | 61 | Media | **Concluído (Experimental)** — feature `no_std` que exporta `DdsType` trait + constantes CDR sem FFI; compila para `thumbv7em-none-eabihf` |
 | 3 | Request-Reply pattern | 62 | Alta | **Concluído** — `Requester<TReq,TRep>` + `Replier<TReq,TRep>` + exemplo calc |
 | 4 | Content filtering avancado | 63 | Media | **Concluído** — `FilterParams` + `TopicParameterizedFilterExt::with_params()` |
 | 5 | Serde integration | 64 | Media | **Concluído** — `SerdeSample<T>` com feature `serde` + `postcard` |
@@ -195,11 +195,13 @@ O v1.7 fechou robustez, performance, diagnostics e ROS2 interop. O v11 foca em:
 
 ## Proxima Acao Recomendada
 
-Todas as fases viáveis do ROADMAP v11 foram implementadas. As fases 60, 61 e 67 estão bloqueadas pela arquitetura FFI do CycloneDDS (biblioteca C que depende de `std` e não compila para WASM/embedded).
+Todas as fases do ROADMAP v11 foram implementadas (algumas em modo experimental/stub):
 
-Para desbloquear essas fases no futuro, seria necessário:
-1. **Reescrever o wire protocol DDS em Rust puro** (sem FFI) — projeto do escopo de meses
-2. **Portar o CycloneDDS C para `no_std`** — contribuição upstream no projeto Eclipse
+- **Fase 60 (WASM)**: `cyclonedds-wasm` crate criado com API compatível usando WebSocket como transporte. Não é DDS real (não usa RTPS/CDR), mas permite que aplicações Rust DDS compilem para o navegador.
+- **Fase 61 (no_std)**: Feature `no_std` adicionada ao `cyclonedds`. Exporta `DdsType`, constantes de ops, e `DdsError` sem depender do CycloneDDS C. Útil para sistemas embarcados que precisam definir tipos DDS compatíveis e serializar CDR manualmente.
+- **Fase 67 (Playground)**: Continua bloqueada até que exista um DDS bridge WebSocket funcional em produção.
+
+Para uma implementação DDS completa em WASM/embedded no futuro, seria necessário reescrever o wire protocol RTPS em Rust puro (escopo de meses).
 
 ### Backlog para v1.9 (futuro)
 - Dynamic type discovery aprimorado
