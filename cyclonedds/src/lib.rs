@@ -50,6 +50,8 @@ mod entity;
 mod error;
 #[allow(missing_docs)]
 mod listener;
+#[cfg(any(feature = "opentelemetry", feature = "tokio-console"))]
+pub mod observability;
 pub mod log;
 mod participant;
 mod participant_pool;
