@@ -40,6 +40,7 @@ pub struct SecurityConfig {
     governance: Option<String>,
     permissions: Option<String>,
     permissions_ca: Option<String>,
+    crl: Option<String>,
     auth_plugin: String,
     access_plugin: String,
     crypto_plugin: String,
@@ -92,6 +93,12 @@ impl SecurityConfig {
         self
     }
 
+    /// Path to the Certificate Revocation List (CRL) in PEM format.
+    pub fn crl(mut self, path: impl Into<String>) -> Self {
+        self.crl = Some(path.into());
+        self
+    }
+
     /// Override the authentication plugin name (default: `dds.sec.auth.builtin.PKI-DH`).
     pub fn auth_plugin(mut self, name: impl Into<String>) -> Self {
         self.auth_plugin = name.into();
@@ -123,6 +130,7 @@ impl SecurityConfig {
             ("governance", self.governance.as_deref()),
             ("permissions", self.permissions.as_deref()),
             ("permissions_ca", self.permissions_ca.as_deref()),
+            ("crl", self.crl.as_deref()),
         ];
 
         for (name, maybe_path) in &paths {
@@ -180,6 +188,9 @@ impl SecurityConfig {
         }
         if let Some(path) = self.permissions_ca {
             b = b.property("dds.sec.access.permissions_ca", format!("file:{}", path));
+        }
+        if let Some(path) = self.crl {
+            b = b.property("dds.sec.auth.crl", format!("file:{}", path));
         }
 
         b
