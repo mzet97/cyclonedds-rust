@@ -54,6 +54,7 @@ pub mod log;
 mod participant;
 mod publisher;
 mod qos;
+mod request_reply;
 mod qos_provider;
 mod reader;
 pub mod sample;
@@ -98,6 +99,7 @@ pub use qos::{
     QosBuilder, ReaderDataLifecyclePolicy, Reliability, TypeConsistency, TypeConsistencyPolicy,
 };
 pub use qos_provider::{QosKind, QosProvider};
+pub use request_reply::{Replier, RequestReply, Requester};
 pub use reader::DataReader;
 pub use sample::{Loan, Sample};
 #[cfg(feature = "security")]
