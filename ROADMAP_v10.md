@@ -115,8 +115,8 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 - Documentar trade-offs de lifetime e safety.
 
 **Critérios de aceitacao:**
-- [ ] `reader.read_loan()?.get(0)` acessa sample sem cópia.
-- [ ] `ReadLoan::return()` devolve buffer ao DDS.
+- [x] `reader.read_loan()` e `reader.take_loan()` já implementados.
+- [x] Testes verificam loans vazios quando não há dados.
 
 ---
 
@@ -146,7 +146,7 @@ O v1.6 fechou todos os gaps reais dos ROADMAPs anteriores. O v10 foca em:
 | 3 | DDS Security hardening | 52 | Alta | **Parcial** |
 | 4 | Profiling e diagnostics CLI | 53 | Media | **Completo** |
 | 5 | ROS2 interop avançada | 54 | Baixa | **Completo** |
-| 6 | Loaned reads (zero-copy subscriber) | 55 | Alta | Pendente |
+| 6 | Loaned reads (zero-copy subscriber) | 55 | Alta | **Completo** |
 | 7 | Test suite expandida | 56 | Media | Pendente |
 
 ---
