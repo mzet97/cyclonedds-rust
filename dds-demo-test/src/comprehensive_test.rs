@@ -151,7 +151,7 @@ fn test_multiple_writes(dp: &DomainParticipant) -> Result<String, String> {
     std::thread::sleep(Duration::from_millis(500));
 
     let samples = reader.take().map_err(|e| format!("take: {:?}", e))?;
-    if samples.len() < 1 {
+    if samples.is_empty() {
         return Err(format!("expected >=1 samples, got {}", samples.len()));
     }
     Ok(format!("{} samples received", samples.len()))
@@ -438,7 +438,7 @@ fn main() {
     println!("=== CycloneDDS-Rust Comprehensive Test Suite ===\n");
 
     // 1. DomainParticipant
-    check("DomainParticipant::new", || test_participant());
+    check("DomainParticipant::new", test_participant);
 
     let dp = DomainParticipant::new(0).expect("need participant for further tests");
 
