@@ -57,7 +57,7 @@ fn main() {
 
         // Wait for sample
         loop {
-            if reader.take().unwrap().next().is_some() {
+            if !reader.take().unwrap().is_empty() {
                 latencies.push(t0.elapsed().as_nanos() as f64 / 1e6); // ms
             }
             if latencies.len() > i {

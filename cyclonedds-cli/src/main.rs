@@ -258,7 +258,7 @@ fn cmd_ls(domain_id: u32) -> cyclonedds::DdsResult<()> {
 
     // Print participants
     println!("=== Participants ({}) ===", participants.len());
-    println!("{:<40} {}", "GUID", "Name");
+    println!("{:<40} Name", "GUID");
     println!("{}", "-".repeat(60));
     for p in &participants {
         let name = p.participant_name().unwrap_or_else(|| "-".to_string());
