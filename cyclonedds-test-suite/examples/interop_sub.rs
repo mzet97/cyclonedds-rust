@@ -9,6 +9,7 @@ struct TestMessage {
     text: [u8; 64],
 }
 
+#[allow(dead_code)]
 impl TestMessage {
     fn new(id: i32, value: i32, text: &str) -> Self {
         let mut bytes = [0u8; 64];
