@@ -17,9 +17,9 @@ categories = ["network-programming", "api-bindings"]
 all-features = true
 
 [dependencies]
-cyclonedds-rust-sys = { workspace = true }
+cyclonedds-rust-sys = { workspace = true, optional = true }
 cyclonedds-derive = { workspace = true }
-thiserror = "1.0"
+thiserror = { version = "1.0", optional = true }
 tokio = { version = "1", features = ["rt", "sync", "time"], optional = true }
 async-stream = { version = "0.3", optional = true }
 futures-core = { version = "0.3", optional = true }
@@ -31,13 +31,15 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"]
 console-subscriber = { version = "0.4", optional = true }
 
 [features]
-default = ["async"]
+default = ["std", "async"]
+std = ["dep:cyclonedds-rust-sys", "dep:thiserror"]
 async = ["tokio", "async-stream", "futures-core", "futures-util"]
-security = ["cyclonedds-rust-sys/security"]
+security = ["cyclonedds-rust-sys/security", "std"]
 tracing = ["dep:tracing"]
 serde = ["dep:postcard", "dep:serde"]
 opentelemetry = ["dep:tracing-subscriber", "tracing"]
 tokio-console = ["dep:console-subscriber"]
+no_std = []
 
 [dev-dependencies]
 cyclonedds-derive = { workspace = true }

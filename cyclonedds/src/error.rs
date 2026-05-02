@@ -1,5 +1,9 @@
+//! DDS error types and helpers.
+
+#[cfg(not(feature = "no_std"))]
 use thiserror::Error;
 
+#[cfg(not(feature = "no_std"))]
 #[derive(Debug, Error)]
 pub enum DdsError {
     #[error("DDS error code: {0}")]
@@ -32,6 +36,42 @@ pub enum DdsError {
     #[error("DDS: {0}")]
     Other(String),
 }
+
+#[cfg(feature = "no_std")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DdsError {
+    ReturnCode(i32),
+    InvalidEntity(i32),
+    OutOfResources,
+    Timeout,
+    Unsupported(alloc::string::String),
+    BadParameter(alloc::string::String),
+    PreconditionNotMet(alloc::string::String),
+    OutOfMemory,
+    AlreadyDeleted,
+    Other(alloc::string::String),
+}
+
+#[cfg(feature = "no_std")]
+impl core::fmt::Display for DdsError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DdsError::ReturnCode(c) => write!(f, "DDS error code: {c}"),
+            DdsError::InvalidEntity(c) => write!(f, "invalid entity handle: {c}"),
+            DdsError::OutOfResources => write!(f, "out of resources"),
+            DdsError::Timeout => write!(f, "operation timed out"),
+            DdsError::Unsupported(s) => write!(f, "unsupported: {s}"),
+            DdsError::BadParameter(s) => write!(f, "bad parameter: {s}"),
+            DdsError::PreconditionNotMet(s) => write!(f, "precondition not met: {s}"),
+            DdsError::OutOfMemory => write!(f, "out of memory"),
+            DdsError::AlreadyDeleted => write!(f, "already deleted"),
+            DdsError::Other(s) => write!(f, "DDS: {s}"),
+        }
+    }
+}
+
+#[cfg(feature = "no_std")]
+impl core::error::Error for DdsError {}
 
 impl From<i32> for DdsError {
     fn from(code: i32) -> Self {
@@ -83,18 +123,22 @@ impl DdsError {
     }
 }
 
+#[cfg(not(feature = "no_std"))]
 pub fn err_nr(code: i32) -> i32 {
     cyclonedds_rust_sys::dds_err_nr(code)
 }
 
+#[cfg(not(feature = "no_std"))]
 pub fn err_line(code: i32) -> u32 {
     cyclonedds_rust_sys::dds_err_line(code)
 }
 
+#[cfg(not(feature = "no_std"))]
 pub fn err_file_id(code: i32) -> u32 {
     cyclonedds_rust_sys::dds_err_file_id(code)
 }
 
+#[cfg(not(feature = "no_std"))]
 pub fn check(ret: i32) -> DdsResult<()> {
     if ret >= 0 {
         Ok(())
@@ -103,6 +147,7 @@ pub fn check(ret: i32) -> DdsResult<()> {
     }
 }
 
+#[cfg(not(feature = "no_std"))]
 pub fn check_entity(ret: i32) -> DdsResult<i32> {
     if ret >= 0 {
         Ok(ret)
@@ -111,6 +156,7 @@ pub fn check_entity(ret: i32) -> DdsResult<i32> {
     }
 }
 
+#[cfg(not(feature = "no_std"))]
 #[cfg(test)]
 mod tests {
     use super::{err_file_id, err_line, err_nr, DdsError};
