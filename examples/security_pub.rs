@@ -1,7 +1,6 @@
 use cyclonedds::{
-    DomainParticipant, Publisher, QosBuilder, SecurityConfig, Topic, DataWriter,
+    DomainParticipant, DdsTypeDerive, Publisher, QosBuilder, SecurityConfig, Topic, DataWriter,
 };
-use cyclonedds_derive::DdsTypeDerive;
 
 #[derive(DdsTypeDerive, Clone)]
 struct HelloWorld {

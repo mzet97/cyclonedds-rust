@@ -2146,14 +2146,13 @@ fn cmd_monitor(topic_name: &str, domain_id: u32, interval_secs: u64) -> cycloned
         };
 
         if n > 0 {
-            let n = n as usize;
-            for i in 0..n {
-                if !sdbuf[i].is_null() {
-                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sdbuf[i]) };
+            for item in sdbuf.iter().take(n as usize) {
+                if !item.is_null() {
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(*item) };
                 }
             }
-            received += n;
-            received_interval += n;
+            received += n as usize;
+            received_interval += n as usize;
         }
 
         let now = std::time::Instant::now();
@@ -2437,13 +2436,12 @@ fn cmd_metrics(topic_name: &str, domain_id: u32, max_samples: usize) -> cycloned
         };
 
         if n > 0 {
-            let n = n as usize;
-            for i in 0..n {
-                if !sdbuf[i].is_null() {
-                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sdbuf[i]) };
+            for item in sdbuf.iter().take(n as usize) {
+                if !item.is_null() {
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(*item) };
                 }
             }
-            received += n;
+            received += n as usize;
             sample_times.push(start.elapsed().as_nanos() as u64);
         }
 

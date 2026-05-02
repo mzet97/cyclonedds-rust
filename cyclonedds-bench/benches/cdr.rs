@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use cyclonedds::{CdrDeserializer, CdrEncoding, CdrSerializer};
-use cyclonedds_derive::DdsTypeDerive;
+use cyclonedds::{CdrDeserializer, CdrEncoding, CdrSerializer, DdsTypeDerive};
 
 #[derive(DdsTypeDerive, Clone)]
 struct Point {
