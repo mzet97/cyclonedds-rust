@@ -52,6 +52,7 @@ mod error;
 mod listener;
 pub mod log;
 mod participant;
+mod participant_pool;
 mod publisher;
 mod qos;
 mod request_reply;
@@ -98,6 +99,7 @@ pub use qos::{
     IgnoreLocalKind, Liveliness, Ownership, PresentationAccessScope, PresentationPolicy, Qos,
     QosBuilder, ReaderDataLifecyclePolicy, Reliability, TypeConsistency, TypeConsistencyPolicy,
 };
+pub use participant_pool::{DiscoveredParticipant, DiscoveredTopic, ParticipantPool};
 pub use qos_provider::{QosKind, QosProvider};
 pub use request_reply::{Replier, RequestReply, Requester};
 pub use reader::DataReader;
