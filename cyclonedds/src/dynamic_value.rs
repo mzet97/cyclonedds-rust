@@ -791,10 +791,8 @@ impl DynamicTypeSchema {
 
             // All non-optional fields in self must exist in other
             for a_field in a_fields {
-                if !a_field.optional {
-                    if !b_fields.iter().any(|f| f.name == a_field.name) {
-                        return false;
-                    }
+                if !a_field.optional && !b_fields.iter().any(|f| f.name == a_field.name) {
+                    return false;
                 }
             }
 

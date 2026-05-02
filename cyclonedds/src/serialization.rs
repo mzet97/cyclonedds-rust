@@ -16,9 +16,10 @@ use std::marker::PhantomData;
 // ---------------------------------------------------------------------------
 
 /// CDR encoding version.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CdrEncoding {
     /// XCDR1 (CDR version 1, used for plain IDL types).
+    #[default]
     Xcdr1,
     /// XCDR2 (CDR version 2, required for appendable/mutable types).
     Xcdr2,
@@ -30,12 +31,6 @@ impl CdrEncoding {
             Self::Xcdr1 => 1,
             Self::Xcdr2 => 2,
         }
-    }
-}
-
-impl Default for CdrEncoding {
-    fn default() -> Self {
-        Self::Xcdr1
     }
 }
 
@@ -437,6 +432,7 @@ mod tests {
     // Minimal type for testing serialization round-trip.
     // Uses the DdsType derive macro if available; otherwise we hand-roll it.
     #[derive(Debug, PartialEq, Clone)]
+    #[allow(dead_code)]
     struct Point {
         x: i32,
         y: i32,

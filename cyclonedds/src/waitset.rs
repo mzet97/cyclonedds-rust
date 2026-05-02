@@ -13,11 +13,10 @@ use std::sync::{Mutex, OnceLock};
 // bridge Rust closures we store them in a global map keyed by the condition
 // entity handle.  The trampoline dispatches through this map.
 
-fn qc_registry(
-) -> &'static Mutex<HashMap<dds_entity_t, Box<dyn Fn(*const c_void) -> bool + Send + Sync>>> {
-    static REGISTRY: OnceLock<
-        Mutex<HashMap<dds_entity_t, Box<dyn Fn(*const c_void) -> bool + Send + Sync>>>,
-    > = OnceLock::new();
+type QcClosure = Box<dyn Fn(*const c_void) -> bool + Send + Sync>;
+
+fn qc_registry() -> &'static Mutex<HashMap<dds_entity_t, QcClosure>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<dds_entity_t, QcClosure>>> = OnceLock::new();
     REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -41,7 +40,7 @@ unsafe extern "C" fn trampoline_qc_filter(sample: *const c_void) -> bool {
 }
 
 thread_local! {
-    static QC_ACTIVE: std::cell::Cell<dds_entity_t> = std::cell::Cell::new(0);
+    static QC_ACTIVE: std::cell::Cell<dds_entity_t> = const { std::cell::Cell::new(0) };
 }
 
 /// Set the active QueryCondition entity for the current thread.

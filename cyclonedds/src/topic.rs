@@ -240,20 +240,10 @@ pub fn rebase_ops(mut ops: Vec<u32>, base_offset: u32) -> Vec<u32> {
         let subtype = op & DDS_OP_SUBTYPE_MASK;
         i += match primary {
             TYPE_BST => 3,
-            TYPE_SEQ => {
-                if subtype == SUBTYPE_BST {
-                    3
-                } else {
-                    2
-                }
-            }
-            TYPE_BSQ => {
-                if subtype == SUBTYPE_BST {
-                    4
-                } else {
-                    3
-                }
-            }
+            TYPE_SEQ if subtype == SUBTYPE_BST => 3,
+            TYPE_SEQ => 2,
+            TYPE_BSQ if subtype == SUBTYPE_BST => 4,
+            TYPE_BSQ => 3,
             _ => 2,
         };
     }

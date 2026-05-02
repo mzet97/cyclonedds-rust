@@ -912,20 +912,10 @@ fn adr_step(ops: &[u32], i: usize) -> usize {
     let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
     match primary {
         TYPE_BST => 3,
-        TYPE_SEQ => {
-            if subtype == SUBTYPE_BST {
-                3
-            } else {
-                2
-            }
-        }
-        TYPE_BSQ => {
-            if subtype == SUBTYPE_BST {
-                4
-            } else {
-                3
-            }
-        }
+        TYPE_SEQ if subtype == SUBTYPE_BST => 3,
+        TYPE_SEQ => 2,
+        TYPE_BSQ if subtype == SUBTYPE_BST => 4,
+        TYPE_BSQ => 3,
         _ => 2,
     }
 }

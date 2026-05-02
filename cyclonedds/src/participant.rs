@@ -321,7 +321,7 @@ impl DomainParticipant {
         };
 
         // Read samples as native buffers using dds_take
-        let max = max_samples.max(256).min(1024);
+        let max = max_samples.clamp(256, 1024);
         let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max];
         let mut infos: Vec<dds_sample_info_t> = vec![unsafe { std::mem::zeroed() }; max];
 

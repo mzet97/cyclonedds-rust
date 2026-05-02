@@ -25,7 +25,7 @@
 //! let participant = DomainParticipant::with_qos(0, &qos).unwrap();
 //! ```
 
-use crate::{DdsResult, QosBuilder};
+use crate::QosBuilder;
 
 /// Builder for DDS Security configuration.
 ///
@@ -161,25 +161,25 @@ impl SecurityConfig {
             .property("dds.sec.crypto.plugin", &self.crypto_plugin);
 
         if let Some(path) = self.identity_ca {
-            b = b.property("dds.sec.auth.identity_ca", &format!("file:{}", path));
+            b = b.property("dds.sec.auth.identity_ca", format!("file:{}", path));
         }
         if let Some(path) = self.identity_certificate {
             b = b.property(
                 "dds.sec.auth.identity_certificate",
-                &format!("file:{}", path),
+                format!("file:{}", path),
             );
         }
         if let Some(path) = self.identity_private_key {
-            b = b.property("dds.sec.auth.private_key", &format!("file:{}", path));
+            b = b.property("dds.sec.auth.private_key", format!("file:{}", path));
         }
         if let Some(path) = self.governance {
-            b = b.property("dds.sec.access.governance", &format!("file:{}", path));
+            b = b.property("dds.sec.access.governance", format!("file:{}", path));
         }
         if let Some(path) = self.permissions {
-            b = b.property("dds.sec.access.permissions", &format!("file:{}", path));
+            b = b.property("dds.sec.access.permissions", format!("file:{}", path));
         }
         if let Some(path) = self.permissions_ca {
-            b = b.property("dds.sec.access.permissions_ca", &format!("file:{}", path));
+            b = b.property("dds.sec.access.permissions_ca", format!("file:{}", path));
         }
 
         b
