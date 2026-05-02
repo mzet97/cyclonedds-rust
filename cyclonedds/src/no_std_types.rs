@@ -15,7 +15,7 @@
 
 #[cfg(feature = "no_std")]
 use alloc::vec::Vec;
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 use std::vec::Vec;
 use core::fmt;
 

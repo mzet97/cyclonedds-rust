@@ -1,9 +1,9 @@
 //! DDS error types and helpers.
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 use thiserror::Error;
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 #[derive(Debug, Error)]
 pub enum DdsError {
     #[error("DDS error code: {0}")]
@@ -123,22 +123,22 @@ impl DdsError {
     }
 }
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 pub fn err_nr(code: i32) -> i32 {
     cyclonedds_rust_sys::dds_err_nr(code)
 }
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 pub fn err_line(code: i32) -> u32 {
     cyclonedds_rust_sys::dds_err_line(code)
 }
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 pub fn err_file_id(code: i32) -> u32 {
     cyclonedds_rust_sys::dds_err_file_id(code)
 }
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 pub fn check(ret: i32) -> DdsResult<()> {
     if ret >= 0 {
         Ok(())
@@ -147,7 +147,7 @@ pub fn check(ret: i32) -> DdsResult<()> {
     }
 }
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 pub fn check_entity(ret: i32) -> DdsResult<i32> {
     if ret >= 0 {
         Ok(ret)
@@ -156,7 +156,7 @@ pub fn check_entity(ret: i32) -> DdsResult<i32> {
     }
 }
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 #[cfg(test)]
 mod tests {
     use super::{err_file_id, err_line, err_nr, DdsError};

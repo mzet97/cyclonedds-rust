@@ -112,6 +112,7 @@ pub use dynamic_value::{
 #[cfg(feature = "std")]
 pub use entity::DdsEntity;
 #[cfg(feature = "std")]
+#[cfg(feature = "std")]
 pub use error::{err_file_id, err_line, err_nr};
 pub use error::{DdsError, DdsResult};
 #[cfg(feature = "std")]
