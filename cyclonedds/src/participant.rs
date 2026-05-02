@@ -435,6 +435,34 @@ impl DomainParticipant {
     ) -> DdsResult<()> {
         unsafe { crate::error::check(dds_domain_set_deafmute(self.entity, deaf, mute, duration)) }
     }
+
+    // -----------------------------------------------------------------------
+    // Admin / Discovery API
+    // -----------------------------------------------------------------------
+
+    /// Return all discovered participants in the domain.
+    pub fn discovered_participants(&self) -> DdsResult<Vec<BuiltinParticipantSample>> {
+        let reader = self.create_builtin_participant_reader()?;
+        reader.take()
+    }
+
+    /// Return all discovered publications (DataWriters) in the domain.
+    pub fn discovered_publications(&self) -> DdsResult<Vec<BuiltinEndpointSample>> {
+        let reader = self.create_builtin_publication_reader()?;
+        reader.take()
+    }
+
+    /// Return all discovered subscriptions (DataReaders) in the domain.
+    pub fn discovered_subscriptions(&self) -> DdsResult<Vec<BuiltinEndpointSample>> {
+        let reader = self.create_builtin_subscription_reader()?;
+        reader.take()
+    }
+
+    /// Return all discovered topics in the domain.
+    pub fn discovered_topics(&self) -> DdsResult<Vec<BuiltinTopicSample>> {
+        let reader = self.create_builtin_topic_reader()?;
+        reader.take()
+    }
 }
 
 impl DdsEntity for DomainParticipant {

@@ -137,6 +137,37 @@ enum Commands {
         #[arg(short, long, default_value_t = 0)]
         delay_ms: u64,
     },
+    /// Monitor a topic and print throughput statistics
+    Monitor {
+        /// Topic name to monitor
+        topic: String,
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+        /// Report interval in seconds
+        #[arg(short, long, default_value_t = 1)]
+        interval: u64,
+    },
+    /// Check health of a topic (verify publishers and subscribers exist)
+    Health {
+        /// Topic name(s) to check (comma-separated)
+        topics: String,
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+        /// Timeout in seconds
+        #[arg(short, long, default_value_t = 5)]
+        timeout: u64,
+    },
+    /// Generate a topology graph of discovered entities (DOT format)
+    Topology {
+        /// DDS domain ID
+        #[arg(long, default_value_t = 0)]
+        domain_id: u32,
+        /// Output file (default: stdout)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -1531,6 +1562,267 @@ fn cmd_replay(
 }
 
 // ---------------------------------------------------------------------------
+// monitor command
+// ---------------------------------------------------------------------------
+
+fn cmd_monitor(
+    topic_name: &str,
+    domain_id: u32,
+    interval_secs: u64,
+) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let subscriber = Subscriber::new(participant.entity())?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+
+    println!("Monitoring topic '{}'... Press Ctrl+C to stop.", topic_name);
+
+    let endpoint = 'search: {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(200));
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == topic_name {
+                    break 'search ep.clone();
+                }
+            }
+        }
+        println!("No publication found for topic '{}' within timeout.", topic_name);
+        return Ok(());
+    };
+
+    let type_name = endpoint.type_name();
+    let type_info = endpoint.type_info()?;
+    let discovered = discover_type_from_type_info(
+        participant.entity(),
+        &type_info,
+        &type_name,
+        5_000_000_000,
+    )?;
+
+    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let qos = QosBuilder::new()
+        .reliability(Reliability::Reliable, 10_000_000_000)
+        .build()?;
+
+    let reader_entity = unsafe {
+        check_entity(cyclonedds_rust_sys::dds_create_reader(
+            subscriber.entity(),
+            topic.entity(),
+            qos.as_ptr(),
+            std::ptr::null_mut(),
+        ))?
+    };
+
+    let interval = Duration::from_secs(interval_secs);
+    let mut last_time = std::time::Instant::now();
+    let mut received = 0usize;
+    let mut received_interval = 0usize;
+
+    let max_buf: usize = 64;
+    let mut sdbuf: Vec<*mut cyclonedds_rust_sys::ddsi_serdata> =
+        vec![std::ptr::null_mut(); max_buf];
+    let mut infos: Vec<cyclonedds_rust_sys::dds_sample_info> =
+        vec![unsafe { std::mem::zeroed() }; max_buf];
+
+    loop {
+        let n = unsafe {
+            cyclonedds_rust_sys::dds_takecdr(
+                reader_entity,
+                sdbuf.as_mut_ptr(),
+                max_buf as u32,
+                infos.as_mut_ptr() as *mut cyclonedds_rust_sys::dds_sample_info_t,
+                0,
+            )
+        };
+
+        if n > 0 {
+            let n = n as usize;
+            for i in 0..n {
+                if !sdbuf[i].is_null() {
+                    unsafe { cyclonedds_rust_sys::ddsi_serdata_unref(sdbuf[i]) };
+                }
+            }
+            received += n;
+            received_interval += n;
+        }
+
+        let now = std::time::Instant::now();
+        if now.duration_since(last_time) >= interval {
+            let throughput = received_interval as f64 / interval_secs as f64;
+            println!(
+                "[monitor] total={}, interval={} samples, throughput={:.1} samples/sec",
+                received, received_interval, throughput
+            );
+            received_interval = 0;
+            last_time = now;
+        }
+
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// health command
+// ---------------------------------------------------------------------------
+
+fn cmd_health(
+    topics_str: &str,
+    domain_id: u32,
+    timeout_secs: u64,
+) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+    let sub_reader = participant.create_builtin_subscription_reader()?;
+
+    let topics: Vec<&str> = topics_str.split(',').map(|s| s.trim()).collect();
+    println!("Health check for topics: {:?} (timeout: {}s)", topics, timeout_secs);
+
+    let mut healthy = true;
+
+    for topic_name in &topics {
+        let mut has_pub = false;
+        let mut has_sub = false;
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
+        while std::time::Instant::now() < deadline {
+            let pubs: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+            for ep in &pubs {
+                if ep.topic_name() == *topic_name {
+                    has_pub = true;
+                }
+            }
+
+            let subs: Vec<BuiltinEndpointSample> = sub_reader.take().unwrap_or_default();
+            for ep in &subs {
+                if ep.topic_name() == *topic_name {
+                    has_sub = true;
+                }
+            }
+
+            if has_pub && has_sub {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+
+        let status = match (has_pub, has_sub) {
+            (true, true) => "HEALTHY (pub + sub)",
+            (true, false) => "WARNING (pub only, no sub)",
+            (false, true) => "WARNING (sub only, no pub)",
+            (false, false) => "UNHEALTHY (no pub, no sub)",
+        };
+
+        if !has_pub || !has_sub {
+            healthy = false;
+        }
+
+        println!("  {}: {}", topic_name, status);
+    }
+
+    if healthy {
+        println!("\nAll topics are healthy.");
+    } else {
+        println!("\nSome topics are unhealthy.");
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// topology command
+// ---------------------------------------------------------------------------
+
+fn cmd_topology(
+    domain_id: u32,
+    output_path: Option<&str>,
+) -> cyclonedds::DdsResult<()> {
+    let participant = DomainParticipant::new(domain_id)?;
+    let pub_reader = participant.create_builtin_publication_reader()?;
+    let sub_reader = participant.create_builtin_subscription_reader()?;
+    let par_reader = participant.create_builtin_participant_reader()?;
+
+    println!("Discovering topology on domain {}...", domain_id);
+    std::thread::sleep(Duration::from_secs(2));
+
+    let participants: Vec<BuiltinParticipantSample> = par_reader.take().unwrap_or_default();
+    let publications: Vec<BuiltinEndpointSample> = pub_reader.take().unwrap_or_default();
+    let subscriptions: Vec<BuiltinEndpointSample> = sub_reader.take().unwrap_or_default();
+
+    let mut dot = String::new();
+    dot.push_str("digraph DDS_Topology {\n");
+    dot.push_str("  rankdir=TB;\n");
+    dot.push_str("  node [shape=box];\n\n");
+
+    // Participants
+    for p in &participants {
+        dot.push_str(&format!(
+            "  \"participant_{:?}\" [label=\"Participant {:?}\", style=filled, fillcolor=lightblue];\n",
+            p.key(),
+            p.key()
+        ));
+    }
+    dot.push('\n');
+
+    // Topics
+    let mut topics: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for p in &publications {
+        topics.insert(p.topic_name().to_string());
+    }
+    for s in &subscriptions {
+        topics.insert(s.topic_name().to_string());
+    }
+
+    for t in &topics {
+        let safe = t.replace('"', "\\\"");
+        dot.push_str(&format!(
+            "  \"topic_{}\" [label=\"Topic: {}\", shape=ellipse, style=filled, fillcolor=lightyellow];\n",
+            safe, safe
+        ));
+    }
+    dot.push('\n');
+
+    // Publishers
+    for p in &publications {
+        let safe_topic = p.topic_name().replace('"', "\\\"");
+        dot.push_str(&format!(
+            "  \"pub_{}_{:?}\" [label=\"Writer\\n{}\", shape=diamond, style=filled, fillcolor=lightgreen];\n",
+            safe_topic, p.key(), p.type_name()
+        ));
+        dot.push_str(&format!(
+            "  \"topic_{}\" -> \"pub_{}_{:?}\" [dir=back, label=\"publishes\"];\n",
+            safe_topic, safe_topic, p.key()
+        ));
+    }
+    dot.push('\n');
+
+    // Subscribers
+    for s in &subscriptions {
+        let safe_topic = s.topic_name().replace('"', "\\\"");
+        dot.push_str(&format!(
+            "  \"sub_{}_{:?}\" [label=\"Reader\\n{}\", shape=diamond, style=filled, fillcolor=lightcoral];\n",
+            safe_topic, s.key(), s.type_name()
+        ));
+        dot.push_str(&format!(
+            "  \"sub_{}_{:?}\" -> \"topic_{}\" [label=\"subscribes\"];\n",
+            safe_topic, s.key(), safe_topic
+        ));
+    }
+
+    dot.push_str("}\n");
+
+    if let Some(path) = output_path {
+        std::fs::write(path, dot)
+            .map_err(|e| cyclonedds::DdsError::BadParameter(format!("write error: {}", e)))?;
+        println!("Topology written to '{}'.", path);
+    } else {
+        println!("{}", dot);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -1576,6 +1868,17 @@ fn main() {
             domain_id,
             delay_ms,
         } => cmd_replay(&topic, &input, domain_id, delay_ms),
+        Commands::Monitor {
+            topic,
+            domain_id,
+            interval,
+        } => cmd_monitor(&topic, domain_id, interval),
+        Commands::Health {
+            topics,
+            domain_id,
+            timeout,
+        } => cmd_health(&topics, domain_id, timeout),
+        Commands::Topology { domain_id, output } => cmd_topology(domain_id, output.as_deref()),
     };
 
     if let Err(e) = result {

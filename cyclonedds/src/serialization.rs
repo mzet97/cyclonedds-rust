@@ -143,6 +143,102 @@ impl<'a, T: DdsType> CdrSerializer<'a, T> {
             Ok(buf)
         }
     }
+
+    /// Serialize `sample` into a pre-allocated buffer, returning the number
+    /// of bytes written.
+    ///
+    /// This avoids the intermediate allocation performed by [`serialize`].
+    /// If `buf` is too small, an error is returned.
+    pub fn serialize_to_buffer(
+        sample: &T,
+        buf: &mut [u8],
+        encoding: CdrEncoding,
+    ) -> DdsResult<usize> {
+        let desc = CdrStreamDesc::new::<T>()?;
+
+        unsafe {
+            let mut os: dds_ostream_t = std::mem::zeroed();
+            dds_ostream_init(
+                &mut os,
+                &dds_cdrstream_default_allocator,
+                0,
+                encoding.as_xcdr_version(),
+            );
+
+            let mut arena = crate::write_arena::WriteArena::new();
+            let data_ptr = sample.write_to_native(&mut arena)?;
+
+            let ok = dds_stream_write_sample(
+                &mut os,
+                &dds_cdrstream_default_allocator,
+                data_ptr,
+                desc.as_ptr(),
+            );
+
+            if !ok {
+                dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+                return Err(DdsError::Unsupported("CDR serialization failed".into()));
+            }
+
+            let len = os.m_index as usize;
+            if len > buf.len() {
+                dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+                return Err(DdsError::BadParameter(format!(
+                    "buffer too small: needed {} bytes, got {}",
+                    len,
+                    buf.len()
+                )));
+            }
+
+            std::ptr::copy_nonoverlapping(os.m_buffer, buf.as_mut_ptr(), len);
+            dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+            Ok(len)
+        }
+    }
+
+    /// Serialize only the key fields into a pre-allocated buffer.
+    pub fn serialize_key_to_buffer(
+        sample: &T,
+        buf: &mut [u8],
+        encoding: CdrEncoding,
+    ) -> DdsResult<usize> {
+        let desc = CdrStreamDesc::new::<T>()?;
+
+        unsafe {
+            let mut os: dds_ostream_t = std::mem::zeroed();
+            dds_ostream_init(
+                &mut os,
+                &dds_cdrstream_default_allocator,
+                0,
+                encoding.as_xcdr_version(),
+            );
+
+            let mut arena = crate::write_arena::WriteArena::new();
+            let data_ptr = sample.write_to_native(&mut arena)?;
+
+            dds_stream_write_key(
+                &mut os,
+                cyclonedds_rust_sys::dds_cdr_key_serialization_kind_DDS_CDR_KEY_SERIALIZATION_SAMPLE,
+                &dds_cdrstream_default_allocator,
+                data_ptr as *const _,
+                desc.as_ptr(),
+            );
+
+            let len = os.m_index as usize;
+            if len > buf.len() {
+                dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+                return Err(DdsError::BadParameter(format!(
+                    "buffer too small: needed {} bytes, got {}",
+                    len,
+                    buf.len()
+                )));
+            }
+
+            std::ptr::copy_nonoverlapping(os.m_buffer, buf.as_mut_ptr(), len);
+            dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+            Ok(len)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

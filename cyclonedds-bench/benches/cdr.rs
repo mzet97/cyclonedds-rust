@@ -99,6 +99,53 @@ fn bench_cdr_roundtrip(c: &mut Criterion) {
     });
 }
 
+fn bench_cdr_serialize_to_buffer(c: &mut Criterion) {
+    let point = Point { x: 1.0, y: 2.0, z: 3.0 };
+    let pose = Pose {
+        position: point.clone(),
+        orientation: point.clone(),
+    };
+    let msg = Message {
+        id: 42,
+        seq: 123456789,
+        payload: "Hello, DDS!".to_string(),
+    };
+
+    let mut point_buf = vec![0u8; 64];
+    let mut pose_buf = vec![0u8; 128];
+    let mut msg_buf = vec![0u8; 256];
+
+    c.bench_function("cdr_serialize_to_buffer_point", |b| {
+        b.iter(|| {
+            let _ = CdrSerializer::serialize_to_buffer(
+                black_box(&point),
+                &mut point_buf,
+                CdrEncoding::Xcdr1,
+            ).unwrap();
+        })
+    });
+
+    c.bench_function("cdr_serialize_to_buffer_pose", |b| {
+        b.iter(|| {
+            let _ = CdrSerializer::serialize_to_buffer(
+                black_box(&pose),
+                &mut pose_buf,
+                CdrEncoding::Xcdr1,
+            ).unwrap();
+        })
+    });
+
+    c.bench_function("cdr_serialize_to_buffer_message", |b| {
+        b.iter(|| {
+            let _ = CdrSerializer::serialize_to_buffer(
+                black_box(&msg),
+                &mut msg_buf,
+                CdrEncoding::Xcdr1,
+            ).unwrap();
+        })
+    });
+}
+
 fn bench_pod_memcpy(c: &mut Criterion) {
     // Benchmark manual memcpy for a POD type as a comparison baseline.
     let point = Point { x: 1.0, y: 2.0, z: 3.0 };
@@ -124,6 +171,7 @@ criterion_group!(
     bench_cdr_serialize,
     bench_cdr_deserialize,
     bench_cdr_roundtrip,
+    bench_cdr_serialize_to_buffer,
     bench_pod_memcpy,
 );
 criterion_main!(benches);

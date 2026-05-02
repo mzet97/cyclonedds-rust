@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-05-01
+
+### Added
+
+- **CDR Performance**: `CdrSerializer::serialize_to_buffer()` and
+  `CdrSerializer::serialize_key_to_buffer()` for zero-allocation serialization
+  into pre-allocated buffers.
+- **CLI v1.5**: `monitor` command for real-time throughput statistics.
+- **CLI v1.5**: `health` command for checking publisher/subscriber presence
+  on one or more topics.
+- **CLI v1.5**: `topology` command for generating Graphviz DOT graphs of
+  discovered DDS entities.
+- **Benchmarks**: `cyclonedds-bench/benches/ipc_comparison.rs` comparing
+  DDS round-trip latency against std channels.
+- **Tutorial**: `docs/tutorial.md` step-by-step guide for first DDS application.
+- **FAQ**: `docs/faq.md` with common questions and troubleshooting tips.
+- **Admin API**: `DomainParticipant::discovered_participants()`,
+  `discovered_publications()`, `discovered_subscriptions()`, `discovered_topics()`
+  for runtime introspection.
+- **Stress Tests**: `cyclonedds-test-suite/tests/stress.rs` with 100K message
+  throughput validation.
+- **CI Coverage**: `.github/workflows/coverage.yml` with `cargo-llvm-cov`
+  and Codecov upload.
+
+### Changed
+
+- Workspace version bumped to `1.5.0`.
+
 ## [1.4.0] - 2026-05-01
 
 ### Added
