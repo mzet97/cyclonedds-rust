@@ -20,6 +20,7 @@
 use cyclonedds::{DataWriter, DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Topic};
 
 #[derive(DdsTypeDerive, Clone, Debug)]
+#[allow(dead_code)]
 struct Vector3 {
     x: f64,
     y: f64,
