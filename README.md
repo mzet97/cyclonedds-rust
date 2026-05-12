@@ -1,6 +1,7 @@
 # cyclonedds-rust
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE-MIT)
+[![crates.io](https://img.shields.io/crates/v/cyclonedds.svg)](https://crates.io/crates/cyclonedds)
 
 Safe, idiomatic Rust bindings for [Eclipse CycloneDDS](https://github.com/eclipse-cyclonedds/cyclonedds) — a high-performance implementation of the OMG Data Distribution Service (DDS) specification.
 
@@ -134,16 +135,17 @@ async fn consume<T: cyclonedds::DdsType>(reader: &DataReader<T>) {
 
 | Crate | Description |
 |-------|-------------|
-| `cyclonedds-sys` | Low-level FFI bindings (generated via bindgen) |
-| `cyclonedds` | High-level safe Rust API |
-| `cyclonedds-derive` | Procedural derive macros (`DdsType`, `DdsEnum`, `DdsUnion`, `DdsBitmask`) |
-| `cyclonedds-build` | Build-time helpers for generating types from IDL |
-| `cyclonedds-idlc` | IDL compiler backend producing Rust source from IDL files |
-| `cyclonedds-cli` | Command-line tools (`ls`, `ps`, `subscribe`, `typeof`, `publish`, `perf`, `discover`, `echo`, `record`, `replay`, `monitor`, `health`, `topology`) |
-| `cargo-cyclonedds` | Cargo plugin (`cargo cyclonedds generate <idl>`) |
+| [`cyclonedds-rust-sys`](https://crates.io/crates/cyclonedds-rust-sys) | Low-level FFI bindings (generated via bindgen) |
+| [`cyclonedds`](https://crates.io/crates/cyclonedds) | High-level safe Rust API |
+| [`cyclonedds-derive`](https://crates.io/crates/cyclonedds-derive) | Procedural derive macros (`DdsType`, `DdsEnum`, `DdsUnion`, `DdsBitmask`) |
+| [`cyclonedds-build`](https://crates.io/crates/cyclonedds-build) | Build-time helpers for generating types from IDL |
+| [`cyclonedds-idlc`](https://crates.io/crates/cyclonedds-idlc) | IDL compiler backend producing Rust source from IDL files |
+| [`cyclonedds-cli`](https://crates.io/crates/cyclonedds-cli) | Command-line tools (`ls`, `ps`, `subscribe`, `typeof`, `publish`, `perf`, `discover`, `echo`, `record`, `replay`, `monitor`, `health`, `topology`) |
+| [`cargo-cyclonedds`](https://crates.io/crates/cargo-cyclonedds) | Cargo plugin (`cargo cyclonedds generate <idl>`) |
 | `cyclonedds-bench` | Criterion benchmarks (latency, throughput, CDR) |
 | `cyclonedds-test-suite` | Integration tests |
-| `cyclonedds-wasm` | Experimental WebAssembly bindings (WebSocket transport) |
+| [`cyclonedds-wasm`](https://crates.io/crates/cyclonedds-wasm) | Experimental WebAssembly bindings (WebSocket transport) |
+| [`cyclonedds-src`](https://crates.io/crates/cyclonedds-src) | Bundled CycloneDDS C source (build dependency) |
 
 ## Build
 
