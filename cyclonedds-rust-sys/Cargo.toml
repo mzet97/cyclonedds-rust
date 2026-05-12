@@ -20,7 +20,7 @@ all-features = true
 
 [build-dependencies]
 cyclonedds-src = { workspace = true }
-bindgen = { version = "0.71", optional = true }
+bindgen = { version = "0.72", optional = true }
 
 [features]
 default = []
