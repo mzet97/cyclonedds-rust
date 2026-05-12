@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: mailto:Matheus.zeitune.developer@gmail.com
+    about: Report security vulnerabilities via email. Do not open public issues for security reports.

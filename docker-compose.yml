@@ -1,0 +1,80 @@
+version: "3.9"
+
+# Local DDS development environment for cyclonedds-rust
+# Usage: docker compose up --build
+
+services:
+  # Publisher endpoint
+  pub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      cyclonedds-cli publish
+      --topic HelloWorld
+      --message "hello from docker"
+      --rate 1
+    networks:
+      - dds-net
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "cyclonedds-cli", "health", "HelloWorld"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Subscriber endpoint
+  sub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      cyclonedds-cli subscribe
+      --topic HelloWorld
+      --json
+    networks:
+      - dds-net
+    depends_on:
+      pub:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "cyclonedds-cli", "health", "HelloWorld"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # DDS topic monitor
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      cyclonedds-cli monitor
+      --topic HelloWorld
+    networks:
+      - dds-net
+    depends_on:
+      pub:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+  # Participant discovery
+  discovery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      cyclonedds-cli discover
+      --domain 0
+    networks:
+      - dds-net
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  dds-net:
+    driver: bridge

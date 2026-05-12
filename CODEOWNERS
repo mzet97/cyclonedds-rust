@@ -1,0 +1,51 @@
+# CODEOWNERS
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @mzet97
+
+# Safe Rust API — core DDS entity model, QoS, listeners, async, serialization
+/cyclonedds/ @mzet97
+
+# FFI bindings — generated via bindgen, sensitive to C API changes
+/cyclonedds-rust-sys/ @mzet97
+
+# Proc-macro derive — DdsType, DdsEnum, DdsUnion, DdsBitmask
+/cyclonedds-derive/ @mzet97
+
+# Build system — IDL compilation, Cargo plugin
+/cyclonedds-build/ @mzet97
+/cyclonedds-idlc/ @mzet97
+/cargo-cyclonedds/ @mzet97
+
+# CLI tools — cyclonedds-cli binary
+/cyclonedds-cli/ @mzet97
+
+# Testing and benchmarking
+/cyclonedds-test-suite/ @mzet97
+/cyclonedds-bench/ @mzet97
+
+# Experimental — WASM bindings
+/cyclonedds-wasm/ @mzet97
+
+# Bundled C source — CycloneDDS upstream
+/cyclonedds-src/ @mzet97
+
+# Documentation
+/docs/ @mzet97
+
+# Architecture Decision Records
+/docs/adr/ @mzet97
+
+# CI/CD workflows — security-sensitive
+/.github/ @mzet97
+
+# Security policy
+/SECURITY.md @mzet97
+
+# Docker and deployment
+/Dockerfile @mzet97
+/docker-compose.yml @mzet97
+
+# Build and packaging scripts
+/scripts/ @mzet97
