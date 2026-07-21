@@ -16,6 +16,8 @@ impl LoanTestMsg {
 }
 
 impl DdsType for LoanTestMsg {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "LoanTestMsg"
     }

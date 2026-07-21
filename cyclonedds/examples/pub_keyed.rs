@@ -7,6 +7,8 @@ struct KeyValue {
 }
 
 impl DdsType for KeyValue {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "KeyValue"
     }

@@ -41,10 +41,13 @@ mod error;
 #[cfg(feature = "std")]
 #[allow(missing_docs)]
 mod listener;
-#[cfg(all(any(feature = "opentelemetry", feature = "tokio-console"), feature = "std"))]
-pub mod observability;
 #[cfg(feature = "std")]
 pub mod log;
+#[cfg(all(
+    any(feature = "opentelemetry", feature = "tokio-console"),
+    feature = "std"
+))]
+pub mod observability;
 #[cfg(feature = "std")]
 mod participant;
 #[cfg(feature = "std")]
@@ -54,19 +57,19 @@ mod publisher;
 #[cfg(feature = "std")]
 mod qos;
 #[cfg(feature = "std")]
-mod request_reply;
-#[cfg(feature = "std")]
 mod qos_provider;
 #[cfg(feature = "std")]
 mod reader;
 #[cfg(feature = "std")]
+mod request_reply;
+#[cfg(feature = "std")]
 pub mod sample;
-#[cfg(all(feature = "serde", feature = "std"))]
-mod serde_sample;
 #[cfg(all(feature = "security", feature = "std"))]
 pub mod security;
 #[cfg(feature = "std")]
 mod sequence;
+#[cfg(all(feature = "serde", feature = "std"))]
+mod serde_sample;
 #[cfg(feature = "std")]
 mod serialization;
 #[cfg(feature = "std")]
@@ -98,7 +101,9 @@ pub use builtin::{
     BUILTIN_TOPIC_DCPSTOPIC, DDS_MIN_PSEUDO_HANDLE,
 };
 #[cfg(feature = "std")]
-pub use content_filtered_topic::{ContentFilteredTopic, FilterParams, TopicFilterExt, TopicParameterizedFilterExt};
+pub use content_filtered_topic::{
+    ContentFilteredTopic, FilterParams, TopicFilterExt, TopicParameterizedFilterExt,
+};
 #[cfg(feature = "std")]
 pub use dynamic_type::{
     DynamicEnumLiteralValue, DynamicMemberBuilder, DynamicPrimitiveKind, DynamicType,
@@ -120,6 +125,8 @@ pub use listener::{Listener, ListenerBuilder};
 #[cfg(feature = "std")]
 pub use participant::DomainParticipant;
 #[cfg(feature = "std")]
+pub use participant_pool::{DiscoveredParticipant, DiscoveredTopic, ParticipantPool};
+#[cfg(feature = "std")]
 pub use publisher::Publisher;
 #[cfg(feature = "std")]
 pub use qos::{
@@ -128,21 +135,19 @@ pub use qos::{
     QosBuilder, ReaderDataLifecyclePolicy, Reliability, TypeConsistency, TypeConsistencyPolicy,
 };
 #[cfg(feature = "std")]
-pub use participant_pool::{DiscoveredParticipant, DiscoveredTopic, ParticipantPool};
-#[cfg(feature = "std")]
 pub use qos_provider::{QosKind, QosProvider};
-#[cfg(feature = "std")]
-pub use request_reply::{Replier, RequestReply, Requester};
 #[cfg(feature = "std")]
 pub use reader::DataReader;
 #[cfg(feature = "std")]
+pub use request_reply::{Replier, RequestReply, Requester};
+#[cfg(feature = "std")]
 pub use sample::{Loan, Sample};
-#[cfg(all(feature = "serde", feature = "std"))]
-pub use serde_sample::SerdeSample;
 #[cfg(all(feature = "security", feature = "std"))]
 pub use security::SecurityConfig;
 #[cfg(feature = "std")]
 pub use sequence::{DdsBoundedSequence, DdsSequence, DdsSequenceElement};
+#[cfg(all(feature = "serde", feature = "std"))]
+pub use serde_sample::SerdeSample;
 #[cfg(feature = "std")]
 pub use serialization::{CdrDeserializer, CdrEncoding, CdrSample, CdrSerializer};
 #[cfg(feature = "std")]
@@ -170,7 +175,7 @@ pub use topic::{
     DDS_OP_SUBTYPE_MASK_CONST, DDS_OP_TYPE_MASK_CONST, OP_ADR, OP_DLC, OP_FLAG_EXT, OP_FLAG_FP,
     OP_FLAG_KEY, OP_FLAG_MU, OP_FLAG_OPT, OP_FLAG_SGN, OP_FLAG_SZ_SHIFT, OP_JEQ4, OP_KOF, OP_MID,
     OP_RTS, SUBTYPE_1BY, SUBTYPE_2BY, SUBTYPE_4BY, SUBTYPE_8BY, SUBTYPE_BSQ, SUBTYPE_BST,
-    SUBTYPE_ENU, SUBTYPE_SEQ, SUBTYPE_STU, SUBTYPE_STR, TYPE_1BY, TYPE_2BY, TYPE_4BY, TYPE_8BY,
+    SUBTYPE_ENU, SUBTYPE_SEQ, SUBTYPE_STR, SUBTYPE_STU, TYPE_1BY, TYPE_2BY, TYPE_4BY, TYPE_8BY,
     TYPE_ARR, TYPE_BSQ, TYPE_BST, TYPE_ENU, TYPE_EXT, TYPE_SEQ, TYPE_STR, TYPE_UNI,
 };
 #[cfg(feature = "std")]

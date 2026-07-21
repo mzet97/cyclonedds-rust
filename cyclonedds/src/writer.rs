@@ -159,6 +159,13 @@ impl<T: DdsType> DataWriter<T> {
         unsafe { check(dds_assert_liveliness(self.entity)) }
     }
 
+    /// Atualiza o QoS do writer em runtime (knobs online: TransportPriority,
+    /// LatencyBudget, OwnershipStrength — o conjunto mutável avaliado pelo
+    /// decisor de QoS, ver `dds-contract::qos::OnlineKnobs`).
+    pub fn set_qos(&self, qos: &crate::Qos) -> DdsResult<()> {
+        unsafe { check(dds_set_qos(self.entity, qos.as_ptr())) }
+    }
+
     pub fn unregister_instance_ts(&self, data: &T, timestamp: dds_time_t) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
             check(dds_unregister_instance_ts(self.entity, ptr, timestamp))
@@ -227,12 +234,45 @@ impl<T: DdsType> DataWriter<T> {
 
     /// Request a loaned sample buffer from DDS for zero-copy writing.
     ///
-    /// Returns a [`WriteLoan`] that holds a pointer to the loaned memory.
-    /// Populate the sample via `loan.get_mut()`, then call
-    /// [`WriteLoan::write`] to publish it.
+    /// Returns a [`WriteLoan`] that holds a pointer to the loaned memory, typed
+    /// as [`DdsType::Native`] — the DDS wire-compatible representation of `T`
+    /// (for types with `String`/`Vec` fields this is a distinct, smaller struct
+    /// with `DdsString`/`DdsSequence` fields; see the trait docs). Populate the
+    /// sample via `loan.get_mut()`, then call [`WriteLoan::write`] to publish
+    /// it.
     ///
     /// If the loan is dropped without being written, it is automatically
-    /// returned to DDS without being published.
+    /// returned to DDS without being published (and any fields already
+    /// populated, e.g. a `DdsString`, are dropped correctly first).
+    ///
+    /// # SAFETY (history)
+    ///
+    /// Earlier versions of this method zero-initialized and cast the loaned
+    /// buffer as `*mut T` directly. That was doubly unsound whenever `T` had
+    /// heap-allocated fields: (1) `dds_request_loan` allocates exactly
+    /// `T::descriptor_size()` bytes — `size_of::<T::Native>()` — which is
+    /// *smaller* than `size_of::<T>()` once `String`(24B)/`Vec` fields are
+    /// swapped for `DdsString`(8B)/`DdsSequence`, so zero-initializing
+    /// `size_of::<T>()` bytes wrote past the end of the allocation (heap
+    /// buffer overflow on every loan, regardless of whether the caller ever
+    /// touched a string field); and (2) even with the size fixed, a zeroed
+    /// `String`/`Vec` is not a valid bit-pattern, so assigning through
+    /// `&mut T` would run `Drop` on an invalid value. Operating on
+    /// `T::Native` (whose zero bit-pattern is valid by construction —
+    /// `DdsString`/`DdsSequence`'s null/empty state — and whose size matches
+    /// exactly what was allocated) fixes both issues. Found while
+    /// implementing zero-copy writes for `tese/src/rust`'s `TaskOutput` (3
+    /// `String` fields) — see that repo's `OPTIMIZATION_PLAN.md` Fase 4 for
+    /// the full writeup.
+    ///
+    /// Known remaining gap (not a regression, pre-existing and out of scope
+    /// for this fix): the derive macro's handling of a `Vec<Composite>` field
+    /// uses the inner composite type directly as `DdsSequence<Inner>`'s
+    /// element type rather than `<Inner as DdsType>::Native`. This is correct
+    /// only when `Inner` has no heap fields of its own (true for every type
+    /// this crate currently derives that use nested `Vec<Composite>`). A
+    /// nested composite *with* `String`/`Vec` fields inside a `Vec<..>` would
+    /// need the same treatment as this fix, recursively.
     pub fn request_loan(&self) -> DdsResult<WriteLoan<T>> {
         unsafe {
             let mut sample_ptr: *mut c_void = std::ptr::null_mut();
@@ -240,11 +280,15 @@ impl<T: DdsType> DataWriter<T> {
             if sample_ptr.is_null() {
                 return Err(crate::DdsError::OutOfResources);
             }
-            // Zero-initialize the loaned memory so the caller starts from a
-            // clean state (DDS does not guarantee the buffer contents).
-            std::ptr::write_bytes(sample_ptr as *mut u8, 0, std::mem::size_of::<T>());
+            // Zero-initialize exactly `size_of::<T::Native>()` bytes — this is
+            // what CycloneDDS actually allocated (topic m_size ==
+            // T::descriptor_size() == size_of::<T::Native>() by construction)
+            // and `T::Native`'s all-zero state is a valid value (DdsString's
+            // null pointer, DdsSequence's empty/unreleased state, or plain
+            // zero-valid primitives).
+            std::ptr::write_bytes(sample_ptr as *mut u8, 0, std::mem::size_of::<T::Native>());
             Ok(WriteLoan {
-                sample: sample_ptr as *mut T,
+                sample: sample_ptr as *mut T::Native,
                 writer: self.entity,
                 written: false,
                 _marker: PhantomData,
@@ -308,9 +352,10 @@ impl<T: DdsType> DataWriter<T> {
 
     /// Request a loaned sample buffer and write it asynchronously.
     ///
-    /// The `f` closure receives a mutable reference to the loaned sample,
-    /// allowing the caller to populate it in place. The sample is then
-    /// published in a single zero-copy operation.
+    /// The `f` closure receives `&mut T::Native` (the wire-compatible
+    /// representation — see [`DdsType::Native`]), allowing the caller to
+    /// populate it in place. The sample is then published in a single
+    /// zero-copy operation.
     ///
     /// # Example
     ///
@@ -328,7 +373,7 @@ impl<T: DdsType> DataWriter<T> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, f)))]
     pub async fn write_loan_async<F>(&self, f: F) -> DdsResult<()>
     where
-        F: FnOnce(&mut T),
+        F: FnOnce(&mut T::Native),
     {
         let mut loan = self.request_loan()?;
         f(loan.get_mut());
@@ -357,13 +402,15 @@ impl<T: DdsType> Drop for DataWriter<T> {
 /// A loaned sample buffer for zero-copy writing.
 ///
 /// Obtain one via [`DataWriter::request_loan`], populate it via
-/// [`get_mut`](WriteLoan::get_mut), then call [`write`](WriteLoan::write) to
-/// publish it.
+/// [`get_mut`](WriteLoan::get_mut) — which gives you `&mut T::Native`, the
+/// wire-compatible representation, not `&mut T` — then call
+/// [`write`](WriteLoan::write) to publish it.
 ///
-/// If dropped without calling `write`, the loan is returned to DDS
-/// (the sample is *not* published).
+/// If dropped without calling `write`, any fields already populated (e.g. a
+/// `DdsString`) are dropped correctly, and the loan is returned to DDS (the
+/// sample is *not* published).
 pub struct WriteLoan<T: DdsType> {
-    sample: *mut T,
+    sample: *mut T::Native,
     writer: dds_entity_t,
     written: bool,
     _marker: PhantomData<T>,
@@ -372,19 +419,27 @@ pub struct WriteLoan<T: DdsType> {
 impl<T: DdsType> WriteLoan<T> {
     /// Get a mutable reference to the loaned sample so you can populate it.
     ///
+    /// This is `&mut T::Native` (the wire-compatible representation), not
+    /// `&mut T` — for a type with `String` fields, populate the corresponding
+    /// `DdsString` field via `DdsString::new(..)` instead of assigning a
+    /// `String` directly.
+    ///
     /// # Safety contract
     ///
-    /// The caller must not move out of the referenced value or replace it
-    /// with one that contains heap allocations that expect to be dropped
-    /// (the DDS loan owns the memory and `dds_return_loan` will free it).
-    /// For plain-old-data and DDS-compatible types this is safe.
-    pub fn get_mut(&mut self) -> &mut T {
+    /// The buffer starts zero-initialized (a valid `T::Native` value — see
+    /// [`DataWriter::request_loan`]). Normal field assignment
+    /// (`loan.get_mut().field = value;`) is sound: it drops the old
+    /// (zero-valid) field before moving in the new one. Do not move the
+    /// entire referenced value out of the loan (the DDS loan owns this
+    /// memory; only individual fields should be replaced).
+    pub fn get_mut(&mut self) -> &mut T::Native {
         unsafe { &mut *self.sample }
     }
 
     /// Consume the loan and publish the sample.
     ///
-    /// On success the loan is transferred to DDS (no copy needed).
+    /// On success the loan is transferred to DDS (no copy needed) — DDS now
+    /// owns the buffer and any heap-allocated fields it holds.
     /// On failure the loan is still consumed and the data is discarded.
     pub fn write(mut loan: Self) -> DdsResult<()> {
         loan.written = true;
@@ -398,9 +453,16 @@ impl<T: DdsType> WriteLoan<T> {
 impl<T: DdsType> Drop for WriteLoan<T> {
     fn drop(&mut self) {
         if !self.written && !self.sample.is_null() {
-            // Return the loan without writing.  dds_return_loan expects
-            // a *mut *mut c_void array.
             unsafe {
+                // Run T::Native's destructor first: any DdsString/DdsSequence
+                // field the caller already populated before abandoning the
+                // loan owns real CycloneDDS-allocated memory that must be
+                // freed here (a no-op for still-zeroed fields, since
+                // DdsString/DdsSequence's Drop checks for the null/unreleased
+                // state). Skipping this would leak.
+                std::ptr::drop_in_place(self.sample);
+                // Return the loan buffer itself.  dds_return_loan expects
+                // a *mut *mut c_void array.
                 let mut ptr = self.sample as *mut c_void;
                 let _ = dds_return_loan(self.writer, &mut ptr, 1);
             }

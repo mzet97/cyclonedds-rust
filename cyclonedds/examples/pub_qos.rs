@@ -7,6 +7,8 @@ struct HelloWorld {
 }
 
 impl DdsType for HelloWorld {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "HelloWorldQos"
     }

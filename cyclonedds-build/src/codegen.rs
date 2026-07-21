@@ -77,7 +77,7 @@ fn generate_type(ty: &IdlType) -> String {
 fn generate_struct(s: &IdlStruct) -> String {
     let mut output = String::new();
 
-    output.push_str("#[derive(Debug, Clone, DdsTypeDerive)]\n");
+    output.push_str("#[derive(Debug, Clone, Default, PartialEq, DdsTypeDerive)]\n");
     output.push_str("pub struct ");
     output.push_str(&s.name);
     output.push_str(" {\n");
@@ -317,7 +317,7 @@ mod tests {
             annotations: vec![],
         };
         let code = generate_struct(&s);
-        assert!(code.contains("#[derive(Debug, Clone, DdsTypeDerive)]"));
+        assert!(code.contains("#[derive(Debug, Clone, Default, PartialEq, DdsTypeDerive)]"));
         assert!(code.contains("pub struct Point"));
         assert!(code.contains("pub x: i32"));
         assert!(code.contains("pub y: f64"));

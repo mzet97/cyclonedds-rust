@@ -439,6 +439,8 @@ mod tests {
     }
 
     impl DdsType for Point {
+        type Native = Self;
+
         fn type_name() -> &'static str {
             "test::Point"
         }

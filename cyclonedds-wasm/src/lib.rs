@@ -75,9 +75,7 @@ pub struct WasmDomainParticipant {
 impl WasmDomainParticipant {
     /// Connect to a DDS WebSocket bridge.
     pub fn new(url: &str) -> WasmDdsResult<Rc<Self>> {
-        let ws = WebSocket::new(url).map_err(|e| {
-            WasmDdsError::WebSocket(format!("{:?}", e))
-        })?;
+        let ws = WebSocket::new(url).map_err(|e| WasmDdsError::WebSocket(format!("{:?}", e)))?;
         ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
         let participant = Rc::new(WasmDomainParticipant {
@@ -88,13 +86,17 @@ impl WasmDomainParticipant {
         let onopen = Closure::wrap(Box::new(move || {
             web_sys::console::log_1(&"DDS WebSocket connected".into());
         }) as Box<dyn Fn()>);
-        participant.ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+        participant
+            .ws
+            .set_onopen(Some(onopen.as_ref().unchecked_ref()));
         onopen.forget();
 
         let onerror = Closure::wrap(Box::new(move |e: ErrorEvent| {
             web_sys::console::error_1(&format!("DDS WebSocket error: {:?}", e).into());
         }) as Box<dyn Fn(ErrorEvent)>);
-        participant.ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+        participant
+            .ws
+            .set_onerror(Some(onerror.as_ref().unchecked_ref()));
         onerror.forget();
 
         Ok(participant)
@@ -106,7 +108,9 @@ impl WasmDomainParticipant {
         name: &str,
     ) -> WasmDdsResult<WasmTopic<T>> {
         let type_name = std::any::type_name::<T>();
-        self.topics.borrow_mut().insert(name.to_string(), type_name.to_string());
+        self.topics
+            .borrow_mut()
+            .insert(name.to_string(), type_name.to_string());
         Ok(WasmTopic {
             name: name.to_string(),
             _marker: std::marker::PhantomData,
@@ -182,17 +186,17 @@ pub struct WasmDataWriter<T> {
 impl<T: Serialize> WasmDataWriter<T> {
     /// Publish a sample.
     pub fn write(&self, data: &T) -> WasmDdsResult<()> {
-        let payload = serde_json::to_value(data)
-            .map_err(|e| WasmDdsError::Serialization(e.to_string()))?;
+        let payload =
+            serde_json::to_value(data).map_err(|e| WasmDdsError::Serialization(e.to_string()))?;
         let envelope = serde_json::json!({
             "topic": self.topic_name,
             "data": payload,
         });
         let json = serde_json::to_string(&envelope)
             .map_err(|e| WasmDdsError::Serialization(e.to_string()))?;
-        self.ws.send_with_str(&json).map_err(|e| {
-            WasmDdsError::WebSocket(format!("{:?}", e))
-        })?;
+        self.ws
+            .send_with_str(&json)
+            .map_err(|e| WasmDdsError::WebSocket(format!("{:?}", e)))?;
         Ok(())
     }
 }

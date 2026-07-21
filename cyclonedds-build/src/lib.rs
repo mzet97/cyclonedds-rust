@@ -293,7 +293,7 @@ mod tests {
             };
         "#;
         let result = parse_and_generate(idl, "test_types").unwrap();
-        assert!(result.contains("#[derive(Debug, Clone, DdsTypeDerive)]"));
+        assert!(result.contains("#[derive(Debug, Clone, Default, PartialEq, DdsTypeDerive)]"));
         assert!(result.contains("pub struct Point"));
         assert!(result.contains("pub x: f64"));
     }

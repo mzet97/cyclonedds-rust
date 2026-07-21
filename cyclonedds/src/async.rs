@@ -48,7 +48,9 @@ impl<T: DdsType> DataReader<T> {
             let mut result = Vec::with_capacity(n);
             for i in 0..n {
                 if infos[i].valid_data && !samples[i].is_null() {
-                    let data = std::ptr::read(samples[i] as *const T);
+                    // clone_out converte a amostra nativa (layout C) em valor Rust
+                    // próprio; ptr::read aqui seria UB (strings nativas são char* de 8B).
+                    let data = T::clone_out(samples[i] as *const T);
                     result.push(data);
                 }
             }
@@ -122,7 +124,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }
@@ -200,7 +206,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }
@@ -259,7 +269,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }
@@ -320,7 +334,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }
@@ -400,7 +418,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }
@@ -480,7 +502,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }
@@ -542,7 +568,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }
@@ -604,7 +634,11 @@ impl<T: DdsType> DataReader<T> {
                     let mut result = Vec::with_capacity(n);
                     for i in 0..n {
                         if infos[i].valid_data && !samples[i].is_null() {
-                            let data = std::ptr::read(samples[i] as *const T);
+                            // clone_out converte a amostra nativa (DdsString/sequências)
+                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
+                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
+                            // e o buffer é devolvido ao DDS no return_loan abaixo.
+                            let data = T::clone_out(samples[i] as *const T);
                             result.push(data);
                         }
                     }

@@ -1141,11 +1141,7 @@ fn print_type_schema(schema: &cyclonedds::DynamicTypeSchema, indent: usize) {
             };
             println!(
                 "{}{}struct {}{}{} {{",
-                prefix,
-                prefix,
-                name,
-                ext,
-                autoid_str
+                prefix, prefix, name, ext, autoid_str
             );
             for field in fields {
                 let mut attrs = Vec::new();
@@ -2455,11 +2451,17 @@ fn cmd_metrics(topic_name: &str, domain_id: u32, max_samples: usize) -> cycloned
     // Prometheus text format
     println!("# HELP dds_topic_messages_total Total messages received on topic");
     println!("# TYPE dds_topic_messages_total counter");
-    println!("dds_topic_messages_total{{topic=\"{}\"}} {}", topic_name, received);
+    println!(
+        "dds_topic_messages_total{{topic=\"{}\"}} {}",
+        topic_name, received
+    );
 
     println!("# HELP dds_topic_throughput Messages per second received on topic");
     println!("# TYPE dds_topic_throughput gauge");
-    println!("dds_topic_throughput{{topic=\"{}\"}} {:.2}", topic_name, throughput);
+    println!(
+        "dds_topic_throughput{{topic=\"{}\"}} {:.2}",
+        topic_name, throughput
+    );
 
     if sample_times.len() >= 2 {
         let mut intervals: Vec<u64> = sample_times.windows(2).map(|w| w[1] - w[0]).collect();
@@ -2468,8 +2470,14 @@ fn cmd_metrics(topic_name: &str, domain_id: u32, max_samples: usize) -> cycloned
         let p99 = intervals[intervals.len() * 99 / 100.min(intervals.len() - 1)];
         println!("# HELP dds_topic_latency_ns Inter-message latency in nanoseconds");
         println!("# TYPE dds_topic_latency_ns summary");
-        println!("dds_topic_latency_ns{{topic=\"{}\",quantile=\"0.5\"}} {}", topic_name, p50);
-        println!("dds_topic_latency_ns{{topic=\"{}\",quantile=\"0.99\"}} {}", topic_name, p99);
+        println!(
+            "dds_topic_latency_ns{{topic=\"{}\",quantile=\"0.5\"}} {}",
+            topic_name, p50
+        );
+        println!(
+            "dds_topic_latency_ns{{topic=\"{}\",quantile=\"0.99\"}} {}",
+            topic_name, p99
+        );
     }
 
     unsafe {

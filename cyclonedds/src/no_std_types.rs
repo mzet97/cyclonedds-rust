@@ -15,9 +15,9 @@
 
 #[cfg(all(feature = "no_std", not(feature = "std")))]
 use alloc::vec::Vec;
+use core::fmt;
 #[cfg(feature = "std")]
 use std::vec::Vec;
-use core::fmt;
 
 // ---------------------------------------------------------------------------
 // Opcode constants (mirrored from OMG DDS-XTypes CDR stream spec)
@@ -95,7 +95,10 @@ pub const fn adr_bst(offset: u32, max_len: u32) -> [u32; 3] {
 
 /// Build an ADR opcode for a keyed field.
 pub const fn adr_key(typecode: u32, offset: u32) -> [u32; 2] {
-    [OP_ADR | typecode | OP_FLAG_KEY | (offset & 0xffff), offset >> 16]
+    [
+        OP_ADR | typecode | OP_FLAG_KEY | (offset & 0xffff),
+        offset >> 16,
+    ]
 }
 
 /// Rebase (resize) an ops array by replacing the low 16 bits of each element

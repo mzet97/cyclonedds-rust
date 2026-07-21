@@ -1,7 +1,7 @@
 use crate::{
     entity::DdsEntity,
     error::{DdsError, DdsResult},
-    DataReader, DataWriter, DomainParticipant, Publisher, Qos, Subscriber, DdsType,
+    DataReader, DataWriter, DdsType, DomainParticipant, Publisher, Qos, Subscriber,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};

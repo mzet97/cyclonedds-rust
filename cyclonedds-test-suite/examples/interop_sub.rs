@@ -25,6 +25,8 @@ impl TestMessage {
 }
 
 impl DdsType for TestMessage {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "InteropTestMessage"
     }

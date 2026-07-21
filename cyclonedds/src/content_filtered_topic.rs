@@ -468,19 +468,13 @@ pub trait TopicParameterizedFilterExt<T: DdsType + 'static> {
     /// The `filter` closure receives a reference to the sample and the current
     /// parameter store. Parameters can be updated at any time via the returned
     /// [`FilterParams`] without recreating the topic.
-    fn with_params<F>(
-        &self,
-        filter: F,
-    ) -> DdsResult<(ContentFilteredTopic<T>, FilterParams)>
+    fn with_params<F>(&self, filter: F) -> DdsResult<(ContentFilteredTopic<T>, FilterParams)>
     where
         F: Fn(&T, &FilterParams) -> bool + Send + Sync + 'static;
 }
 
 impl<T: DdsType + 'static> TopicParameterizedFilterExt<T> for Topic<T> {
-    fn with_params<F>(
-        &self,
-        filter: F,
-    ) -> DdsResult<(ContentFilteredTopic<T>, FilterParams)>
+    fn with_params<F>(&self, filter: F) -> DdsResult<(ContentFilteredTopic<T>, FilterParams)>
     where
         F: Fn(&T, &FilterParams) -> bool + Send + Sync + 'static,
     {
@@ -488,7 +482,9 @@ impl<T: DdsType + 'static> TopicParameterizedFilterExt<T> for Topic<T> {
         let params_clone = params.clone_inner();
 
         let cft = ContentFilteredTopic::new(self, move |sample| {
-            let p = FilterParams { inner: params_clone.clone() };
+            let p = FilterParams {
+                inner: params_clone.clone(),
+            };
             filter(sample, &p)
         })?;
 

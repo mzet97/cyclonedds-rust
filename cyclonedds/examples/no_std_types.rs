@@ -18,6 +18,8 @@ pub struct SensorReading {
 }
 
 impl DdsType for SensorReading {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "SensorReading"
     }

@@ -15,7 +15,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release workflow with Docker build, Cosign signing, SBOM, and Trivy scan
 - Multi-stage Dockerfile and docker-compose.yml for DDS development environment
 
-[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.0...HEAD
+
+## [2.0.0] - 2026-07-21
+
+### Fixed
+
+- **Zero-copy loan buffer overflow** (`DataWriter::request_loan`/`WriteLoan`): the loaned
+  buffer was zero-initialized and interpreted as `size_of::<T>()` bytes, but
+  `dds_request_loan` only allocates `size_of::<T::Native>()` — smaller for any type with
+  `String`/`Vec` fields (translated to `DdsString`/`DdsSequence`). This wrote past the end
+  of the DDS-owned allocation on every loan of such a type, and a zeroed `String`/`Vec` is
+  not a valid bit-pattern to begin with. `Drop for WriteLoan` now runs `drop_in_place` on
+  the native value before returning the loan, so partially-populated `DdsString`/
+  `DdsSequence` fields are freed correctly.
+- **Reading loaned/read samples as `T` instead of `T::Native`** (`async.rs`): `take_async`/
+  `read_async` used `ptr::read(samples[i] as *const T)`, reinterpreting the DDS-native
+  buffer (8-byte `char*` strings) as the ergonomic Rust type (24-byte `String`); replaced
+  with `T::clone_out(..)`, which converts the native representation into an owned `T`.
+- **`Topic<T>` was not `Send`/`Sync`**: its `DescriptorHolder` used `Rc` (changed to `Arc`)
+  and lacked explicit `unsafe impl Send/Sync`, even though the held data is read-only after
+  topic creation and safely shared by CycloneDDS across its own threads. Same fix applied
+  to `Qos` and `Listener` (both immutable after construction; documented safety
+  justification inline).
+- Stale `cyclonedds-build` codegen tests (`test_generate_simple_struct`,
+  `test_compile_idl_to_string`) still asserted the pre-`Default, PartialEq` derive list.
+
+### Added
+
+- `DdsType::Native` associated type: the DDS wire-compatible representation used by the
+  loan APIs and the topic descriptor size/align. `#[derive(DdsTypeDerive)]` now emits it
+  automatically; manual `impl DdsType` blocks for POD types set `type Native = Self`.
+- `DdsType::type_metadata_blobs()`: optional XCDR2 (TypeInformation, TypeMapping) blobs so
+  the topic descriptor can set `DDS_TOPIC_XTYPES_METADATA` and announce type information
+  over SEDP — required for type-enforcing peers (Python/C++) to match correctly.
+- `DataWriter::set_qos()` — update a writer's QoS at runtime for the online-tunable knobs
+  (TransportPriority, LatencyBudget, OwnershipStrength).
+- Generated structs (`cyclonedds-build` codegen) now also derive `Default, PartialEq`.
+- `cyclonedds-rust-sys` 1.1.0: opt-in `CYCLONEDDS_STATIC=1` static build of the vendored
+  CycloneDDS (needed on filesystems without symlink support, e.g. CIFS/SMB, and produces a
+  self-contained binary), with the transitive system libs (`pthread`, `dl`, `rt`, `m`) and
+  `-DCMAKE_POSITION_INDEPENDENT_CODE=ON` it requires; clearer `cargo:warning=` diagnostics
+  for which CycloneDDS build was picked (pre-built / freshly built / system).
+
+### Changed
+
+- **BREAKING**: `DdsType` now requires `type Native: Sized`. Manual `impl DdsType` blocks
+  written against 1.x must add `type Native = Self;` (or the real native type, for hand-rolled
+  wire-compatible structs).
+- **BREAKING**: `WriteLoan::get_mut()` returns `&mut T::Native`, not `&mut T`; populate
+  string fields via `DdsString::new(..)` instead of assigning a `String` directly.
+  `write_loan_async`'s closure signature changed to `FnOnce(&mut T::Native)` to match.
+
+[2.0.0]: https://github.com/mzet97/cyclonedds-rust/compare/v1.8.0...v2.0.0
 
 ## [1.8.0] - 2026-05-02
 

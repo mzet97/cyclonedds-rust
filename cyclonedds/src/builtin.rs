@@ -76,6 +76,8 @@ impl Drop for BuiltinParticipantSample {
 }
 
 impl DdsType for BuiltinParticipantSample {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "DCPSParticipant"
     }
@@ -186,6 +188,8 @@ impl Drop for BuiltinTopicSample {
 }
 
 impl DdsType for BuiltinTopicSample {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "DCPSTopic"
     }
@@ -458,6 +462,8 @@ impl Drop for BuiltinEndpointSample {
 }
 
 impl DdsType for BuiltinEndpointSample {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "BuiltinEndpointSample"
     }

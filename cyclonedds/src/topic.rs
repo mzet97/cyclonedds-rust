@@ -5,7 +5,7 @@ use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
 use std::ffi::CString;
 use std::marker::PhantomData;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// A topic without compile-time type information.
 pub struct UntypedTopic {
@@ -63,7 +63,7 @@ impl Drop for UntypedTopic {
 
 pub struct Topic<T> {
     entity: dds_entity_t,
-    _holder: Rc<DescriptorHolder>,
+    _holder: Arc<DescriptorHolder>,
     _marker: PhantomData<T>,
 }
 
@@ -74,6 +74,13 @@ struct DescriptorHolder {
     _keys: Vec<dds_key_descriptor>,
     _meta: CString,
 }
+
+// Segurança: o holder é imutável após a criação do tópico. Os ponteiros crus em
+// `_keys` apontam para os buffers das `CString` em `_key_names` (mesma heap, sem
+// realocação depois de publicado), e o CycloneDDS copia o que precisa em
+// `dds_create_topic`. Compartilhar entre threads é seguro (somente leitura).
+unsafe impl Send for DescriptorHolder {}
+unsafe impl Sync for DescriptorHolder {}
 
 pub struct TopicKeyDescriptor {
     pub name: String,
@@ -141,6 +148,21 @@ pub const OP_KOF: u32 = 0x07 << 24;
 pub const OP_MID: u32 = dds_stream_opcode_DDS_OP_MID;
 
 pub trait DdsType: Sized + Send + 'static {
+    /// The DDS wire-compatible representation of this type — what CycloneDDS's
+    /// topic descriptor (`m_size`/`m_ops`, see [`DdsType::descriptor_size`]) and
+    /// the loan APIs ([`crate::DataWriter::request_loan`]) actually operate on.
+    ///
+    /// For types with no heap-allocated fields this is typically `Self`. For
+    /// types with `String`/`Vec` fields (translated by `#[derive(DdsTypeDerive)]`
+    /// to `DdsString`/`DdsSequence`), `Native` is a distinct, smaller,
+    /// wire-compatible struct — `size_of::<Native>()` is what
+    /// `descriptor_size()` reports and what CycloneDDS actually allocates for a
+    /// loan, which is *not* the same as `size_of::<Self>()` in that case.
+    /// Getting this wrong was the root cause of a real out-of-bounds write in
+    /// `request_loan()` (fixed together with this associated type — see
+    /// `tese/src/rust`'s `OPTIMIZATION_PLAN.md` Fase 4 for the full writeup).
+    type Native: Sized;
+
     fn type_name() -> &'static str;
     fn ops() -> Vec<u32>;
     fn descriptor_size() -> u32 {
@@ -172,6 +194,15 @@ pub trait DdsType: Sized + Send + 'static {
     }
     fn post_key_ops() -> Vec<u32> {
         Vec::new()
+    }
+    /// XCDR2-serialized (TypeInformation, TypeMapping) blobs for XTypes/SEDP.
+    ///
+    /// Types generated from the canonical IDL carry the blobs produced by the
+    /// C `idlc`; returning `Some` makes the topic descriptor set
+    /// `DDS_TOPIC_XTYPES_METADATA` and announce type information, which
+    /// type-enforcing peers (Python/C++) require for matching.
+    fn type_metadata_blobs() -> Option<(&'static [u8], &'static [u8])> {
+        None
     }
 }
 
@@ -293,10 +324,27 @@ impl<T: DdsType> Topic<T> {
             }
             let meta = CString::new("").unwrap();
 
+            // Blobs XTypes (TypeInformation/TypeMapping do idlc) quando o tipo os tem:
+            // habilita DDS_TOPIC_XTYPES_METADATA para o SEDP anunciar type info.
+            let (flagset, type_information, type_mapping) = match T::type_metadata_blobs() {
+                Some((info, map)) => (
+                    T::flagset() | DDS_TOPIC_XTYPES_METADATA,
+                    dds_type_meta_ser {
+                        data: info.as_ptr(),
+                        sz: info.len() as u32,
+                    },
+                    dds_type_meta_ser {
+                        data: map.as_ptr(),
+                        sz: map.len() as u32,
+                    },
+                ),
+                None => (T::flagset(), std::mem::zeroed(), std::mem::zeroed()),
+            };
+
             let descriptor = dds_topic_descriptor {
                 m_size: T::descriptor_size(),
                 m_align: T::descriptor_align(),
-                m_flagset: T::flagset(),
+                m_flagset: flagset,
                 m_nkeys: T::key_count() as u32,
                 m_typename: type_name.as_ptr(),
                 m_keys: if keys.is_empty() {
@@ -307,8 +355,8 @@ impl<T: DdsType> Topic<T> {
                 m_nops: ops.len() as u32,
                 m_ops: ops.as_ptr(),
                 m_meta: meta.as_ptr(),
-                type_information: std::mem::zeroed(),
-                type_mapping: std::mem::zeroed(),
+                type_information,
+                type_mapping,
                 restrict_data_representation: 0,
             };
 
@@ -331,7 +379,7 @@ impl<T: DdsType> Topic<T> {
 
             Ok(Topic {
                 entity: handle,
-                _holder: Rc::new(holder),
+                _holder: Arc::new(holder),
                 _marker: PhantomData,
             })
         }

@@ -29,7 +29,7 @@
 //!     .unwrap();
 //! ```
 
-use crate::{DdsResult, DdsType, write_arena::WriteArena};
+use crate::{write_arena::WriteArena, DdsResult, DdsType};
 use std::ffi::c_void;
 
 /// A DDS sample that wraps any serde-compatible type.
@@ -83,7 +83,7 @@ impl<T: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + 'static> Dd
 
     fn ops() -> Vec<u32> {
         // Variable-length byte sequence: [ADR | SEQ | 1BY, offset, OP_RTS]
-        use crate::topic::{OP_ADR, OP_RTS, TYPE_SEQ, SUBTYPE_1BY};
+        use crate::topic::{OP_ADR, OP_RTS, SUBTYPE_1BY, TYPE_SEQ};
         vec![
             OP_ADR | TYPE_SEQ | SUBTYPE_1BY,
             0, // offset of payload field
@@ -103,10 +103,7 @@ impl<T: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + 'static> Dd
         std::ptr::read(ptr)
     }
 
-    fn write_to_native<'a>(
-        &'a self,
-        _arena: &'a mut WriteArena,
-    ) -> DdsResult<*const c_void> {
+    fn write_to_native<'a>(&'a self, _arena: &'a mut WriteArena) -> DdsResult<*const c_void> {
         Ok(self as *const Self as *const c_void)
     }
 }

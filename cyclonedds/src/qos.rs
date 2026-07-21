@@ -708,6 +708,12 @@ pub struct Qos {
     ptr: *mut dds_qos_t,
 }
 
+// Segurança: o QoS é imutável após a construção e o CycloneDDS copia o conteúdo
+// ao criar entidades (participant/topic/reader/writer) — o handle só é lido
+// nessas chamadas e liberado no Drop do valor `Qos` (único dono).
+unsafe impl Send for Qos {}
+unsafe impl Sync for Qos {}
+
 impl Qos {
     pub fn create() -> DdsResult<Self> {
         let ptr = unsafe { dds_create_qos() };

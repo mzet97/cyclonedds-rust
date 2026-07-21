@@ -64,11 +64,7 @@ impl DomainParticipant {
     ///
     /// Retries up to `max_retries` times with exponential backoff
     /// starting at `base_delay_ms`.
-    pub fn new_with_retry(
-        domain_id: u32,
-        max_retries: u32,
-        base_delay_ms: u64,
-    ) -> DdsResult<Self> {
+    pub fn new_with_retry(domain_id: u32, max_retries: u32, base_delay_ms: u64) -> DdsResult<Self> {
         let mut delay = std::time::Duration::from_millis(base_delay_ms);
         for attempt in 0..=max_retries {
             match Self::new(domain_id) {

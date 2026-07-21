@@ -21,14 +21,29 @@ fn main() {
         // Check if already built, otherwise try to build (requires cmake)
         if find_ddsc_library(&cyclonedds_build).is_some() {
             if let Some((lib_dir, link_kind)) = find_ddsc_library(&cyclonedds_build) {
+                println!(
+                    "cargo:warning=Using pre-built CycloneDDS from {}",
+                    lib_dir.display()
+                );
                 emit_link_info(&lib_dir, link_kind);
                 true
             } else {
                 false
             }
+        } else if env::var_os("CYCLONEDDS_BUILD").is_some() {
+            // CYCLONEDDS_BUILD is set but library not found - this is an error
+            println!(
+                "cargo:warning=CYCLONEDDS_BUILD is set but library not found at {}",
+                cyclonedds_build.display()
+            );
+            false
         } else if which_cmake().is_some() {
             ensure_cyclonedds_build_ready(&cyclonedds_src, &cyclonedds_build);
             if let Some((lib_dir, link_kind)) = find_ddsc_library(&cyclonedds_build) {
+                println!(
+                    "cargo:warning=Using freshly built CycloneDDS from {}",
+                    lib_dir.display()
+                );
                 emit_link_info(&lib_dir, link_kind);
                 true
             } else {
@@ -37,6 +52,10 @@ fn main() {
         } else {
             // cmake not available — fall back to system library search
             if let Some((lib_dir, link_kind)) = find_system_ddsc_library() {
+                println!(
+                    "cargo:warning=Using system CycloneDDS from {}",
+                    lib_dir.display()
+                );
                 emit_link_info(&lib_dir, link_kind);
                 true
             } else {
@@ -48,6 +67,10 @@ fn main() {
     } else {
         // No source available — try to find system-installed library
         if let Some((lib_dir, link_kind)) = find_system_ddsc_library() {
+            println!(
+                "cargo:warning=Using system CycloneDDS from {}",
+                lib_dir.display()
+            );
             emit_link_info(&lib_dir, link_kind);
             true
         } else {
@@ -64,6 +87,7 @@ fn main() {
 
     println!("cargo:rerun-if-env-changed=CYCLONEDDS_SRC");
     println!("cargo:rerun-if-env-changed=CYCLONEDDS_BUILD");
+    println!("cargo:rerun-if-env-changed=CYCLONEDDS_STATIC");
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=build.rs");
 
@@ -92,6 +116,18 @@ fn emit_link_info(lib_dir: &Path, link_kind: &'static str) {
     if link_kind == "dylib" {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
+    }
+    // Libs de sistema exigidas pelo CycloneDDS ao linkar ESTATICO (o .so ja as traz).
+    if link_kind == "static" {
+        #[cfg(target_os = "linux")]
+        {
+            println!("cargo:rustc-link-lib=pthread");
+            println!("cargo:rustc-link-lib=dl");
+            println!("cargo:rustc-link-lib=rt");
+            println!("cargo:rustc-link-lib=m");
+        }
+        #[cfg(target_os = "macos")]
+        println!("cargo:rustc-link-lib=pthread");
     }
     // Windows system libraries required by CycloneDDS
     #[cfg(target_os = "windows")]
@@ -234,6 +270,9 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
                 return;
             }
         }
+        // Library exists but stamp doesn't match — skip rebuild, just update stamp
+        let _ = std::fs::write(&stamp, &stamp_content);
+        return;
     }
 
     std::fs::create_dir_all(build_dir)
@@ -241,6 +280,11 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
 
     let shared = if cfg!(target_os = "windows") {
         "OFF" // Windows: static linking avoids symbol-export issues with MSVC
+    } else if std::env::var_os("CYCLONEDDS_STATIC").is_some() {
+        // Opt-in: build estatico (libddsc.a) evita os symlinks de .so versionada,
+        // necessario em filesystems sem suporte a symlink (ex.: CIFS/SMB) e produz
+        // binario autossuficiente. Requer as libs transitivas (ver emit_link_info).
+        "OFF"
     } else {
         "ON"
     };
@@ -259,6 +303,8 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
         .arg("-B")
         .arg(build_dir)
         .arg(format!("-DBUILD_SHARED_LIBS={}", shared))
+        // Necessario para linkar a .a estatica em executaveis PIE do Rust.
+        .arg("-DCMAKE_POSITION_INDEPENDENT_CODE=ON")
         .arg("-DBUILD_TESTING=OFF")
         .arg("-DBUILD_IDLC=OFF")
         .arg("-DBUILD_DDSPERF=OFF")

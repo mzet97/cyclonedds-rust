@@ -46,6 +46,13 @@ pub struct Listener {
     _closures: Box<ListenerClosures>,
 }
 
+// Segurança: o `dds_listener_t` é imutável após o build; os callbacks (Arc de
+// closures Send+Sync) são invocados pelas threads do CycloneDDS — uso exatamente
+// como projetado. O dono do `Listener` deve mantê-lo vivo enquanto a entidade
+// (reader/writer) existir (o C chama via ponteiro).
+unsafe impl Send for Listener {}
+unsafe impl Sync for Listener {}
+
 // ── Existing trampolines ────────────────────────────────────────────
 
 unsafe extern "C" fn trampoline_data_available(reader: dds_entity_t, arg: *mut c_void) {

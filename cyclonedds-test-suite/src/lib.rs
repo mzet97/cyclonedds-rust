@@ -36,6 +36,8 @@ impl TestMessage {
 }
 
 impl DdsType for TestMessage {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "CycloneRustTestMessage"
     }
@@ -63,6 +65,8 @@ pub struct KeyedMessage {
 }
 
 impl DdsType for KeyedMessage {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         "CycloneRustKeyedMessage"
     }

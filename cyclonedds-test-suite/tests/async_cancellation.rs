@@ -10,7 +10,9 @@ struct AsyncSample {
 #[tokio::test]
 async fn read_aiter_timeout_returns_empty_on_no_data() {
     let participant = DomainParticipant::new(0).unwrap();
-    let topic = participant.create_topic::<AsyncSample>("AsyncTimeoutTest").unwrap();
+    let topic = participant
+        .create_topic::<AsyncSample>("AsyncTimeoutTest")
+        .unwrap();
     let subscriber = Subscriber::new(participant.entity()).unwrap();
     let reader: cyclonedds::DataReader<AsyncSample> =
         cyclonedds::DataReader::new(subscriber.entity(), topic.entity()).unwrap();
@@ -23,7 +25,9 @@ async fn read_aiter_timeout_returns_empty_on_no_data() {
 #[tokio::test]
 async fn take_aiter_timeout_returns_empty_on_no_data() {
     let participant = DomainParticipant::new(0).unwrap();
-    let topic = participant.create_topic::<AsyncSample>("AsyncTimeoutTest2").unwrap();
+    let topic = participant
+        .create_topic::<AsyncSample>("AsyncTimeoutTest2")
+        .unwrap();
     let subscriber = Subscriber::new(participant.entity()).unwrap();
     let reader: cyclonedds::DataReader<AsyncSample> =
         cyclonedds::DataReader::new(subscriber.entity(), topic.entity()).unwrap();
@@ -36,7 +40,9 @@ async fn take_aiter_timeout_returns_empty_on_no_data() {
 #[tokio::test]
 async fn stream_can_be_dropped_without_panic() {
     let participant = DomainParticipant::new(0).unwrap();
-    let topic = participant.create_topic::<AsyncSample>("AsyncDropTest").unwrap();
+    let topic = participant
+        .create_topic::<AsyncSample>("AsyncDropTest")
+        .unwrap();
     let subscriber = Subscriber::new(participant.entity()).unwrap();
     let reader: cyclonedds::DataReader<AsyncSample> =
         cyclonedds::DataReader::new(subscriber.entity(), topic.entity()).unwrap();
