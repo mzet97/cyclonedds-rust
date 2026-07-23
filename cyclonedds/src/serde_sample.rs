@@ -77,6 +77,8 @@ impl<T> SerdeSample<T> {
 impl<T: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + 'static> DdsType
     for SerdeSample<T>
 {
+    type Native = Self;
+
     fn type_name() -> &'static str {
         concat!("SerdeSample<", stringify!(T), ">")
     }

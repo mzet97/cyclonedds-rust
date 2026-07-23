@@ -82,6 +82,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: 1
           format: table
+          trivyignores: .trivyignore
 
       - name: GitHub provenance attestation
         uses: actions/attest-build-provenance@v1

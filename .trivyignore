@@ -1,0 +1,27 @@
+# Vulnerabilidades ignoradas no scan Trivy do container de release.
+#
+# Todas as entradas abaixo sao pacotes de SISTEMA OPERACIONAL da imagem base
+# (debian:bookworm-slim), nao codigo deste projeto (Rust) — o binario
+# publicado nao usa Perl nem as ferramentas afetadas em tempo de execucao.
+# Cada entrada tem status upstream verificado no momento do registro; revisar
+# periodicamente e remover entradas que ja tenham correcao disponivel no
+# repositorio Debian.
+
+# zlib1g — integer overflow em zipOpenNewFileInZip4_6 (minizip, nao usado
+# pelo runtime do container). Debian marca como "will_not_fix".
+CVE-2023-45853
+
+# perl-base — resultado silenciosamente incorreto em certas conversoes
+# numericas. Perl nao e executado pelo binario publicado; presente so como
+# dependencia transitiva da imagem base.
+CVE-2026-13221
+
+# perl-Archive-Tar — modificacao arbitraria de arquivo via hardlink
+# malicioso durante extracao. Mesma justificativa: Perl nao e executado
+# pelo runtime; fix_deferred no Debian no momento do registro.
+CVE-2026-42497
+
+# bsdutils — integer overflow/wraparound em libblkid (particionamento de
+# disco). Nao exercitado pelo runtime do container (nao manipulamos
+# particoes de disco).
+CVE-2026-53615
