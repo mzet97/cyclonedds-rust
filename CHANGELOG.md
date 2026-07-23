@@ -15,7 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release workflow with Docker build, Cosign signing, SBOM, and Trivy scan
 - Multi-stage Dockerfile and docker-compose.yml for DDS development environment
 
-[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.1...HEAD
+
+## [2.0.1] - 2026-07-23
+
+### Fixed
+
+- **`SerdeSample<T>` did not implement `DdsType::Native`**: introduced by the `DdsType::Native`
+  associated type added in 2.0.0, but missed in this one `impl` block. Broke any build with
+  `--features serde` enabled, including the crate's own `cargo doc`/`cargo clippy
+  --all-features` CI jobs.
+- **`Cargo.lock` was stale since the 2.0.0 version bump**, never regenerated/committed after
+  the release — broke `cargo build/clippy/doc --locked` in CI (CI, MSRV, Clippy, Docs, CodeQL
+  workflows) with "cannot update the lock file because --locked was passed".
+- **Release container's Trivy scan always failed** on 4 CVEs in OS packages of the
+  `debian:bookworm-slim` base image (`perl-base`, `perl-Archive-Tar`, `zlib1g`, `bsdutils`),
+  none exercised by the published binary and two already marked `will_not_fix`/`fix_deferred`
+  upstream by Debian. Added a documented `.trivyignore` for these specific CVEs; the
+  CRITICAL/HIGH gate remains active for anything new.
+
+[2.0.1]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.0...v2.0.1
 
 ## [2.0.0] - 2026-07-21
 
