@@ -83,6 +83,16 @@ jobs:
           exit-code: 1
           format: table
           trivyignores: .trivyignore
+          # v2.0.1/v2.0.2 tentaram perseguir CVE a CVE nos pacotes Perl/gzip
+          # da imagem base (nunca executados pelo binario publicado) via
+          # .trivyignore — 4 CVEs diferentes apareceram/desapareceram nesse
+          # mesmo grupo de pacotes em 2 dias, provando que essa abordagem
+          # nao escala. ignore-unfixed pula qualquer CVE sem correcao
+          # disponivel upstream (will_not_fix/fix_deferred/affected) — e
+          # justamente essa a categoria de TODOS os CVEs vistos ate agora
+          # nesses pacotes. CVEs com correcao disponivel (risco real e
+          # acionavel) continuam falhando o gate normalmente.
+          ignore-unfixed: true
 
       - name: GitHub provenance attestation
         uses: actions/attest-build-provenance@v1

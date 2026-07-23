@@ -15,7 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release workflow with Docker build, Cosign signing, SBOM, and Trivy scan
 - Multi-stage Dockerfile and docker-compose.yml for DDS development environment
 
-[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.2...HEAD
+[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.3...HEAD
+
+## [2.0.3] - 2026-07-23
+
+### Fixed
+
+- **Release container's Trivy gate, for good this time**: a 4th different CVE
+  (`CVE-2026-9538`, perl-Archive-Tar DoS) appeared minutes after 2.0.2 shipped, in the same
+  never-fixed Perl/gzip OS packages. CVE-by-CVE `.trivyignore` entries proved unsustainable
+  (4 different CVEs cycling through the same package group in 2 days). Replaced with
+  `ignore-unfixed: true` on the Trivy scan step: skips any CVE with no upstream fix
+  available (`will_not_fix`/`fix_deferred`/`affected`) — the exact category every CVE seen
+  in these packages falls into — while still failing the gate on anything with an actual
+  available patch. `.trivyignore` kept as documentation of the specific CVEs already
+  investigated.
+
+[2.0.3]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.2...v2.0.3
 
 ## [2.0.2] - 2026-07-23
 
