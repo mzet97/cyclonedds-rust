@@ -25,3 +25,27 @@ CVE-2026-42497
 # disco). Nao exercitado pelo runtime do container (nao manipulamos
 # particoes de disco).
 CVE-2026-53615
+
+# gzip — buffer overflow global no GNU gzip. Nao invocado pelo runtime do
+# container (nenhum codigo Rust chama gzip); fix_deferred no Debian no
+# momento do registro (2026-07-23).
+CVE-2026-41992
+
+# perl-base / perl-archive-tar — path traversal via symlink malicioso
+# durante extracao de tar. Perl nao e executado pelo binario publicado;
+# fix_deferred no Debian no momento do registro (2026-07-23).
+CVE-2026-42496
+
+# perl-IO-Compress — execucao arbitraria de codigo via glob de saida
+# controlado pelo atacante. Mesma justificativa: Perl nao e executado pelo
+# runtime do container (2026-07-23).
+CVE-2026-48962
+
+# NOTA (2026-07-23): 3 CVEs novos (acima) surgiram no feed do Trivy entre a
+# release v2.0.1 original (2026-07-21) e este ajuste (2026-07-23), todos nos
+# MESMOS pacotes Perl/gzip da imagem base que ja tinham entradas ignoradas.
+# Ignorar CVE a CVE nesses pacotes nao e sustentavel — eles nunca sao usados
+# pelo binario Rust publicado, entao a base do problema e a imagem trazer
+# Perl/gzip para comecar. Fix durador proposto para uma proxima release:
+# purgar esses pacotes do estagio final do Dockerfile (ou trocar para uma
+# imagem base distroless), testado localmente antes de taguear.
