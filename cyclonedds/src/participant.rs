@@ -45,6 +45,7 @@ impl Drop for ReaderGuard {
 /// subscribers, readers, writers) are created from a participant.
 pub struct DomainParticipant {
     entity: dds_entity_t,
+    _listener: Option<Listener>,
 }
 
 impl DomainParticipant {
@@ -102,7 +103,10 @@ impl DomainParticipant {
                 listener.map_or(std::ptr::null(), |l| l.as_ptr() as *const _),
             );
             crate::error::check_entity(handle)?;
-            Ok(DomainParticipant { entity: handle })
+            Ok(DomainParticipant {
+                entity: handle,
+                _listener: listener.cloned(),
+            })
         }
     }
 
@@ -524,5 +528,24 @@ impl Drop for DomainParticipant {
         unsafe {
             dds_delete(self.entity);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn participant_retains_listener_after_caller_drops_handle() {
+        let listener = Listener::builder()
+            .on_data_available(|_| {})
+            .build()
+            .expect("listener should be created");
+        let participant =
+            DomainParticipant::with_listener(0, &listener).expect("participant should be created");
+
+        assert_eq!(listener.reference_count(), 2);
+        drop(listener);
+        assert_eq!(participant._listener.as_ref().unwrap().reference_count(), 1);
     }
 }

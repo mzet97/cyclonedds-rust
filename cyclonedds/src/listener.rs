@@ -41,17 +41,18 @@ struct ListenerClosures {
     on_requested_incompatible_qos: Option<RequestedIncompatibleQosCb>,
 }
 
-pub struct Listener {
+struct ListenerInner {
     ptr: *mut dds_listener_t,
     _closures: Box<ListenerClosures>,
 }
 
-// Segurança: o `dds_listener_t` é imutável após o build; os callbacks (Arc de
-// closures Send+Sync) são invocados pelas threads do CycloneDDS — uso exatamente
-// como projetado. O dono do `Listener` deve mantê-lo vivo enquanto a entidade
-// (reader/writer) existir (o C chama via ponteiro).
-unsafe impl Send for Listener {}
-unsafe impl Sync for Listener {}
+unsafe impl Send for ListenerInner {}
+unsafe impl Sync for ListenerInner {}
+
+#[derive(Clone)]
+pub struct Listener {
+    inner: Arc<ListenerInner>,
+}
 
 // ── Existing trampolines ────────────────────────────────────────────
 
@@ -445,8 +446,10 @@ impl ListenerBuilder {
         }
 
         Ok(Listener {
-            ptr,
-            _closures: closures,
+            inner: Arc::new(ListenerInner {
+                ptr,
+                _closures: closures,
+            }),
         })
     }
 }
@@ -463,11 +466,16 @@ impl Listener {
     }
 
     pub fn as_ptr(&self) -> *mut dds_listener_t {
-        self.ptr
+        self.inner.ptr
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reference_count(&self) -> usize {
+        Arc::strong_count(&self.inner)
     }
 }
 
-impl Drop for Listener {
+impl Drop for ListenerInner {
     fn drop(&mut self) {
         unsafe {
             dds_delete_listener(self.ptr);

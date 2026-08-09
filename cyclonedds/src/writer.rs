@@ -13,6 +13,7 @@ use std::marker::PhantomData;
 /// A typed DDS DataWriter that publishes samples of type `T`.
 pub struct DataWriter<T: DdsType> {
     entity: dds_entity_t,
+    _listener: Option<Listener>,
     _marker: PhantomData<T>,
 }
 
@@ -60,6 +61,7 @@ impl<T: DdsType> DataWriter<T> {
             check_entity(handle)?;
             Ok(DataWriter {
                 entity: handle,
+                _listener: listener.cloned(),
                 _marker: PhantomData,
             })
         }

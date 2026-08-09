@@ -429,9 +429,7 @@ fn run_abi_probe(probe_ctx: Option<&(PathBuf, PathBuf)>, out_dir: &Path) {
 
     // Cross-compile: probe não executa — exige snapshot verificado do target.
     if host != target {
-        let snapshot = manifest_dir
-            .join("abi")
-            .join(format!("{target}.rs"));
+        let snapshot = manifest_dir.join("abi").join(format!("{target}.rs"));
         assert!(
             snapshot.exists(),
             "FFI-ABI-008: cross-compile para {target} sem snapshot ABI em {}. \
@@ -462,9 +460,7 @@ fn run_abi_probe(probe_ctx: Option<&(PathBuf, PathBuf)>, out_dir: &Path) {
         ABI_PROBE_C.hash(&mut h);
         h.finish()
     });
-    if probe_out.exists()
-        && std::fs::read_to_string(&stamp_path).is_ok_and(|s| s == stamp_new)
-    {
+    if probe_out.exists() && std::fs::read_to_string(&stamp_path).is_ok_and(|s| s == stamp_new) {
         return;
     }
 
@@ -528,7 +524,9 @@ fn run_abi_probe(probe_ctx: Option<&(PathBuf, PathBuf)>, out_dir: &Path) {
     let exe = exe_candidates
         .iter()
         .find(|p| p.exists())
-        .unwrap_or_else(|| panic!("FFI-ABI-008: binário do probe não encontrado em {probe_build:?}"));
+        .unwrap_or_else(|| {
+            panic!("FFI-ABI-008: binário do probe não encontrado em {probe_build:?}")
+        });
     let output = Command::new(exe)
         .output()
         .unwrap_or_else(|e| panic!("FFI-ABI-008: falha ao executar probe: {e}"));
@@ -544,5 +542,8 @@ fn run_abi_probe(probe_ctx: Option<&(PathBuf, PathBuf)>, out_dir: &Path) {
     );
     std::fs::write(&probe_out, &stdout).expect("write abi_probe.rs");
     std::fs::write(&stamp_path, stamp_new).expect("write probe stamp");
-    println!("cargo:warning=ABI probe OK para {target} ({} bytes de checks)", stdout.len());
+    println!(
+        "cargo:warning=ABI probe OK para {target} ({} bytes de checks)",
+        stdout.len()
+    );
 }

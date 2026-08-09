@@ -7,6 +7,7 @@ use cyclonedds_rust_sys::*;
 
 pub struct Publisher {
     entity: dds_entity_t,
+    _listener: Option<Listener>,
 }
 
 impl Publisher {
@@ -32,7 +33,10 @@ impl Publisher {
             let l = listener.map_or(std::ptr::null_mut(), |l| l.as_ptr());
             let handle = dds_create_publisher(participant, q, l);
             check_entity(handle)?;
-            Ok(Publisher { entity: handle })
+            Ok(Publisher {
+                entity: handle,
+                _listener: listener.cloned(),
+            })
         }
     }
 

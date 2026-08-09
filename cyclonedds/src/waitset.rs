@@ -43,19 +43,24 @@ unsafe extern "C" fn trampoline_qc_filter(sample: *const c_void) -> bool {
     }
     let closure = {
         let registry = qc_registry().lock().unwrap_or_else(|e| e.into_inner());
-        registry.get(&handle).map(|c| &**c as *const (dyn Fn(*const c_void) -> bool + Send + Sync))
+        registry
+            .get(&handle)
+            .map(|c| &**c as *const (dyn Fn(*const c_void) -> bool + Send + Sync))
     };
     match closure {
         // SAFETY: the pointer was just read from the registry; the closure
         // outlives the condition entity (removed only in Drop, and a live
         // filter call implies the condition is alive).
-        Some(c) => match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { (*c)(sample) })) {
-            Ok(keep) => keep,
-            Err(_) => {
-                eprintln!("QueryCondition filter closure panicked; sample excluded");
-                false
+        Some(c) => {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { (*c)(sample) }))
+            {
+                Ok(keep) => keep,
+                Err(_) => {
+                    eprintln!("QueryCondition filter closure panicked; sample excluded");
+                    false
+                }
             }
-        },
+        }
         None => {
             eprintln!("QueryCondition {handle} not found in registry; sample excluded");
             false
@@ -370,7 +375,10 @@ impl Drop for GuardCondition {
 mod qc_tests {
     use super::*;
 
-    fn register_fake(handle: dds_entity_t, f: impl Fn(*const c_void) -> bool + Send + Sync + 'static) {
+    fn register_fake(
+        handle: dds_entity_t,
+        f: impl Fn(*const c_void) -> bool + Send + Sync + 'static,
+    ) {
         qc_registry()
             .lock()
             .unwrap_or_else(|e| e.into_inner())
