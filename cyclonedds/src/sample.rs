@@ -1,6 +1,8 @@
 use cyclonedds_rust_sys::dds_sample_info_t;
 use std::ffi::c_void;
 
+use crate::DdsEntity as _; // FFI-LIFE-011: Loan::drop chama reader.entity()
+
 pub struct Sample<T> {
     pub data: T,
     pub info: dds_sample_info_t,
@@ -56,20 +58,23 @@ impl<T> Sample<T> {
     }
 }
 
-pub struct Loan<T> {
+pub struct Loan<'a, T: crate::DdsType> {
     samples: Vec<*mut c_void>,
     infos: Vec<dds_sample_info_t>,
     count: usize,
-    reader: i32,
-    _marker: std::marker::PhantomData<T>,
+    // FFI-LIFE-011: o loan agora SEGURA uma referência ao reader — o tipo
+    // garante que `dds_return_loan` nunca corre num handle morto e que as
+    // amostras não são lidas após o reader ser deletado (antes: `reader: i32`
+    // cru; o compilador não impedia reader cair antes do loan).
+    reader: &'a crate::DataReader<T>,
 }
 
-impl<T> Loan<T> {
+impl<'a, T: crate::DdsType> Loan<'a, T> {
     pub(crate) fn new(
         mut samples: Vec<*mut c_void>,
         mut infos: Vec<dds_sample_info_t>,
         count: usize,
-        reader: i32,
+        reader: &'a crate::DataReader<T>,
     ) -> Self {
         samples.truncate(count);
         infos.truncate(count);
@@ -78,7 +83,6 @@ impl<T> Loan<T> {
             infos,
             count,
             reader,
-            _marker: std::marker::PhantomData,
         }
     }
 
@@ -112,12 +116,12 @@ impl<T> Loan<T> {
     }
 }
 
-impl<T> Drop for Loan<T> {
+impl<T: crate::DdsType> Drop for Loan<'_, T> {
     fn drop(&mut self) {
         if !self.samples.is_empty() && self.count > 0 {
             unsafe {
                 cyclonedds_rust_sys::dds_return_loan(
-                    self.reader,
+                    self.reader.entity(),
                     self.samples.as_mut_ptr(),
                     self.count as i32,
                 );

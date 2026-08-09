@@ -12,6 +12,7 @@ use std::ptr;
 /// A typed DDS DataReader that receives samples of type `T`.
 pub struct DataReader<T: DdsType> {
     entity: dds_entity_t,
+    _listener: Option<Listener>,
     _marker: PhantomData<T>,
 }
 
@@ -49,6 +50,7 @@ impl<T: DdsType> DataReader<T> {
             check_entity(handle)?;
             Ok(DataReader {
                 entity: handle,
+                _listener: listener.cloned(),
                 _marker: PhantomData,
             })
         }
@@ -112,47 +114,47 @@ impl<T: DdsType> DataReader<T> {
     // ── Zero-copy Loan<T>-returning methods ──
 
     /// Zero-copy read. Returns a `Loan<T>` that auto-returns the loan on drop.
-    pub fn read_loan(&self) -> DdsResult<Loan<T>> {
+    pub fn read_loan(&self) -> DdsResult<Loan<'_, T>> {
         self.loan_impl(false, 0, 0, false, false)
     }
 
     /// Zero-copy take. Returns a `Loan<T>` that auto-returns the loan on drop.
-    pub fn take_loan(&self) -> DdsResult<Loan<T>> {
+    pub fn take_loan(&self) -> DdsResult<Loan<'_, T>> {
         self.loan_impl(true, 0, 0, false, false)
     }
 
     /// Read samples for a specific instance handle (zero-copy).
-    pub fn read_instance(&self, handle: dds_instance_handle_t) -> DdsResult<Loan<T>> {
+    pub fn read_instance(&self, handle: dds_instance_handle_t) -> DdsResult<Loan<'_, T>> {
         self.loan_impl(false, handle, 0, true, false)
     }
 
     /// Take samples for a specific instance handle (zero-copy).
-    pub fn take_instance(&self, handle: dds_instance_handle_t) -> DdsResult<Loan<T>> {
+    pub fn take_instance(&self, handle: dds_instance_handle_t) -> DdsResult<Loan<'_, T>> {
         self.loan_impl(true, handle, 0, true, false)
     }
 
     /// Read samples matching the given state mask (zero-copy).
-    pub fn read_mask(&self, mask: u32) -> DdsResult<Loan<T>> {
+    pub fn read_mask(&self, mask: u32) -> DdsResult<Loan<'_, T>> {
         self.loan_impl(false, 0, mask, false, true)
     }
 
     /// Take samples matching the given state mask (zero-copy).
-    pub fn take_mask(&self, mask: u32) -> DdsResult<Loan<T>> {
+    pub fn take_mask(&self, mask: u32) -> DdsResult<Loan<'_, T>> {
         self.loan_impl(true, 0, mask, false, true)
     }
 
     /// Peek (non-consuming read) — does not change sample state.
-    pub fn peek(&self) -> DdsResult<Loan<T>> {
+    pub fn peek(&self) -> DdsResult<Loan<'_, T>> {
         self.peek_impl(0, 0, false, false)
     }
 
     /// Peek for a specific instance handle.
-    pub fn peek_instance(&self, handle: dds_instance_handle_t) -> DdsResult<Loan<T>> {
+    pub fn peek_instance(&self, handle: dds_instance_handle_t) -> DdsResult<Loan<'_, T>> {
         self.peek_impl(handle, 0, true, false)
     }
 
     /// Peek with state mask filter.
-    pub fn peek_mask(&self, mask: u32) -> DdsResult<Loan<T>> {
+    pub fn peek_mask(&self, mask: u32) -> DdsResult<Loan<'_, T>> {
         self.peek_impl(0, mask, false, true)
     }
 
@@ -163,7 +165,7 @@ impl<T: DdsType> DataReader<T> {
         mask: u32,
         use_instance: bool,
         use_mask: bool,
-    ) -> DdsResult<Loan<T>> {
+    ) -> DdsResult<Loan<'_, T>> {
         unsafe {
             let max_samples: usize = 256;
             let mut samples: Vec<*mut std::ffi::c_void> = vec![ptr::null_mut(); max_samples];
@@ -228,7 +230,7 @@ impl<T: DdsType> DataReader<T> {
             }
             let n = n as usize;
 
-            Ok(Loan::new(samples, infos, n, self.entity))
+            Ok(Loan::new(samples, infos, n, self))
         }
     }
 
@@ -238,7 +240,7 @@ impl<T: DdsType> DataReader<T> {
         mask: u32,
         use_instance: bool,
         use_mask: bool,
-    ) -> DdsResult<Loan<T>> {
+    ) -> DdsResult<Loan<'_, T>> {
         unsafe {
             let max_samples: usize = 256;
             let mut samples: Vec<*mut std::ffi::c_void> = vec![ptr::null_mut(); max_samples];
@@ -287,7 +289,7 @@ impl<T: DdsType> DataReader<T> {
             }
             let n = n as usize;
 
-            Ok(Loan::new(samples, infos, n, self.entity))
+            Ok(Loan::new(samples, infos, n, self))
         }
     }
 

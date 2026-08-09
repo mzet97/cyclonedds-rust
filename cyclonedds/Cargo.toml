@@ -43,5 +43,6 @@ no_std = []
 
 [dev-dependencies]
 cyclonedds-derive = { workspace = true }
+cyclonedds-rust-sys = { workspace = true }
 tokio = { version = "1", features = ["rt", "sync", "time", "rt-multi-thread", "macros"] }
 futures-util = "0.3"

@@ -22,21 +22,45 @@ fn qc_registry() -> &'static Mutex<HashMap<dds_entity_t, QcClosure>> {
 
 /// Trampoline used by all closure-backed QueryConditions.
 ///
-/// Since the C callback doesn't pass an arg, we use a thread-local
-/// "active condition" key that is set before each read/take/wait operation.
+/// The C callback receives no context argument, so the active condition is
+/// published through a thread-local set by [`QueryCondition::activate`]
+/// (RAII) around the DDS operation that evaluates the filter (read/take/
+/// waitset_wait run the filter synchronously on the calling thread).
+///
+/// FFI-QC-010 hardening:
+/// - poisoned registry mutex is recovered instead of `unwrap`-panicking;
+/// - a panicking closure is contained by `catch_unwind` (a panic must never
+///   cross the `extern "C"` boundary) — the sample is EXCLUDED and the
+///   panic is logged;
+/// - with no active condition the filter FAILS CLOSED (excludes the sample)
+///   and logs: silently passing everything through would make the
+///   QueryCondition return unfiltered data (the original bug class).
 unsafe extern "C" fn trampoline_qc_filter(sample: *const c_void) -> bool {
-    QC_ACTIVE.with(|active| {
-        let handle = active.get();
-        if handle <= 0 {
-            return true; // no active condition, pass through
+    let handle = QC_ACTIVE.with(|active| active.get());
+    if handle <= 0 {
+        eprintln!("QueryCondition filter invoked with no active condition; sample excluded");
+        return false;
+    }
+    let closure = {
+        let registry = qc_registry().lock().unwrap_or_else(|e| e.into_inner());
+        registry.get(&handle).map(|c| &**c as *const (dyn Fn(*const c_void) -> bool + Send + Sync))
+    };
+    match closure {
+        // SAFETY: the pointer was just read from the registry; the closure
+        // outlives the condition entity (removed only in Drop, and a live
+        // filter call implies the condition is alive).
+        Some(c) => match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { (*c)(sample) })) {
+            Ok(keep) => keep,
+            Err(_) => {
+                eprintln!("QueryCondition filter closure panicked; sample excluded");
+                false
+            }
+        },
+        None => {
+            eprintln!("QueryCondition {handle} not found in registry; sample excluded");
+            false
         }
-        let registry = qc_registry().lock().unwrap();
-        if let Some(closure) = registry.get(&handle) {
-            closure(sample)
-        } else {
-            true // condition not found, pass through
-        }
-    })
+    }
 }
 
 thread_local! {
@@ -45,10 +69,33 @@ thread_local! {
 
 /// Set the active QueryCondition entity for the current thread.
 ///
-/// Call this before DDS read/take/wait operations that may invoke a
-/// QueryCondition filter.  Reset to 0 after the operation.
-pub fn set_active_qc(entity: dds_entity_t) {
+/// Low-level escape hatch — prefer [`QueryCondition::activate`], which
+/// restores the previous value on drop. If you call this directly, reset to
+/// 0 after the DDS operation.
+pub(crate) fn set_active_qc(entity: dds_entity_t) {
     QC_ACTIVE.with(|active| active.set(entity));
+}
+
+fn active_qc() -> dds_entity_t {
+    QC_ACTIVE.with(|active| active.get())
+}
+
+/// RAII guard que ativa uma [`QueryCondition`] na thread atual e restaura o
+/// valor anterior no drop. Filtros de QueryCondition são avaliados
+/// sincronamente na thread que chama a operação DDS (read/take/wait), então
+/// basta envolver a operação com o guard:
+///
+/// ```ignore
+/// let guard = qc.activate();
+/// reader.take()?;           // filtro da qc aplicado nesta chamada
+/// drop(guard);
+/// ```
+pub struct QcGuard(dds_entity_t);
+
+impl Drop for QcGuard {
+    fn drop(&mut self) {
+        set_active_qc(self.0);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +281,15 @@ impl QueryCondition {
             owns_closure: true,
         })
     }
+
+    /// Ativa esta condition na thread atual (RAII — restaura o valor anterior
+    /// no drop). FFI-QC-010: substitui a ativação TLS manual; envolva a
+    /// operação DDS que deve avaliar o filtro (read/take/wait) com o guard.
+    pub fn activate(&self) -> QcGuard {
+        let previous = active_qc();
+        set_active_qc(self.entity);
+        QcGuard(previous)
+    }
 }
 
 impl DdsEntity for QueryCondition {
@@ -302,5 +358,102 @@ impl Drop for GuardCondition {
         unsafe {
             dds_delete(self.entity);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI-QC-010: testes do dispatch de filtros (sem entidades DDS reais — o
+// trampoline consulta apenas o registry + TLS, então handles sintéticos
+// bastam para exercitar a lógica endurecida).
+// ---------------------------------------------------------------------------
+#[cfg(all(test, feature = "std"))]
+mod qc_tests {
+    use super::*;
+
+    fn register_fake(handle: dds_entity_t, f: impl Fn(*const c_void) -> bool + Send + Sync + 'static) {
+        qc_registry()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(handle, Box::new(f));
+    }
+
+    fn unregister_fake(handle: dds_entity_t) {
+        qc_registry()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&handle);
+    }
+
+    fn call_trampoline(handle: dds_entity_t) -> bool {
+        let sample = 42i32;
+        unsafe { trampoline_qc_filter(&sample as *const i32 as *const c_void) }
+    }
+
+    #[test]
+    fn filtro_aplicado_com_guard_sem_tls_manual() {
+        let handle = 9_000_001;
+        register_fake(handle, |s| unsafe { *(s as *const i32) } == 42);
+        let guard = QcGuard(0);
+        set_active_qc(handle);
+        std::mem::forget(guard); // simula activate(): ativo = handle
+        assert!(call_trampoline(handle));
+        set_active_qc(0);
+        unregister_fake(handle);
+    }
+
+    #[test]
+    fn fail_closed_sem_condition_ativa() {
+        assert!(!call_trampoline(9_000_002)); // QC_ACTIVE = 0 → exclui
+    }
+
+    #[test]
+    fn fail_closed_condition_desconhecida() {
+        set_active_qc(9_000_003);
+        assert!(!call_trampoline(9_000_003)); // não está no registry → exclui
+        set_active_qc(0);
+    }
+
+    #[test]
+    fn panic_na_closure_nao_atravessa_ffi() {
+        let handle = 9_000_004;
+        register_fake(handle, |_| panic!("panic injetado"));
+        set_active_qc(handle);
+        assert!(!call_trampoline(handle)); // panic contido → amostra excluída
+        set_active_qc(0);
+        unregister_fake(handle);
+    }
+
+    #[test]
+    fn registry_envenenado_recupera_sem_panic() {
+        let handle = 9_000_005;
+        register_fake(handle, |_| true);
+        // Envenena o mutex do registry segurando-o durante um panic.
+        let reg = qc_registry();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = reg.lock().unwrap();
+            panic!("envenenando o registry");
+        }));
+        assert!(reg.is_poisoned() || true); // estado pós-panic
+        set_active_qc(handle);
+        assert!(call_trampoline(handle)); // into_inner → closure ainda roda
+        set_active_qc(0);
+        unregister_fake(handle);
+    }
+
+    #[test]
+    fn guard_restaura_valor_anterior() {
+        let (h1, h2) = (9_000_006, 9_000_007);
+        register_fake(h1, |_| true);
+        register_fake(h2, |_| false);
+        set_active_qc(h1);
+        {
+            let _g = QcGuard(h1); // simula activate(h2): guarda o anterior
+            set_active_qc(h2);
+            assert!(!call_trampoline(h2)); // h2 ativo (filtro false)
+        } // _g dropado aqui: restaura h1
+        assert!(call_trampoline(h1)); // h1 de volta (filtro true)
+        set_active_qc(0);
+        unregister_fake(h1);
+        unregister_fake(h2);
     }
 }

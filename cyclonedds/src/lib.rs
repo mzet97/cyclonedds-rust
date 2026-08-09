@@ -185,7 +185,7 @@ pub use type_discovery::{
     discover_type_from_type_info, dynamic_data_to_cdr, DiscoveredType,
 };
 #[cfg(feature = "std")]
-pub use waitset::{set_active_qc, GuardCondition, QueryCondition, ReadCondition, WaitSet};
+pub use waitset::{GuardCondition, QcGuard, QueryCondition, ReadCondition, WaitSet};
 #[cfg(feature = "std")]
 pub use writer::{DataWriter, WriteLoan};
 #[cfg(feature = "std")]
