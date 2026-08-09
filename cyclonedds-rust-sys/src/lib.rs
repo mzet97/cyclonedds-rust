@@ -18,6 +18,73 @@ mod bindings {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
+/// Layouts medidos no target pelo ABI probe do build.rs (FFI-ABI-008).
+mod abi_probe {
+    include!(concat!(env!("OUT_DIR"), "/abi_probe.rs"));
+}
+
+// FFI-ABI-008: verificação de ABI em tempo de compilação. Se os bindings
+// pré-gerados divergirem do header nativo deste target (size/align/offset),
+// o build FALHA aqui — corrupção silenciosa de memória vira erro de
+// compilação com diagnóstico claro. Os asserts de tipos de libc embutidos no
+// prebuilt continuam fora (não compilam fora do macOS/Linux); a superfície
+// que o crate toca por valor é coberta abaixo.
+const _: () = {
+    use abi_probe::*;
+    assert!(
+        core::mem::size_of::<dds_sample_info>() == PROBE_DDS_SAMPLE_INFO_SIZE,
+        "ABI mismatch: size_of dds_sample_info"
+    );
+    assert!(
+        core::mem::offset_of!(dds_sample_info, sample_state) == PROBE_OFF_SAMPLE_STATE,
+        "ABI mismatch: offset dds_sample_info.sample_state"
+    );
+    assert!(
+        core::mem::offset_of!(dds_sample_info, view_state) == PROBE_OFF_VIEW_STATE,
+        "ABI mismatch: offset dds_sample_info.view_state"
+    );
+    assert!(
+        core::mem::offset_of!(dds_sample_info, instance_state) == PROBE_OFF_INSTANCE_STATE,
+        "ABI mismatch: offset dds_sample_info.instance_state"
+    );
+    assert!(
+        core::mem::offset_of!(dds_sample_info, valid_data) == PROBE_OFF_VALID_DATA,
+        "ABI mismatch: offset dds_sample_info.valid_data"
+    );
+    assert!(
+        core::mem::offset_of!(dds_sample_info, source_timestamp) == PROBE_OFF_SOURCE_TIMESTAMP,
+        "ABI mismatch: offset dds_sample_info.source_timestamp"
+    );
+    assert!(
+        core::mem::offset_of!(dds_sample_info, instance_handle) == PROBE_OFF_INSTANCE_HANDLE,
+        "ABI mismatch: offset dds_sample_info.instance_handle"
+    );
+    assert!(
+        core::mem::size_of::<dds_time_t>() == PROBE_DDS_TIME_T_SIZE,
+        "ABI mismatch: size_of dds_time_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_duration_t>() == PROBE_DDS_DURATION_T_SIZE,
+        "ABI mismatch: size_of dds_duration_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_entity_t>() == PROBE_DDS_ENTITY_T_SIZE,
+        "ABI mismatch: size_of dds_entity_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_return_t>() == PROBE_DDS_RETURN_T_SIZE,
+        "ABI mismatch: size_of dds_return_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_instance_handle_t>() == PROBE_DDS_INSTANCE_HANDLE_T_SIZE,
+        "ABI mismatch: size_of dds_instance_handle_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_attach_t>() == PROBE_DDS_ATTACH_T_SIZE,
+        "ABI mismatch: size_of dds_attach_t"
+    );
+};
+
 pub type ddsrt_hh_hash_fn =
     ::std::option::Option<unsafe extern "C" fn(a: *const ::std::ffi::c_void) -> u32>;
 pub type ddsrt_hh_equals_fn = ::std::option::Option<

@@ -15,8 +15,10 @@ fn main() {
     // Try to find or build CycloneDDS C library.
     // If vendor/cyclonedds source is missing and no system library is found,
     // we still generate bindings from prebuilt file (for code-checking purposes).
+    let mut probe_ctx: Option<(PathBuf, PathBuf)> = None;
     let lib_found = if let Ok(cyclonedds_src) = try_resolve_cyclonedds_source(workspace_root) {
         let cyclonedds_build = resolve_cyclonedds_build_dir(&cyclonedds_src, &out_dir);
+        probe_ctx = Some((cyclonedds_src.clone(), cyclonedds_build.clone()));
 
         // Check if already built, otherwise try to build (requires cmake)
         if find_ddsc_library(&cyclonedds_build).is_some() {
@@ -98,7 +100,12 @@ fn main() {
     let bindings_path = out_dir.join("bindings.rs");
 
     if prebuilt.exists() {
-        // Strip static assertions that fail due to platform differences
+        // FFI-ABI-008: os asserts de layout EMBUTIDOS no prebuilt foram gerados
+        // para os tipos de libc do macOS/Linux (ex.: __darwin_pthread_*) e não
+        // compilam em outros targets — por isso o strip abaixo permanece. A
+        // verificação de ABI que importa (tipos da API pública do CycloneDDS
+        // que o crate toca por valor) é feita pelo ABI probe em
+        // `run_abi_probe`, executado por target, que FALHA o build em mismatch.
         let content = std::fs::read_to_string(&prebuilt).expect("couldn't read prebuilt bindings");
         let stripped = strip_static_assertions_from_str(&content);
         std::fs::write(&bindings_path, stripped).expect("couldn't write bindings");
@@ -108,6 +115,10 @@ fn main() {
             prebuilt.display()
         );
     }
+
+    // FFI-ABI-008: verifica size/align/offset dos tipos DDS críticos contra o
+    // header/biblioteca nativos DESTE target. Falha o build em mismatch.
+    run_abi_probe(probe_ctx.as_ref(), &out_dir);
 }
 
 fn emit_link_info(lib_dir: &Path, link_kind: &'static str) {
@@ -374,4 +385,164 @@ fn run(command: &mut Command, description: &str) {
         .status()
         .unwrap_or_else(|err| panic!("failed to {description}: {err}"));
     assert!(status.success(), "failed to {description}: {status}");
+}
+
+// ── FFI-ABI-008: ABI probe por target ────────────────────────────────────────
+//
+// Os bindings pré-gerados (macOS/Linux) têm seus asserts de layout de libc
+// removidos no build (tipos inexistentes no MSVC). Em troca, este probe
+// compila e executa um programa C mínimo contra os MESMOS headers usados no
+// link, emitindo os sizeof/offsetof reais do target para um arquivo Rust
+// incluído pelo crate — os asserts em `lib.rs` comparam com os tipos dos
+// bindings e FALHAM o build em mismatch (corrupção silenciosa vira erro de
+// compilação). Em cross-compile (HOST != TARGET) o probe não pode rodar:
+// exige-se um snapshot pré-computado em `abi/<target-triple>.rs`.
+
+/// Fonte C do probe. Emite `pub const` Rust com os layouts medidos.
+const ABI_PROBE_C: &str = r#"
+#include <dds/dds.h>
+#include <stddef.h>
+#include <stdio.h>
+int main(void) {
+    printf("pub const PROBE_DDS_SAMPLE_INFO_SIZE: usize = %zu;\n", sizeof(dds_sample_info_t));
+    printf("pub const PROBE_OFF_SAMPLE_STATE: usize = %zu;\n", offsetof(dds_sample_info_t, sample_state));
+    printf("pub const PROBE_OFF_VIEW_STATE: usize = %zu;\n", offsetof(dds_sample_info_t, view_state));
+    printf("pub const PROBE_OFF_INSTANCE_STATE: usize = %zu;\n", offsetof(dds_sample_info_t, instance_state));
+    printf("pub const PROBE_OFF_VALID_DATA: usize = %zu;\n", offsetof(dds_sample_info_t, valid_data));
+    printf("pub const PROBE_OFF_SOURCE_TIMESTAMP: usize = %zu;\n", offsetof(dds_sample_info_t, source_timestamp));
+    printf("pub const PROBE_OFF_INSTANCE_HANDLE: usize = %zu;\n", offsetof(dds_sample_info_t, instance_handle));
+    printf("pub const PROBE_DDS_TIME_T_SIZE: usize = %zu;\n", sizeof(dds_time_t));
+    printf("pub const PROBE_DDS_DURATION_T_SIZE: usize = %zu;\n", sizeof(dds_duration_t));
+    printf("pub const PROBE_DDS_ENTITY_T_SIZE: usize = %zu;\n", sizeof(dds_entity_t));
+    printf("pub const PROBE_DDS_RETURN_T_SIZE: usize = %zu;\n", sizeof(dds_return_t));
+    printf("pub const PROBE_DDS_INSTANCE_HANDLE_T_SIZE: usize = %zu;\n", sizeof(dds_instance_handle_t));
+    printf("pub const PROBE_DDS_ATTACH_T_SIZE: usize = %zu;\n", sizeof(dds_attach_t));
+    return 0;
+}
+"#;
+
+fn run_abi_probe(probe_ctx: Option<&(PathBuf, PathBuf)>, out_dir: &Path) {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let probe_out = out_dir.join("abi_probe.rs");
+    let host = env::var("HOST").expect("HOST");
+    let target = env::var("TARGET").expect("TARGET");
+
+    // Cross-compile: probe não executa — exige snapshot verificado do target.
+    if host != target {
+        let snapshot = manifest_dir
+            .join("abi")
+            .join(format!("{target}.rs"));
+        assert!(
+            snapshot.exists(),
+            "FFI-ABI-008: cross-compile para {target} sem snapshot ABI em {}. \
+             Gere com `cargo build` num host nativo desse target e copie o \
+             abi_probe.rs resultante para abi/{target}.rs",
+            snapshot.display()
+        );
+        std::fs::copy(&snapshot, &probe_out).expect("copy ABI snapshot");
+        return;
+    }
+
+    let Some((cyclonedds_src, cyclonedds_build)) = probe_ctx else {
+        // Sem fonte vendored (biblioteca de sistema): não há headers
+        // versionados garantidos para o probe — falha explícita e clara.
+        panic!(
+            "FFI-ABI-008: ABI probe requer a fonte vendored do CycloneDDS \
+             (CYCLONEDDS_SRC ou vendor/cyclonedds). Uso de biblioteca de \
+             sistema não é uma configuração suportada neste workspace."
+        );
+    };
+
+    // Cache: re-roda só se o probe.c mudou ou a saída não existe.
+    let stamp_path = out_dir.join("abi_probe.stamp");
+    let stamp_new = format!("{target}|{:x}", {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        ABI_PROBE_C.hash(&mut h);
+        h.finish()
+    });
+    if probe_out.exists()
+        && std::fs::read_to_string(&stamp_path).is_ok_and(|s| s == stamp_new)
+    {
+        return;
+    }
+
+    // Include dirs: fonte + headers gerados pelo build nativo.
+    let candidates = [
+        cyclonedds_src.join("src/core/ddsc/include"),
+        cyclonedds_src.join("src/ddsrt/include"),
+        cyclonedds_build.join("src/core/include"),
+        cyclonedds_build.join("src/ddsrt/include"),
+        cyclonedds_build.join("src/core/ddsc/include"),
+    ];
+    let includes: Vec<PathBuf> = candidates.into_iter().filter(|p| p.exists()).collect();
+    assert!(
+        includes.len() >= 3,
+        "FFI-ABI-008: include dirs do CycloneDDS incompletos para o probe ({includes:?})"
+    );
+    let includes_cmake = includes
+        .iter()
+        .map(|p| p.display().to_string().replace('\\', "/"))
+        .collect::<Vec<_>>()
+        .join(";");
+
+    let proj = out_dir.join("abi_probe_proj");
+    std::fs::create_dir_all(&proj).expect("mkdir abi_probe_proj");
+    std::fs::write(proj.join("probe.c"), ABI_PROBE_C).expect("write probe.c");
+    std::fs::write(
+        proj.join("CMakeLists.txt"),
+        format!(
+            "cmake_minimum_required(VERSION 3.16)\nproject(abi_probe C)\n\
+             add_executable(abi_probe probe.c)\n\
+             target_include_directories(abi_probe PRIVATE {includes_cmake})\n"
+        ),
+    )
+    .expect("write probe CMakeLists");
+
+    let probe_build = proj.join("build");
+    run(
+        Command::new("cmake")
+            .arg("-S")
+            .arg(&proj)
+            .arg("-B")
+            .arg(&probe_build),
+        "configure ABI probe",
+    );
+    run(
+        Command::new("cmake")
+            .arg("--build")
+            .arg(&probe_build)
+            .arg("--config")
+            .arg("Release"),
+        "build ABI probe",
+    );
+
+    // Multi-config (MSVC) grava em Release/; single-config na raiz do build.
+    let exe_candidates = [
+        probe_build.join("Release").join("abi_probe.exe"),
+        probe_build.join("Release").join("abi_probe"),
+        probe_build.join("abi_probe.exe"),
+        probe_build.join("abi_probe"),
+    ];
+    let exe = exe_candidates
+        .iter()
+        .find(|p| p.exists())
+        .unwrap_or_else(|| panic!("FFI-ABI-008: binário do probe não encontrado em {probe_build:?}"));
+    let output = Command::new(exe)
+        .output()
+        .unwrap_or_else(|e| panic!("FFI-ABI-008: falha ao executar probe: {e}"));
+    assert!(
+        output.status.success(),
+        "FFI-ABI-008: probe retornou {}",
+        output.status
+    );
+    let stdout = String::from_utf8(output.stdout).expect("probe output utf8");
+    assert!(
+        stdout.contains("PROBE_DDS_SAMPLE_INFO_SIZE"),
+        "FFI-ABI-008: saída do probe inesperada: {stdout}"
+    );
+    std::fs::write(&probe_out, &stdout).expect("write abi_probe.rs");
+    std::fs::write(&stamp_path, stamp_new).expect("write probe stamp");
+    println!("cargo:warning=ABI probe OK para {target} ({} bytes de checks)", stdout.len());
 }
