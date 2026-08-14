@@ -602,6 +602,7 @@ dependencies = [
  "cyclonedds-derive",
  "cyclonedds-rust-sys",
  "futures-util",
+ "serde",
  "tokio",
 ]
 
