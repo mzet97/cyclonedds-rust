@@ -315,8 +315,29 @@ impl FindScope {
     }
 }
 
-pub struct TopicDescriptor {
+/// Sole owner of a `dds_topic_descriptor_t`, released once the last
+/// [`TopicDescriptor`] handle to it is dropped.
+///
+/// `TopicDescriptor` used to hold the raw pointer directly while implementing
+/// *both* a `Clone` that copied that pointer verbatim and a `Drop` that called
+/// `dds_delete_topic_descriptor` on it. Two clones therefore owned the same
+/// allocation: the second drop was a double free and any access after the first
+/// drop a use-after-free. Nothing in this repository cloned one, so it never
+/// fired here — but `Clone` is public API.
+struct DescriptorOwner {
     ptr: *mut dds_topic_descriptor_t,
+}
+
+impl Drop for DescriptorOwner {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = dds_delete_topic_descriptor(self.ptr);
+        }
+    }
+}
+
+pub struct TopicDescriptor {
+    owner: std::rc::Rc<DescriptorOwner>,
 }
 
 impl std::fmt::Debug for TopicDescriptor {
@@ -326,18 +347,29 @@ impl std::fmt::Debug for TopicDescriptor {
 }
 
 impl Clone for TopicDescriptor {
+    /// Shares the underlying descriptor; it is released when the last clone is
+    /// dropped. (`Rc<DescriptorOwner>` keeps this type `!Send`/`!Sync`, exactly
+    /// as the raw-pointer version was.)
     fn clone(&self) -> Self {
-        Self { ptr: self.ptr }
+        Self {
+            owner: std::rc::Rc::clone(&self.owner),
+        }
     }
 }
 
 impl TopicDescriptor {
     pub(crate) fn from_raw(ptr: *mut dds_topic_descriptor_t) -> Self {
-        Self { ptr }
+        Self {
+            owner: std::rc::Rc::new(DescriptorOwner { ptr }),
+        }
+    }
+
+    fn raw(&self) -> *mut dds_topic_descriptor_t {
+        self.owner.ptr
     }
 
     pub fn as_ptr(&self) -> *const dds_topic_descriptor_t {
-        self.ptr.cast_const()
+        self.owner.ptr.cast_const()
     }
 
     pub fn create_topic(&self, participant: dds_entity_t, name: &str) -> DdsResult<UntypedTopic> {
@@ -354,41 +386,41 @@ impl TopicDescriptor {
     }
 
     pub fn size(&self) -> u32 {
-        unsafe { (*self.ptr).m_size }
+        unsafe { (*self.raw()).m_size }
     }
 
     pub fn align(&self) -> u32 {
-        unsafe { (*self.ptr).m_align }
+        unsafe { (*self.raw()).m_align }
     }
 
     pub fn key_count(&self) -> u32 {
-        unsafe { (*self.ptr).m_nkeys }
+        unsafe { (*self.raw()).m_nkeys }
     }
 
     pub fn flagset(&self) -> u32 {
-        unsafe { (*self.ptr).m_flagset }
+        unsafe { (*self.raw()).m_flagset }
     }
 
     pub fn op_count(&self) -> u32 {
-        unsafe { (*self.ptr).m_nops }
+        unsafe { (*self.raw()).m_nops }
     }
 
     pub fn ops(&self) -> &[u32] {
         unsafe {
-            if (*self.ptr).m_ops.is_null() || (*self.ptr).m_nops == 0 {
+            if (*self.raw()).m_ops.is_null() || (*self.raw()).m_nops == 0 {
                 &[]
             } else {
-                std::slice::from_raw_parts((*self.ptr).m_ops, (*self.ptr).m_nops as usize)
+                std::slice::from_raw_parts((*self.raw()).m_ops, (*self.raw()).m_nops as usize)
             }
         }
     }
 
     pub fn key_descriptors(&self) -> Vec<TopicKeyDescriptor> {
         unsafe {
-            if (*self.ptr).m_keys.is_null() || (*self.ptr).m_nkeys == 0 {
+            if (*self.raw()).m_keys.is_null() || (*self.raw()).m_nkeys == 0 {
                 return Vec::new();
             }
-            std::slice::from_raw_parts((*self.ptr).m_keys, (*self.ptr).m_nkeys as usize)
+            std::slice::from_raw_parts((*self.raw()).m_keys, (*self.raw()).m_nkeys as usize)
                 .iter()
                 .map(|key| TopicKeyDescriptor {
                     name: if key.m_name.is_null() {
@@ -405,7 +437,7 @@ impl TopicDescriptor {
 
     pub fn metadata_xml(&self) -> String {
         unsafe {
-            let ptr = (*self.ptr).m_meta;
+            let ptr = (*self.raw()).m_meta;
             if ptr.is_null() {
                 String::new()
             } else {
@@ -416,7 +448,7 @@ impl TopicDescriptor {
 
     pub fn type_information_bytes(&self) -> &[u8] {
         unsafe {
-            let meta = &(*self.ptr).type_information;
+            let meta = &(*self.raw()).type_information;
             if meta.data.is_null() || meta.sz == 0 {
                 &[]
             } else {
@@ -427,7 +459,7 @@ impl TopicDescriptor {
 
     pub fn type_mapping_bytes(&self) -> &[u8] {
         unsafe {
-            let meta = &(*self.ptr).type_mapping;
+            let meta = &(*self.raw()).type_mapping;
             if meta.data.is_null() || meta.sz == 0 {
                 &[]
             } else {
@@ -437,25 +469,17 @@ impl TopicDescriptor {
     }
 
     pub fn restrict_data_representation(&self) -> u32 {
-        unsafe { (*self.ptr).restrict_data_representation }
+        unsafe { (*self.raw()).restrict_data_representation }
     }
 
     pub fn type_name(&self) -> String {
         unsafe {
-            let ptr = (*self.ptr).m_typename;
+            let ptr = (*self.raw()).m_typename;
             if ptr.is_null() {
                 String::new()
             } else {
                 CStr::from_ptr(ptr).to_string_lossy().into_owned()
             }
-        }
-    }
-}
-
-impl Drop for TopicDescriptor {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = dds_delete_topic_descriptor(self.ptr);
         }
     }
 }

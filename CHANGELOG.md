@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`TopicDescriptor` double-freed when cloned** (`cyclonedds/src/xtypes.rs`): it carried a
+  `Clone` that copied the raw `*mut dds_topic_descriptor_t` with no reference count, and a
+  `Drop` that called `dds_delete_topic_descriptor` on it. Two clones owned the same
+  allocation, so the second drop was a double free and any access after the first drop a
+  use-after-free. Nothing in this repository cloned one, which is why it never fired — but
+  `Clone` is public API, so any caller doing the obvious thing hit it. Reproduced as
+  `STATUS_HEAP_CORRUPTION` before the fix. The pointer now lives in an `Rc<DescriptorOwner>`
+  and is released once the last clone is dropped; `Rc` (not `Arc`) keeps the type
+  `!Send`/`!Sync`, exactly as the raw-pointer version was. Found by the `xtypes.rs` audit.
 - Pre-existing clippy findings that only surface on the MSRV toolchain: a duplicated
   `#[cfg(feature = "std")]` in `lib.rs` and two needless lifetimes.
 
