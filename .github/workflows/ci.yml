@@ -54,3 +54,38 @@ jobs:
         run: cargo build --workspace --features async --locked
       - name: Test
         run: cargo test --workspace --features async --locked -- --test-threads=1 --skip cross_process_pub_sub_reliable --skip cross_process_pub_sub_best_effort
+
+  # This crate is a safe wrapper over a C library: the interesting failure mode
+  # is memory corruption that a normal test run happily reports as "ok". The
+  # regression suites below (raw CDR, loans over heap-backed types, string keys)
+  # exist because exactly that shipped more than once. AddressSanitizer turns
+  # silent corruption into a hard failure, and it needs nightly + a Linux target.
+  #
+  # Kept non-blocking for now (`continue-on-error`) because the C library is not
+  # instrumented, so leaks reported inside CycloneDDS itself are out of our
+  # control; `detect_leaks=0` suppresses the noisiest class. Promote this to a
+  # required check once the signal is proven stable.
+  sanitizer:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Test under AddressSanitizer
+        env:
+          RUSTFLAGS: "-Zsanitizer=address"
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: |
+          cargo +nightly test -Z build-std --target x86_64-unknown-linux-gnu \
+            -p cyclonedds-test-suite \
+            --test cdr_roundtrip --test loan_heap_fields \
+            --test instance_string_key --test listener_panic_barrier \
+            --test async_reader_lifetime --test ops_scanner_alignment \
+            -- --test-threads=1
