@@ -43,6 +43,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `STATUS_HEAP_CORRUPTION` before the fix. The pointer now lives in an `Rc<DescriptorOwner>`
   and is released once the last clone is dropped; `Rc` (not `Arc`) keeps the type
   `!Send`/`!Sync`, exactly as the raw-pointer version was. Found by the `xtypes.rs` audit.
+- **`SerdeSample<T>` handed a Rust `Vec` to CycloneDDS as a DDS sequence**
+  (`cyclonedds/src/serde_sample.rs`): it declared `Native = Self` and
+  `write_to_native` returned `self as *const Self as *const c_void`, but its ops say
+  `ADR | SEQ | 1BY`, so the C side reads that memory as `dds_sequence_t`
+  (`{u32 _maximum, u32 _length, *mut u8 _buffer, bool _release}`) while it actually held a
+  `Vec<u8>` — whose field order is `repr(Rust)` and explicitly not guaranteed, so the
+  sizes lining up was luck rather than design. `clone_out` then did `ptr::read`, taking
+  Rust ownership of a buffer allocated by `dds_alloc`, to be freed later by Rust's
+  allocator. Reproduced as `STATUS_STACK_BUFFER_OVERRUN` before the fix. There is now a
+  `#[repr(C)] SerdeSampleNative` holding a `DdsSequence<u8>`, with conversions mirroring
+  what the derive generates for a `Vec<u8>` field.
+
+  The `serde` feature had **no test coverage at all**, which is how this survived — the
+  same blind spot that let 2.0.1's `SerdeSample`/`Native` omission through. It now has a
+  real DDS round-trip suite, and the feature is wired into `cyclonedds-test-suite`.
+
+  Still open, and recorded in `docs/soundness-backlog.md` rather than guessed at here:
+  `type_name()` used `concat!("SerdeSample<", stringify!(T), ">")`, which expands to the
+  literal `"T"`, so every `SerdeSample<X>` announces the same DDS type name and distinct
+  payload types match each other on the wire. A correct fix needs a name stable across
+  peers and across compilations, which `std::any::type_name` is not.
 - **Three more copies of the wrong instruction-width table**
   (`cyclonedds/src/type_discovery.rs`): the schema builder, `write_value_to_native` and
   `read_value_from_native` each carried their own copy, all missing `ENU`, `ARR`, `UNI`

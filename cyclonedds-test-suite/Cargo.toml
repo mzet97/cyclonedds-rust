@@ -20,6 +20,9 @@ cyclonedds_sys = { package = "cyclonedds-rust-sys", path = "../cyclonedds-rust-s
 cyclonedds-derive = { path = "../cyclonedds-derive" }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
 
 [features]
 security = ["cyclonedds/security", "cyclonedds_sys/security"]
+# The serde feature had no coverage at all until serde_sample_roundtrip.rs.
+serde = ["cyclonedds/serde"]
