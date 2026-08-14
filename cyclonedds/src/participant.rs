@@ -19,9 +19,7 @@ struct WriterGuard {
 
 impl Drop for WriterGuard {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "WriterGuard");
     }
 }
 
@@ -32,9 +30,7 @@ struct ReaderGuard {
 
 impl Drop for ReaderGuard {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "ReaderGuard");
     }
 }
 
@@ -525,9 +521,7 @@ impl DdsEntity for DomainParticipant {
 
 impl Drop for DomainParticipant {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "DomainParticipant");
     }
 }
 

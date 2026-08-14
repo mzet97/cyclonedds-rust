@@ -327,8 +327,8 @@ impl<T: DdsType> Drop for ContentFilteredTopic<T> {
             let mut dds_filter: dds_topic_filter = std::mem::zeroed();
             dds_filter.mode = dds_topic_filter_mode_DDS_TOPIC_FILTER_NONE;
             dds_set_topic_filter_extended(self.entity, &dds_filter as *const dds_topic_filter);
-            dds_delete(self.entity);
         }
+        crate::entity::delete_entity(self.entity, "ContentFilteredTopic");
     }
 }
 

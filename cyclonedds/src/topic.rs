@@ -55,9 +55,7 @@ impl DdsEntity for UntypedTopic {
 
 impl Drop for UntypedTopic {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "UntypedTopic");
     }
 }
 
@@ -165,11 +163,22 @@ pub trait DdsType: Sized + Send + 'static {
 
     fn type_name() -> &'static str;
     fn ops() -> Vec<u32>;
+    /// Size CycloneDDS allocates for one sample of this type.
+    ///
+    /// This is the size of [`DdsType::Native`], not of `Self` — they differ for
+    /// any type with `String`/`Vec` fields, where the wire representation uses
+    /// `DdsString` (8 bytes) / `DdsSequence`. The default used to be
+    /// `size_of::<Self>()`, which is only correct when `Native = Self`: a manual
+    /// `impl` that declared a smaller `Native` and relied on the default
+    /// reintroduced the heap overflow fixed in 2.0.0, since `dds_request_loan`
+    /// allocates this many bytes and `request_loan` then zero-initializes
+    /// `size_of::<Native>()` of them.
     fn descriptor_size() -> u32 {
-        std::mem::size_of::<Self>() as u32
+        std::mem::size_of::<Self::Native>() as u32
     }
+    /// Alignment CycloneDDS uses for one sample. See [`DdsType::descriptor_size`].
     fn descriptor_align() -> u32 {
-        std::mem::align_of::<Self>() as u32
+        std::mem::align_of::<Self::Native>() as u32
     }
     /// # Safety
     ///
@@ -400,8 +409,6 @@ impl<T> DdsEntity for Topic<T> {
 
 impl<T> Drop for Topic<T> {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "Topic");
     }
 }

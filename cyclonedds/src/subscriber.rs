@@ -80,8 +80,6 @@ impl DdsEntity for Subscriber {
 
 impl Drop for Subscriber {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "Subscriber");
     }
 }

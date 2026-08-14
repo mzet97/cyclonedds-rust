@@ -178,9 +178,7 @@ impl DdsEntity for WaitSet {
 
 impl Drop for WaitSet {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "WaitSet");
     }
 }
 
@@ -222,9 +220,7 @@ impl DdsEntity for ReadCondition {
 
 impl Drop for ReadCondition {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "ReadCondition");
     }
 }
 
@@ -316,9 +312,7 @@ impl Drop for QueryCondition {
             let mut registry = qc_registry().lock().unwrap_or_else(|e| e.into_inner());
             registry.remove(&self.entity);
         }
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "QueryCondition");
     }
 }
 
@@ -367,9 +361,7 @@ impl DdsEntity for GuardCondition {
 
 impl Drop for GuardCondition {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "GuardCondition");
     }
 }
 

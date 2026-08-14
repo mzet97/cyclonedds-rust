@@ -573,8 +573,6 @@ impl<T: DdsType> DdsEntity for DataReader<T> {
 
 impl<T: DdsType> Drop for DataReader<T> {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "DataReader");
     }
 }

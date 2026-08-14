@@ -40,6 +40,43 @@ unsafe fn entity_string(
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
+/// Delete an entity from a `Drop`, surfacing failure instead of discarding it.
+///
+/// Every wrapper's `Drop` used to call `dds_delete` and drop the return on the
+/// floor. That hides a real failure mode: struct fields drop in declaration
+/// order, so a `struct App { dp, sub, reader }` deletes the participant first —
+/// CycloneDDS then deletes its children recursively — and the later
+/// `Subscriber`/`DataReader` drops run `dds_delete` on handles that are already
+/// gone. CycloneDDS returns `BAD_PARAMETER` and nothing happens *unless* the
+/// handle was recycled in the meantime, in which case the wrong entity is
+/// destroyed. Silent, non-deterministic, and very hard to diagnose in
+/// production.
+///
+/// This cannot be fixed by checking a return code — the ordering has to change —
+/// but making it observable is the difference between a bug report and a
+/// mystery. Never panics: a panicking `Drop` during an unwind aborts.
+pub(crate) fn delete_entity(entity: dds_entity_t, what: &str) {
+    let ret = unsafe { dds_delete(entity) };
+    if ret < 0 {
+        #[cfg(feature = "tracing")]
+        tracing::warn!(
+            entity,
+            what,
+            code = ret,
+            "dds_delete failed during Drop; the handle was likely already \
+             deleted by a parent entity (check field declaration order)"
+        );
+        #[cfg(all(debug_assertions, not(feature = "tracing")))]
+        eprintln!(
+            "cyclonedds: dds_delete({entity}) failed for {what} during Drop (code {ret}); \
+             the handle was likely already deleted by a parent entity \
+             (check field declaration order)"
+        );
+        #[cfg(all(not(debug_assertions), not(feature = "tracing")))]
+        let _ = (entity, what);
+    }
+}
+
 pub trait DdsEntity {
     fn entity(&self) -> dds_entity_t;
 

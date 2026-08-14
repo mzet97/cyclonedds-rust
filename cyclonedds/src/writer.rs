@@ -391,9 +391,7 @@ impl<T: DdsType> DdsEntity for DataWriter<T> {
 
 impl<T: DdsType> Drop for DataWriter<T> {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "DataWriter");
     }
 }
 

@@ -77,8 +77,6 @@ impl DdsEntity for Publisher {
 
 impl Drop for Publisher {
     fn drop(&mut self) {
-        unsafe {
-            dds_delete(self.entity);
-        }
+        crate::entity::delete_entity(self.entity, "Publisher");
     }
 }
