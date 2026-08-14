@@ -343,7 +343,7 @@ impl<T: DdsType> DataReader<T> {
 
     /// Resolve the instance handle for the given sample's key.
     ///
-    /// Routes through [`DdsType::write_to_native`] like every writer-side
+    /// Routes through [`crate::DdsType::write_to_native`] like every writer-side
     /// method: CycloneDDS reads the key at the *native* offsets, so passing
     /// `&T` directly made it interpret the middle of a Rust `String` as a
     /// `char*` (`strlen` over an arbitrary address). Mirrors
@@ -362,7 +362,7 @@ impl<T: DdsType> DataReader<T> {
     /// CycloneDDS writes the key using the topic descriptor's layout — that is
     /// `T::Native`, whose size is what `descriptor_size()` reports. The buffer
     /// is therefore a `MaybeUninit<T::Native>` (any bit pattern is legal there)
-    /// and is converted with [`DdsType::clone_out`]. The previous
+    /// and is converted with [`crate::DdsType::clone_out`]. The previous
     /// `let mut data: T = mem::zeroed()` was invalid three ways over: an
     /// all-zero `String`/`Vec` violates the `NonNull` niche inside it (rustc
     /// rejects it outright in debug builds), the buffer was sized

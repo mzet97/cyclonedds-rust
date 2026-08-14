@@ -95,7 +95,7 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
     /// read, and cloning through such a reference corrupts the heap: the
     /// resulting `String` carries a garbage capacity/length and is later freed
     /// by Rust over memory it never allocated. Each sample is therefore
-    /// converted with [`DdsType::clone_out`], the same path already used by
+    /// converted with [`crate::DdsType::clone_out`], the same path already used by
     /// `read`/`take`/`read_next`.
     ///
     /// For a genuinely zero-copy view, use [`iter_native`](Self::iter_native).
@@ -109,7 +109,7 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
     }
 
     /// Zero-copy view over the loaned samples, borrowing the DDS-owned buffers
-    /// directly as [`DdsType::Native`].
+    /// directly as [`crate::DdsType::Native`].
     ///
     /// This is the wire representation: for a type with `String`/`Vec` fields
     /// you get `DdsString`/`DdsSequence`, not `String`/`Vec`. Nothing is
@@ -135,7 +135,7 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
     /// Copy every loaned sample out into owned values.
     ///
     /// No longer requires `T: Clone` — the conversion goes through
-    /// [`DdsType::clone_out`], which is the only sound way to read the native
+    /// [`crate::DdsType::clone_out`], which is the only sound way to read the native
     /// buffer (see [`iter`](Self::iter)).
     pub fn to_vec(&self) -> Vec<Sample<T>> {
         self.iter().collect()

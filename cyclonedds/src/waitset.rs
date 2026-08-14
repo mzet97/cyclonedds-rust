@@ -266,10 +266,10 @@ impl QueryCondition {
     ///
     /// Because the CycloneDDS C API does not pass a user-data argument to
     /// the filter callback, the closure is dispatched through a thread-local
-    /// "active handle" mechanism.  Before any DDS operation that may trigger
-    /// this filter (e.g., `dds_read`, `dds_take`, `dds_waitset_wait`), call
-    /// [`set_active_qc`] with this condition's entity handle.  Reset it to
-    /// 0 afterward.
+    /// "active handle" mechanism. Wrap any DDS operation that may trigger this
+    /// filter (`dds_read`, `dds_take`, `dds_waitset_wait`) in the RAII guard
+    /// returned by [`QueryCondition::activate`], which sets and restores the
+    /// thread-local for you.
     pub fn with_filter<F>(reader: dds_entity_t, mask: u32, filter: F) -> DdsResult<Self>
     where
         F: Fn(*const c_void) -> bool + Send + Sync + 'static,
