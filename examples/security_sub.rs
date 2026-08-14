@@ -23,8 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let participant = DomainParticipant::with_qos(0, Some(&qos))?;
     let subscriber = Subscriber::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorld")?;
-    let reader = DataReader::new(subscriber.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&participant, "HelloWorld")?;
+    let reader = DataReader::new(&subscriber, &topic)?;
 
     println!("Secure subscriber started on domain 0");
 

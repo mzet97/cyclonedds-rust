@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let publisher = Publisher::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorldQosTopic")?;
+    let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldQosTopic")?;
     let writer = publisher.create_writer_with_qos(&topic, &qos)?;
 
     let mut msg = HelloWorld {

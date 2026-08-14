@@ -20,13 +20,13 @@ fn bench_dds_latency(c: &mut Criterion) {
     let publisher = Publisher::new(participant.entity()).unwrap();
     let subscriber = Subscriber::new(participant.entity()).unwrap();
 
-    let topic_pub = Topic::<PingPong>::new(participant.entity(), "PingPong").unwrap();
-    let topic_sub = Topic::<PingPong>::new(participant.entity(), "PingPong").unwrap();
+    let topic_pub = Topic::<PingPong>::new(&participant, "PingPong").unwrap();
+    let topic_sub = Topic::<PingPong>::new(&participant, "PingPong").unwrap();
 
     let writer: DataWriter<PingPong> =
-        DataWriter::new(publisher.entity(), topic_pub.entity()).unwrap();
+        DataWriter::new(&publisher, &topic_pub).unwrap();
     let reader: DataReader<PingPong> =
-        DataReader::new(subscriber.entity(), topic_sub.entity()).unwrap();
+        DataReader::new(&subscriber, &topic_sub).unwrap();
 
     thread::sleep(Duration::from_millis(200));
 

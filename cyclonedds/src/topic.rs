@@ -291,11 +291,41 @@ pub fn rebase_ops(mut ops: Vec<u32>, base_offset: u32) -> Vec<u32> {
 }
 
 impl<T: DdsType> Topic<T> {
-    pub fn new(participant: dds_entity_t, name: &str) -> DdsResult<Self> {
+    /// Create a topic on `participant`.
+    ///
+    /// Takes the participant by reference rather than as a raw
+    /// `dds_entity_t`. The handle-based form let a temporary supply it --
+    /// `Topic::new(DomainParticipant::new(0)?.entity(), "x")` compiles, deletes
+    /// the participant at the end of the statement, and leaves the topic on a
+    /// handle CycloneDDS is free to recycle. See [`Topic::from_entity`] for the
+    /// escape hatch when the handle genuinely comes from elsewhere.
+    pub fn new(participant: &crate::DomainParticipant, name: &str) -> DdsResult<Self> {
         Self::with_qos(participant, name, None)
     }
 
-    pub fn with_qos(participant: dds_entity_t, name: &str, qos: Option<&Qos>) -> DdsResult<Self> {
+    pub fn with_qos(
+        participant: &crate::DomainParticipant,
+        name: &str,
+        qos: Option<&Qos>,
+    ) -> DdsResult<Self> {
+        Self::with_qos_from_entity(participant.entity(), name, qos)
+    }
+
+    /// Create a topic from a raw participant handle.
+    ///
+    /// Escape hatch for handles obtained outside this crate (FFI interop). The
+    /// caller guarantees the handle is a live participant and outlives the
+    /// returned topic; prefer [`Topic::new`], which the compiler checks.
+    pub fn from_entity(participant: dds_entity_t, name: &str) -> DdsResult<Self> {
+        Self::with_qos_from_entity(participant, name, None)
+    }
+
+    /// See [`Topic::from_entity`].
+    pub fn with_qos_from_entity(
+        participant: dds_entity_t,
+        name: &str,
+        qos: Option<&Qos>,
+    ) -> DdsResult<Self> {
         unsafe {
             let type_name = CString::new(T::type_name())
                 .map_err(|_| DdsError::BadParameter("type name contains null".into()))?;

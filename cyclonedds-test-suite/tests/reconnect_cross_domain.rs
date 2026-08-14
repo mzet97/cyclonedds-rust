@@ -14,7 +14,7 @@ fn participant_recreate_allows_rediscovery() {
         .unwrap();
     let publisher = Publisher::new(participant1.entity()).unwrap();
     let _writer: cyclonedds::DataWriter<ReconnectSample> =
-        cyclonedds::DataWriter::new(publisher.entity(), topic1.entity()).unwrap();
+        cyclonedds::DataWriter::new(&publisher, &topic1).unwrap();
 
     // First reader discovers the writer
     let participant2 = DomainParticipant::new(0).unwrap();
@@ -23,7 +23,7 @@ fn participant_recreate_allows_rediscovery() {
         .unwrap();
     let subscriber = Subscriber::new(participant2.entity()).unwrap();
     let reader: cyclonedds::DataReader<ReconnectSample> =
-        cyclonedds::DataReader::new(subscriber.entity(), topic2.entity()).unwrap();
+        cyclonedds::DataReader::new(&subscriber, &topic2).unwrap();
 
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -42,7 +42,7 @@ fn participant_recreate_allows_rediscovery() {
         .unwrap();
     let subscriber3 = Subscriber::new(participant3.entity()).unwrap();
     let reader3: cyclonedds::DataReader<ReconnectSample> =
-        cyclonedds::DataReader::new(subscriber3.entity(), topic3.entity()).unwrap();
+        cyclonedds::DataReader::new(&subscriber3, &topic3).unwrap();
 
     std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -61,7 +61,7 @@ fn cross_domain_isolation_prevents_discovery() {
         .unwrap();
     let publisher = Publisher::new(participant_domain0.entity()).unwrap();
     let _writer: cyclonedds::DataWriter<ReconnectSample> =
-        cyclonedds::DataWriter::new(publisher.entity(), topic0.entity()).unwrap();
+        cyclonedds::DataWriter::new(&publisher, &topic0).unwrap();
 
     // Reader in domain 1 should NOT discover writer in domain 0
     let participant_domain1 = DomainParticipant::new(1).unwrap();
@@ -70,7 +70,7 @@ fn cross_domain_isolation_prevents_discovery() {
         .unwrap();
     let subscriber = Subscriber::new(participant_domain1.entity()).unwrap();
     let reader: cyclonedds::DataReader<ReconnectSample> =
-        cyclonedds::DataReader::new(subscriber.entity(), topic1.entity()).unwrap();
+        cyclonedds::DataReader::new(&subscriber, &topic1).unwrap();
 
     std::thread::sleep(std::time::Duration::from_millis(500));
 

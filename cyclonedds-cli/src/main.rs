@@ -910,10 +910,10 @@ fn cmd_perf(domain_id: u32, num_samples: usize) -> cyclonedds::DdsResult<()> {
 
     let qos = QosBuilder::new().build()?;
 
-    let ping_writer = DataWriter::with_qos(publisher.entity(), ping_topic.entity(), Some(&qos))?;
-    let pong_writer = DataWriter::with_qos(publisher.entity(), pong_topic.entity(), Some(&qos))?;
-    let ping_reader = DataReader::with_qos(subscriber.entity(), ping_topic.entity(), Some(&qos))?;
-    let pong_reader = DataReader::with_qos(subscriber.entity(), pong_topic.entity(), Some(&qos))?;
+    let ping_writer = DataWriter::with_qos(&publisher, &ping_topic, Some(&qos))?;
+    let pong_writer = DataWriter::with_qos(&publisher, &pong_topic, Some(&qos))?;
+    let ping_reader = DataReader::with_qos(&subscriber, &ping_topic, Some(&qos))?;
+    let pong_reader = DataReader::with_qos(&subscriber, &pong_topic, Some(&qos))?;
 
     // Wait for matching
     println!("Waiting for matching participant...");

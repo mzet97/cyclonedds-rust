@@ -41,7 +41,7 @@ impl Subscriber {
     }
 
     pub fn create_reader<T: crate::DdsType>(&self, topic: &Topic<T>) -> DdsResult<DataReader<T>> {
-        DataReader::new(self.entity, topic.entity())
+        DataReader::new(self, topic)
     }
 
     pub fn create_reader_with_qos<T: crate::DdsType>(
@@ -49,7 +49,7 @@ impl Subscriber {
         topic: &Topic<T>,
         qos: &Qos,
     ) -> DdsResult<DataReader<T>> {
-        DataReader::with_qos(self.entity, topic.entity(), Some(qos))
+        DataReader::with_qos(self, topic, Some(qos))
     }
 
     pub fn notify_readers(&self) -> DdsResult<()> {

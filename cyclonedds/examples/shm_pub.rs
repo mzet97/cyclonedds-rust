@@ -33,8 +33,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let qos = QosBuilder::new().enable_iceoryx().build()?;
 
-    let topic = Topic::<LargeMessage>::new(participant.entity(), "LargeData")?;
-    let writer = DataWriter::with_qos(publisher.entity(), topic.entity(), Some(&qos))?;
+    let topic = Topic::<LargeMessage>::new(&participant, "LargeData")?;
+    let writer = DataWriter::with_qos(&publisher, &topic, Some(&qos))?;
 
     println!("SHM publisher started. Sending large messages via Iceoryx...");
 

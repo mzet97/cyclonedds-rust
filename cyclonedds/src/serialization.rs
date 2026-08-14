@@ -59,7 +59,7 @@ pub struct CdrSerializer<'a, T: DdsType> {
     _marker: PhantomData<&'a T>,
 }
 
-impl<'a, T: DdsType> CdrSerializer<'a, T> {
+impl<T: DdsType> CdrSerializer<'_, T> {
     /// Serialize `sample` to CDR bytes using the given encoding.
     ///
     /// Builds a temporary `dds_cdrstream_desc` from the type's ops/keys/flagset,

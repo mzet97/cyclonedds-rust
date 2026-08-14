@@ -301,8 +301,8 @@ fn test_keyed_instance_lifecycle() {
     let topic = participant
         .create_topic::<KeyValue>("test_keyed_topic")
         .unwrap();
-    let writer = DataWriter::<KeyValue>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<KeyValue>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<KeyValue>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<KeyValue>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -360,14 +360,14 @@ fn test_writer_reader_creation() {
         .create_topic::<HelloWorld>("test_writer_reader")
         .unwrap();
 
-    let writer = DataWriter::<HelloWorld>::new(publisher.entity(), topic.entity());
+    let writer = DataWriter::<HelloWorld>::new(&publisher, &topic);
     assert!(
         writer.is_ok(),
         "Failed to create writer: {:?}",
         writer.err()
     );
 
-    let reader = DataReader::<HelloWorld>::new(subscriber.entity(), topic.entity());
+    let reader = DataReader::<HelloWorld>::new(&subscriber, &topic);
     assert!(
         reader.is_ok(),
         "Failed to create reader: {:?}",
@@ -402,7 +402,7 @@ fn test_readcondition_creation() {
     let subscriber = Subscriber::new(participant.entity()).unwrap();
     let topic = participant.create_topic::<HelloWorld>("test_rc").unwrap();
     let reader: DataReader<HelloWorld> =
-        DataReader::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::new(&subscriber, &topic).unwrap();
 
     let cond = ReadCondition::not_read(reader.entity());
     assert!(
@@ -473,8 +473,8 @@ fn test_pub_sub_e2e() {
         .create_topic::<HelloWorld>("test_e2e_topic")
         .unwrap();
 
-    let writer = DataWriter::<HelloWorld>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<HelloWorld>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<HelloWorld>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<HelloWorld>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -510,8 +510,8 @@ fn test_derive_keyed_pub_sub() {
     let topic = participant
         .create_topic::<SensorReading>("test_derive_sensor")
         .unwrap();
-    let writer = DataWriter::<SensorReading>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<SensorReading>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<SensorReading>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<SensorReading>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -567,8 +567,8 @@ fn test_string_roundtrip() {
     let topic = participant
         .create_topic::<StringMessage>("test_string_roundtrip")
         .unwrap();
-    let writer = DataWriter::<StringMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<StringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<StringMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<StringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -598,8 +598,8 @@ fn test_sequence_roundtrip() {
     let topic = participant
         .create_topic::<SequenceMessage>("test_sequence_roundtrip")
         .unwrap();
-    let writer = DataWriter::<SequenceMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<SequenceMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<SequenceMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<SequenceMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -624,9 +624,9 @@ fn test_nested_struct_roundtrip() {
     let topic = participant
         .create_topic::<NestedPointMessage>("test_nested_struct_roundtrip")
         .unwrap();
-    let writer = DataWriter::<NestedPointMessage>::new(publisher.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<NestedPointMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<NestedPointMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<NestedPointMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -654,8 +654,8 @@ fn test_enum_roundtrip() {
     let topic = participant
         .create_topic::<EnumMessage>("test_enum_roundtrip")
         .unwrap();
-    let writer = DataWriter::<EnumMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<EnumMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<EnumMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<EnumMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -683,9 +683,9 @@ fn test_bounded_sequence_roundtrip() {
         .create_topic::<BoundedSequenceMessage>("test_bounded_sequence_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<BoundedSequenceMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<BoundedSequenceMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<BoundedSequenceMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<BoundedSequenceMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -716,9 +716,9 @@ fn test_sequence_struct_roundtrip() {
         .create_topic::<SequenceStructMessage>("test_sequence_struct_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<SequenceStructMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<SequenceStructMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<SequenceStructMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<SequenceStructMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -757,9 +757,9 @@ fn test_array_struct_roundtrip() {
     let topic = participant
         .create_topic::<ArrayStructMessage>("test_array_struct_roundtrip")
         .unwrap();
-    let writer = DataWriter::<ArrayStructMessage>::new(publisher.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<ArrayStructMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<ArrayStructMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<ArrayStructMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -799,10 +799,10 @@ fn test_bounded_sequence_struct_roundtrip() {
         .create_topic::<BoundedSequenceStructMessage>("test_bounded_sequence_struct_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<BoundedSequenceStructMessage>::new(publisher.entity(), topic.entity())
+        DataWriter::<BoundedSequenceStructMessage>::new(&publisher, &topic)
             .unwrap();
     let reader =
-        DataReader::<BoundedSequenceStructMessage>::new(subscriber.entity(), topic.entity())
+        DataReader::<BoundedSequenceStructMessage>::new(&subscriber, &topic)
             .unwrap();
 
     thread::sleep(Duration::from_millis(500));
@@ -843,9 +843,9 @@ fn test_sequence_enum_roundtrip() {
         .create_topic::<SequenceEnumMessage>("test_sequence_enum_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<SequenceEnumMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<SequenceEnumMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<SequenceEnumMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<SequenceEnumMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -888,9 +888,9 @@ fn test_bounded_sequence_enum_roundtrip() {
         .create_topic::<BoundedSequenceEnumMessage>("test_bounded_sequence_enum_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<BoundedSequenceEnumMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<BoundedSequenceEnumMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<BoundedSequenceEnumMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<BoundedSequenceEnumMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -924,9 +924,9 @@ fn test_array_string_roundtrip() {
     let topic = participant
         .create_topic::<ArrayStringMessage>("test_array_string_roundtrip")
         .unwrap();
-    let writer = DataWriter::<ArrayStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<ArrayStringMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<ArrayStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<ArrayStringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -962,8 +962,8 @@ fn test_array_enum_roundtrip() {
     let topic = participant
         .create_topic::<ArrayEnumMessage>("test_array_enum_roundtrip")
         .unwrap();
-    let writer = DataWriter::<ArrayEnumMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<ArrayEnumMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<ArrayEnumMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<ArrayEnumMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1005,9 +1005,9 @@ fn test_direct_string_roundtrip() {
         .create_topic::<DirectStringMessage>("test_direct_string_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1037,8 +1037,8 @@ fn test_direct_vec_roundtrip() {
     let topic = participant
         .create_topic::<DirectVecMessage>("test_direct_vec_roundtrip")
         .unwrap();
-    let writer = DataWriter::<DirectVecMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<DirectVecMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<DirectVecMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<DirectVecMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1069,9 +1069,9 @@ fn test_direct_vec_string_roundtrip() {
         .create_topic::<DirectVecStringMessage>("test_direct_vec_string_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<DirectVecStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectVecStringMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectVecStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectVecStringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1105,9 +1105,9 @@ fn test_direct_vec_enum_roundtrip() {
         .create_topic::<DirectVecEnumMessage>("test_direct_vec_enum_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<DirectVecEnumMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectVecEnumMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectVecEnumMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectVecEnumMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1149,9 +1149,9 @@ fn test_direct_vec_struct_roundtrip() {
         .create_topic::<DirectVecStructMessage>("test_direct_vec_struct_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<DirectVecStructMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectVecStructMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectVecStructMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectVecStructMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1185,8 +1185,8 @@ fn test_multi_array_roundtrip() {
     let topic = participant
         .create_topic::<MultiArrayMessage>("test_multi_array_roundtrip")
         .unwrap();
-    let writer = DataWriter::<MultiArrayMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<MultiArrayMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<MultiArrayMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<MultiArrayMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1228,9 +1228,9 @@ fn test_nested_sequences_roundtrip() {
         .create_topic::<NestedSequencesMessage>("test_nested_sequences_roundtrip")
         .unwrap();
     let writer =
-        DataWriter::<NestedSequencesMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<NestedSequencesMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<NestedSequencesMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<NestedSequencesMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1276,8 +1276,8 @@ fn test_optional_roundtrip() {
     let topic = participant
         .create_topic::<OptionalMessage>("test_optional_roundtrip")
         .unwrap();
-    let writer = DataWriter::<OptionalMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<OptionalMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<OptionalMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<OptionalMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1307,9 +1307,9 @@ fn test_type_info_and_matched_endpoint_discovery() {
         .create_topic::<DirectStringMessage>("test_type_info_and_matched_endpoint_discovery")
         .unwrap();
     let writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1375,8 +1375,8 @@ fn test_nested_key_roundtrip() {
     let topic = participant
         .create_topic::<NestedKeyMessage>("test_nested_key_roundtrip")
         .unwrap();
-    let writer = DataWriter::<NestedKeyMessage>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<NestedKeyMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<NestedKeyMessage>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<NestedKeyMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -1658,15 +1658,11 @@ fn test_matched_endpoint_qos_and_keys_are_accessible() {
         .build()
         .unwrap();
 
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();
@@ -1714,15 +1710,11 @@ fn test_matched_endpoint_can_create_topic_descriptor_and_topic() {
         .reliable()
         .build()
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let _reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let _reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();
@@ -1815,9 +1807,9 @@ fn test_topic_descriptor_metadata_and_entity_sertype_access() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     assert!(!topic.get_sertype().unwrap().as_ptr().is_null());
     assert!(!writer.get_sertype().unwrap().as_ptr().is_null());
@@ -2538,9 +2530,9 @@ fn test_builtin_pseudo_topic_readers_work() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let _writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let _reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -2599,9 +2591,9 @@ fn test_builtin_endpoint_sample_can_create_topic_descriptor_and_topic() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let _writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let _reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -2707,9 +2699,9 @@ fn test_builtin_samples_can_find_existing_topics() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let _writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let _reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -2754,9 +2746,9 @@ fn test_sertype_hash_equality_and_topic_creation_work() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     let topic_st = topic.get_sertype().unwrap();
     let writer_st = writer.get_sertype().unwrap();
@@ -2840,9 +2832,9 @@ fn test_participant_can_create_topic_from_sertype_with_qos() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     let topic_st = topic.get_sertype().unwrap();
     let writer_st = writer.get_sertype().unwrap();
@@ -2918,9 +2910,9 @@ fn test_typeinfo_and_matched_endpoint_can_find_topics_with_qos_variants() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let _reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     if let Ok(type_info) = writer.get_type_info() {
         let found = type_info
@@ -2970,9 +2962,9 @@ fn test_entity_and_endpoint_type_objects_match() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let _reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     let mut dynamic_type =
         DynamicTypeBuilder::structure(unique_name("entity_type_objects_dynamic"))
@@ -3019,9 +3011,9 @@ fn test_builtin_endpoint_type_objects_are_accessible_when_available() {
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
     let _writer =
-        DataWriter::<DirectStringMessage>::new(publisher.entity(), topic.entity()).unwrap();
+        DataWriter::<DirectStringMessage>::new(&publisher, &topic).unwrap();
     let _reader =
-        DataReader::<DirectStringMessage>::new(subscriber.entity(), topic.entity()).unwrap();
+        DataReader::<DirectStringMessage>::new(&subscriber, &topic).unwrap();
 
     let publication_reader = participant.create_builtin_publication_reader().unwrap();
     thread::sleep(Duration::from_millis(500));
@@ -3434,11 +3426,9 @@ fn test_entity_qos_roundtrip_for_type_consistency_and_data_representation() {
         .unwrap();
 
     let writer =
-        DataWriter::<DirectStringMessage>::with_qos(publisher.entity(), topic.entity(), Some(&qos))
+        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&qos))
             .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&qos),
     )
     .unwrap();
@@ -3540,15 +3530,11 @@ fn test_builtin_reader_qos_matches_discovered_endpoint_qos() {
         .entity_name("builtin-pub-writer")
         .build()
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let _reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let _reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();
@@ -3631,15 +3617,11 @@ fn test_builtin_sample_qos_matches_entity_qos() {
     let topic = participant
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();
@@ -3944,8 +3926,8 @@ async fn test_async_read_aiter() {
         .create_topic::<HelloWorld>("test_async_read_aiter")
         .unwrap();
 
-    let writer = DataWriter::<HelloWorld>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<HelloWorld>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<HelloWorld>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<HelloWorld>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 
@@ -3983,8 +3965,8 @@ async fn test_async_take_aiter() {
         .create_topic::<HelloWorld>("test_async_take_aiter")
         .unwrap();
 
-    let writer = DataWriter::<HelloWorld>::new(publisher.entity(), topic.entity()).unwrap();
-    let reader = DataReader::<HelloWorld>::new(subscriber.entity(), topic.entity()).unwrap();
+    let writer = DataWriter::<HelloWorld>::new(&publisher, &topic).unwrap();
+    let reader = DataReader::<HelloWorld>::new(&subscriber, &topic).unwrap();
 
     thread::sleep(Duration::from_millis(500));
 

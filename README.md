@@ -90,8 +90,8 @@ use cyclonedds::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dp = DomainParticipant::new(0)?;
     let pub_ = Publisher::new(dp.entity())?;
-    let topic = Topic::<HelloWorld>::new(dp.entity(), "Hello")?;
-    let writer = DataWriter::new(pub_.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&dp, "Hello")?;
+    let writer = DataWriter::new(&pub_, &topic)?;
     let msg = HelloWorld { id: 1, message: "hello".into() };
     writer.write(&msg)?;
     Ok(())
@@ -106,8 +106,8 @@ use cyclonedds::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dp = DomainParticipant::new(0)?;
     let sub = Subscriber::new(dp.entity())?;
-    let topic = Topic::<HelloWorld>::new(dp.entity(), "Hello")?;
-    let reader = DataReader::<HelloWorld>::new(sub.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&dp, "Hello")?;
+    let reader = DataReader::<HelloWorld>::new(&sub, &topic)?;
     loop {
         for s in reader.take()? {
             println!("id={}", s.id);

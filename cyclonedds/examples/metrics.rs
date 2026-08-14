@@ -17,8 +17,8 @@ struct HelloWorld {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let publisher = Publisher::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "Hello")?;
-    let writer = DataWriter::new(publisher.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&participant, "Hello")?;
+    let writer = DataWriter::new(&publisher, &topic)?;
 
     // Publish a few samples
     for i in 0..5 {

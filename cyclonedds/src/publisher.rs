@@ -41,7 +41,7 @@ impl Publisher {
     }
 
     pub fn create_writer<T: crate::DdsType>(&self, topic: &Topic<T>) -> DdsResult<DataWriter<T>> {
-        DataWriter::new(self.entity, topic.entity())
+        DataWriter::new(self, topic)
     }
 
     pub fn create_writer_with_qos<T: crate::DdsType>(
@@ -49,7 +49,7 @@ impl Publisher {
         topic: &Topic<T>,
         qos: &Qos,
     ) -> DdsResult<DataWriter<T>> {
-        DataWriter::with_qos(self.entity, topic.entity(), Some(qos))
+        DataWriter::with_qos(self, topic, Some(qos))
     }
 
     pub fn begin_coherent(&self) -> DdsResult<()> {

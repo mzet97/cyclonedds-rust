@@ -17,27 +17,55 @@ pub struct DataReader<T: DdsType> {
 }
 
 impl<T: DdsType> DataReader<T> {
-    pub fn new(subscriber: dds_entity_t, topic: dds_entity_t) -> DdsResult<Self> {
+    /// Create a datareader for `topic` on `subscriber`.
+    ///
+    /// Both parents are taken by reference. The handle-based form accepted any
+    /// `dds_entity_t`, so a `Topic<A>` handle could be passed to a
+    /// `DataReader<B>` -- CycloneDDS would then hand back samples laid out as
+    /// `A` while `clone_out` reinterpreted them as `B`. Nothing in the type
+    /// system stopped it. `&Topic<T>` does. See [`DataReader::from_entities`]
+    /// for the raw escape hatch.
+    pub fn new(subscriber: &crate::Subscriber, topic: &crate::Topic<T>) -> DdsResult<Self> {
         Self::with_qos_and_listener(subscriber, topic, None, None)
     }
 
     pub fn with_qos(
-        subscriber: dds_entity_t,
-        topic: dds_entity_t,
+        subscriber: &crate::Subscriber,
+        topic: &crate::Topic<T>,
         qos: Option<&Qos>,
     ) -> DdsResult<Self> {
         Self::with_qos_and_listener(subscriber, topic, qos, None)
     }
 
     pub fn with_listener(
-        subscriber: dds_entity_t,
-        topic: dds_entity_t,
+        subscriber: &crate::Subscriber,
+        topic: &crate::Topic<T>,
         listener: &Listener,
     ) -> DdsResult<Self> {
         Self::with_qos_and_listener(subscriber, topic, None, Some(listener))
     }
 
     pub fn with_qos_and_listener(
+        subscriber: &crate::Subscriber,
+        topic: &crate::Topic<T>,
+        qos: Option<&Qos>,
+        listener: Option<&Listener>,
+    ) -> DdsResult<Self> {
+        Self::from_entities_with(subscriber.entity(), topic.entity(), qos, listener)
+    }
+
+    /// Create from raw handles.
+    ///
+    /// Escape hatch for handles obtained outside this crate (FFI interop). The
+    /// caller guarantees `topic` really is a topic of type `T` and that both
+    /// handles outlive the returned datareader; neither is checked. Prefer
+    /// [`DataReader::new`].
+    pub fn from_entities(subscriber: dds_entity_t, topic: dds_entity_t) -> DdsResult<Self> {
+        Self::from_entities_with(subscriber, topic, None, None)
+    }
+
+    /// See [`DataReader::from_entities`].
+    pub fn from_entities_with(
         subscriber: dds_entity_t,
         topic: dds_entity_t,
         qos: Option<&Qos>,

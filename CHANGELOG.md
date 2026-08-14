@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Breaking changes below are queued for 3.0.0.
+
+### Changed
+
+- **BREAKING**: `Topic::new`/`with_qos`, and `DataReader`/`DataWriter`'s `new`,
+  `with_qos`, `with_listener` and `with_qos_and_listener` now take their parents by
+  reference (`&DomainParticipant`, `&Subscriber`/`&Publisher`, `&Topic<T>`) instead of
+  raw `dds_entity_t` handles. The handle form accepted any entity, so a `Topic<A>`
+  handle could be handed to a `DataReader<B>` — CycloneDDS returned samples laid out as
+  `A` while `clone_out` reinterpreted them as `B`, and nothing in the type system
+  objected. It also let a temporary supply the handle
+  (`Topic::new(DomainParticipant::new(0)?.entity(), "x")` compiles, deletes the
+  participant at the end of the statement, and leaves the topic on a recyclable handle).
+  The raw forms remain as `Topic::from_entity`/`with_qos_from_entity` and
+  `Data{Reader,Writer}::from_entities`/`from_entities_with` for FFI interop, documented
+  as unchecked.
+
+  `Publisher::new`, `Subscriber::new` and `WaitSet::new` still take a participant
+  handle: they carry no type parameter, so there is no equivalent confusion to prevent.
+
+  Note this does **not** fix drop ordering — a `DataReader` can still outlive the
+  `Topic` it borrowed from, because the reference is only required for the call. Owning
+  the parent (via `Arc`) is what closes that, and is not done here.
+
+### Fixed
+
+- Pre-existing clippy findings that only surface on the MSRV toolchain: a duplicated
+  `#[cfg(feature = "std")]` in `lib.rs` and two needless lifetimes.
+
 ## [2.0.4] - 2026-08-14
 
 Soundness release. Five defects reachable from ordinary, `unsafe`-free use of the

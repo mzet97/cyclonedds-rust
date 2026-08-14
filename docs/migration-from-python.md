@@ -19,9 +19,9 @@ This guide helps developers familiar with `cyclonedds-python` transition to `cyc
 | `DomainParticipant(domain_id)` | `DomainParticipant::new(domain_id)?` |
 | `Publisher(participant)` | `Publisher::new(participant.entity())?` |
 | `Subscriber(participant)` | `Subscriber::new(participant.entity())?` |
-| `Topic(participant, "Name", T)` | `Topic::<T>::new(participant.entity(), "Name")?` |
-| `DataWriter(publisher, topic)` | `DataWriter::new(publisher.entity(), topic.entity())?` |
-| `DataReader(subscriber, topic)` | `DataReader::<T>::new(subscriber.entity(), topic.entity())?` |
+| `Topic(participant, "Name", T)` | `Topic::<T>::new(&participant, "Name")?` |
+| `DataWriter(publisher, topic)` | `DataWriter::new(&publisher, &topic)?` |
+| `DataReader(subscriber, topic)` | `DataReader::<T>::new(&subscriber, &topic)?` |
 
 ## QoS
 

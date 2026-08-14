@@ -46,9 +46,9 @@ fn listener_callbacks_fire_with_real_entities() {
         .unwrap();
 
     let writer: DataWriter<TestMessage> =
-        DataWriter::with_listener(publisher.entity(), topic.entity(), &writer_listener).unwrap();
+        DataWriter::with_listener(&publisher, &topic, &writer_listener).unwrap();
     let reader: DataReader<TestMessage> =
-        DataReader::with_listener(subscriber.entity(), topic.entity(), &reader_listener).unwrap();
+        DataReader::with_listener(&subscriber, &topic, &reader_listener).unwrap();
 
     assert!(wait_for(Duration::from_secs(2), || publication_matches
         .load(Ordering::Relaxed)

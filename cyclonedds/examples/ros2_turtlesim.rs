@@ -38,8 +38,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let publisher = Publisher::new(participant.entity())?;
 
     // ROS2 topic names use a leading slash and are mapped directly to DDS topics.
-    let topic = Topic::<Twist>::new(participant.entity(), "/turtle1/cmd_vel")?;
-    let writer = DataWriter::new(publisher.entity(), topic.entity())?;
+    let topic = Topic::<Twist>::new(&participant, "/turtle1/cmd_vel")?;
+    let writer = DataWriter::new(&publisher, &topic)?;
 
     println!("Connected to ROS2 turtlesim. Publishing Twist messages...");
     println!("Make sure turtlesim is running: ros2 run turtlesim turtlesim_node");

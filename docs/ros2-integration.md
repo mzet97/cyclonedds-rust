@@ -141,8 +141,8 @@ struct Pose {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let subscriber = Subscriber::new(participant.entity())?;
-    let topic = Topic::<Pose>::new(participant.entity(), "/turtle1/pose")?;
-    let reader = DataReader::new(subscriber.entity(), topic.entity())?;
+    let topic = Topic::<Pose>::new(&participant, "/turtle1/pose")?;
+    let reader = DataReader::new(&subscriber, &topic)?;
 
     loop {
         for pose in reader.take()? {

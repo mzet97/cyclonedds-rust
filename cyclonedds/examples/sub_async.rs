@@ -24,8 +24,8 @@ impl DdsType for HelloWorld {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let subscriber = Subscriber::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorldTopic")?;
-    let reader: DataReader<HelloWorld> = DataReader::new(subscriber.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldTopic")?;
+    let reader: DataReader<HelloWorld> = DataReader::new(&subscriber, &topic)?;
 
     let waitset = WaitSet::new(participant.entity())?;
     let cond = ReadCondition::not_read(reader.entity())?;

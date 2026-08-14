@@ -1313,15 +1313,11 @@ fn matched_endpoint_qos_and_keys_are_accessible() {
         .build()
         .unwrap();
 
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();
@@ -1369,15 +1365,11 @@ fn matched_endpoint_can_create_topic_descriptor_and_topic() {
         .reliable()
         .build()
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let _reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let _reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();
@@ -3036,11 +3028,9 @@ fn entity_qos_roundtrip_for_type_consistency_and_data_representation() {
         .unwrap();
 
     let writer =
-        DataWriter::<DirectStringMessage>::with_qos(publisher.entity(), topic.entity(), Some(&qos))
+        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&qos))
             .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&qos),
     )
     .unwrap();
@@ -3094,15 +3084,11 @@ fn builtin_reader_qos_matches_discovered_endpoint_qos() {
         .entity_name("builtin-pub-writer")
         .build()
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let _reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let _reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();
@@ -3185,15 +3171,11 @@ fn builtin_sample_qos_matches_entity_qos() {
     let topic = participant
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(
-        publisher.entity(),
-        topic.entity(),
+    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
         Some(&writer_qos),
     )
     .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(
-        subscriber.entity(),
-        topic.entity(),
+    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
         Some(&reader_qos),
     )
     .unwrap();

@@ -48,13 +48,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Publisher side ---
     let publisher = Publisher::new(participant.entity())?;
-    let topic_pub = Topic::<HelloWorld>::new(participant.entity(), "HelloWorld")?;
-    let writer = DataWriter::new(publisher.entity(), topic_pub.entity())?;
+    let topic_pub = Topic::<HelloWorld>::new(&participant, "HelloWorld")?;
+    let writer = DataWriter::new(&publisher, &topic_pub)?;
 
     // --- Subscriber side ---
     let subscriber = Subscriber::new(participant.entity())?;
-    let topic_sub = Topic::<HelloWorld>::new(participant.entity(), "HelloWorld")?;
-    let reader = DataReader::new(subscriber.entity(), topic_sub.entity())?;
+    let topic_sub = Topic::<HelloWorld>::new(&participant, "HelloWorld")?;
+    let reader = DataReader::new(&subscriber, &topic_sub)?;
 
     // Spawn publisher thread
     std::thread::spawn(move || {
@@ -99,7 +99,7 @@ let qos = QosBuilder::new()
     .history(cyclonedds::History::KeepLast(10))
     .build()?;
 
-let writer = DataWriter::with_qos(publisher.entity(), topic_pub.entity(), Some(&qos))?;
+let writer = DataWriter::with_qos(&publisher, &topic_pub, Some(&qos))?;
 ```
 
 ## Step 6: Run Separate Processes

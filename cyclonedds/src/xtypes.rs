@@ -46,7 +46,7 @@ pub struct OwnedTypeId {
     ptr: *mut dds_typeid_t,
 }
 
-impl<'a> TypeIdRef<'a> {
+impl TypeIdRef<'_> {
     pub fn as_ptr(&self) -> *const dds_typeid_t {
         self.ptr
     }

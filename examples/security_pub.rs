@@ -23,8 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let participant = DomainParticipant::with_qos(0, Some(&qos))?;
     let publisher = Publisher::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorld")?;
-    let writer = DataWriter::new(publisher.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&participant, "HelloWorld")?;
+    let writer = DataWriter::new(&publisher, &topic)?;
 
     println!("Secure publisher started on domain 0");
 

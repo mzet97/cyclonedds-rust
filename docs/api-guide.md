@@ -21,7 +21,7 @@ A Topic associates a type with a name. The type must implement the `DdsType` tra
 ```rust
 use cyclonedds::{Topic, DdsType, adr, TYPE_4BY, OP_FLAG_SGN};
 
-let topic: Topic<MyData> = Topic::new(participant.entity(), "MyTopic")?;
+let topic: Topic<MyData> = Topic::new(&participant, "MyTopic")?;
 ```
 
 See [type-system.md](type-system.md) for how to implement `DdsType` manually or via derive macros.
@@ -34,7 +34,7 @@ Publishes typed samples. Create one from a Publisher and a Topic.
 use cyclonedds::{Publisher, DataWriter};
 
 let publisher = Publisher::new(participant.entity())?;
-let writer: DataWriter<MyData> = DataWriter::new(publisher.entity(), topic.entity())?;
+let writer: DataWriter<MyData> = DataWriter::new(&publisher, &topic)?;
 
 writer.write(&sample)?;                  // publish
 writer.write_dispose(&sample)?;          // publish + dispose
@@ -60,7 +60,7 @@ Receives typed samples. Create one from a Subscriber and a Topic.
 use cyclonedds::{Subscriber, DataReader};
 
 let subscriber = Subscriber::new(participant.entity())?;
-let reader: DataReader<MyData> = DataReader::new(subscriber.entity(), topic.entity())?;
+let reader: DataReader<MyData> = DataReader::new(&subscriber, &topic)?;
 
 let samples: Vec<MyData> = reader.take()?;  // removes from cache
 let samples: Vec<MyData> = reader.read()?;  // keeps in cache
@@ -110,8 +110,8 @@ let qos = QosBuilder::new()
 Pass QoS when creating entities:
 
 ```rust
-let writer = DataWriter::with_qos(publisher.entity(), topic.entity(), Some(&qos))?;
-let reader = DataReader::with_qos(subscriber.entity(), topic.entity(), Some(&qos))?;
+let writer = DataWriter::with_qos(&publisher, &topic, Some(&qos))?;
+let reader = DataReader::with_qos(&subscriber, &topic, Some(&qos))?;
 ```
 
 See [qos-reference.md](qos-reference.md) for the full policy list.
@@ -138,7 +138,7 @@ Available callbacks: `on_data_available`, `on_publication_matched`, `on_subscrip
 Pass a listener when creating entities:
 
 ```rust
-let reader = DataReader::with_listener(subscriber.entity(), topic.entity(), &listener)?;
+let reader = DataReader::with_listener(&subscriber, &topic, &listener)?;
 ```
 
 ## WaitSet

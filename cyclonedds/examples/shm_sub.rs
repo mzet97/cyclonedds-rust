@@ -19,9 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let qos = QosBuilder::new().enable_iceoryx().build()?;
 
-    let topic = Topic::<LargeMessage>::new(participant.entity(), "LargeData")?;
+    let topic = Topic::<LargeMessage>::new(&participant, "LargeData")?;
     let reader: DataReader<LargeMessage> =
-        DataReader::with_qos(subscriber.entity(), topic.entity(), Some(&qos))?;
+        DataReader::with_qos(&subscriber, &topic, Some(&qos))?;
 
     println!("SHM subscriber started. Waiting for large messages via Iceoryx...");
 

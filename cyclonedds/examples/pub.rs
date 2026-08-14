@@ -23,8 +23,8 @@ impl DdsType for HelloWorld {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let publisher = Publisher::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorldTopic")?;
-    let writer = DataWriter::new(publisher.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldTopic")?;
+    let writer = DataWriter::new(&publisher, &topic)?;
 
     let mut msg = HelloWorld {
         id: 0,

@@ -50,8 +50,8 @@ use cyclonedds::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let publisher = Publisher::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorldTopic")?;
-    let writer = DataWriter::new(publisher.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldTopic")?;
+    let writer = DataWriter::new(&publisher, &topic)?;
     let mut msg = HelloWorld { id: 0, message: [0u8; 256] };
     let text = b"Hello from Rust DDS!";
     msg.message[..text.len()].copy_from_slice(text);
@@ -72,8 +72,8 @@ use cyclonedds::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let subscriber = Subscriber::new(participant.entity())?;
-    let topic = Topic::<HelloWorld>::new(participant.entity(), "HelloWorldTopic")?;
-    let reader = DataReader::<HelloWorld>::new(subscriber.entity(), topic.entity())?;
+    let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldTopic")?;
+    let reader = DataReader::<HelloWorld>::new(&subscriber, &topic)?;
     loop {
         for s in reader.take()? {
             let end = s.message.iter().position(|&b| b == 0).unwrap_or(256);

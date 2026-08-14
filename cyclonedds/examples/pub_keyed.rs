@@ -32,8 +32,8 @@ impl DdsType for KeyValue {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
     let publisher = Publisher::new(participant.entity())?;
-    let topic = Topic::<KeyValue>::new(participant.entity(), "KeyValueTopic")?;
-    let writer = DataWriter::new(publisher.entity(), topic.entity())?;
+    let topic = Topic::<KeyValue>::new(&participant, "KeyValueTopic")?;
+    let writer = DataWriter::new(&publisher, &topic)?;
 
     let msg1 = KeyValue { key: 1, value: 100 };
     let msg2 = KeyValue { key: 2, value: 200 };

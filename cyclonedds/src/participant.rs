@@ -107,7 +107,7 @@ impl DomainParticipant {
     }
 
     pub fn create_topic<T: crate::DdsType>(&self, name: &str) -> DdsResult<Topic<T>> {
-        Topic::new(self.entity, name)
+        Topic::from_entity(self.entity, name)
     }
 
     pub fn create_topic_with_qos<T: crate::DdsType>(
@@ -115,7 +115,7 @@ impl DomainParticipant {
         name: &str,
         qos: &Qos,
     ) -> DdsResult<Topic<T>> {
-        Topic::with_qos(self.entity, name, Some(qos))
+        Topic::with_qos_from_entity(self.entity, name, Some(qos))
     }
 
     pub fn create_topic_from_descriptor(
@@ -365,51 +365,51 @@ impl DomainParticipant {
     pub fn create_builtin_participant_reader(
         &self,
     ) -> DdsResult<DataReader<BuiltinParticipantSample>> {
-        DataReader::new(self.entity, BUILTIN_TOPIC_DCPSPARTICIPANT)
+        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSPARTICIPANT)
     }
 
     pub fn create_builtin_participant_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinParticipantSample>> {
-        DataReader::with_qos(self.entity, BUILTIN_TOPIC_DCPSPARTICIPANT, Some(qos))
+        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSPARTICIPANT, Some(qos), None)
     }
 
     pub fn create_builtin_topic_reader(&self) -> DdsResult<DataReader<BuiltinTopicSample>> {
-        DataReader::new(self.entity, BUILTIN_TOPIC_DCPSTOPIC)
+        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSTOPIC)
     }
 
     pub fn create_builtin_topic_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinTopicSample>> {
-        DataReader::with_qos(self.entity, BUILTIN_TOPIC_DCPSTOPIC, Some(qos))
+        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSTOPIC, Some(qos), None)
     }
 
     pub fn create_builtin_publication_reader(
         &self,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::new(self.entity, BUILTIN_TOPIC_DCPSPUBLICATION)
+        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSPUBLICATION)
     }
 
     pub fn create_builtin_publication_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::with_qos(self.entity, BUILTIN_TOPIC_DCPSPUBLICATION, Some(qos))
+        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSPUBLICATION, Some(qos), None)
     }
 
     pub fn create_builtin_subscription_reader(
         &self,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::new(self.entity, BUILTIN_TOPIC_DCPSSUBSCRIPTION)
+        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSSUBSCRIPTION)
     }
 
     pub fn create_builtin_subscription_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::with_qos(self.entity, BUILTIN_TOPIC_DCPSSUBSCRIPTION, Some(qos))
+        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSSUBSCRIPTION, Some(qos), None)
     }
 
     pub fn create_publisher(&self) -> DdsResult<Publisher> {
