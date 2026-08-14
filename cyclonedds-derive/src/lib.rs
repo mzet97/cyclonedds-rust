@@ -245,6 +245,9 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 quote! { #word_count }
             } else {
                 main_ops_parts.push(quote! {
+                    // See the sibling TYPE_EXT emission below: the position is
+                    // recorded here rather than recovered by scanning.
+                    __patch_positions.push(__ops.len());
                     __ops.push(cyclonedds::OP_ADR | cyclonedds::OP_FLAG_OPT | cyclonedds::OP_FLAG_EXT | cyclonedds::TYPE_EXT);
                     __ops.push(#offset_expr);
                     __ops.push(0u32);
@@ -500,6 +503,9 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             quote! { #word_count }
         } else {
             main_ops_parts.push(quote! {
+                // Record where this TYPE_EXT lands so the patch step below can
+                // find it without re-scanning the instruction stream.
+                __patch_positions.push(__ops.len());
                 __ops.push(
                     cyclonedds::OP_ADR
                         | if <#field_ty as cyclonedds::DdsType>::key_count() > 0 {
@@ -746,111 +752,18 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             fn ops() -> ::std::vec::Vec<u32> {
                 let mut __ops = ::std::vec::Vec::new();
                 let mut __tail_blocks: ::std::vec::Vec<::std::vec::Vec<u32>> = ::std::vec::Vec::new();
+                // Filled in by the field emitters as they push each
+                // ADR|TYPE_EXT instruction. This replaces a scanner that
+                // re-walked the finished instruction stream trying to recover
+                // those positions, which required a table of per-instruction
+                // widths that has to stay in lockstep with dds_opcodes.h — ten
+                // of its entries did not, and it only worked because a skipped
+                // data word rarely looks like an opcode. The emitter already
+                // knows where it put them, so nothing needs to be inferred.
+                #[allow(unused_mut)]
+                let mut __patch_positions: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
                 #(#main_ops_parts)*
                 #(#tail_block_parts)*
-                let mut __patch_positions = ::std::vec::Vec::new();
-                let mut __scan = 0usize;
-                while __scan < __ops.len() {
-                    let __op = __ops[__scan];
-                    if (__op & cyclonedds::DDS_OP_MASK_CONST) == cyclonedds::OP_ADR
-                        && (__op & cyclonedds::DDS_OP_TYPE_MASK_CONST) == cyclonedds::TYPE_EXT
-                    {
-                        // [ADR, e|EXT, 0, f] [offset] [next-insn, elem-insn]
-                        // [elem-size iff the external flag e is set, or f has
-                        // DDS_OP_FLAG_OPT]. The scan advance and the
-                        // `next-insn` word written by the patch below must
-                        // agree — the scan used a hardcoded 3 while the patch
-                        // already accounted for the EXT flag.
-                        __patch_positions.push(__scan);
-                        __scan += if (__op
-                            & (cyclonedds::OP_FLAG_EXT | cyclonedds::OP_FLAG_OPT))
-                            != 0
-                        {
-                            4
-                        } else {
-                            3
-                        };
-                    } else if (__op & cyclonedds::DDS_OP_MASK_CONST) == cyclonedds::OP_ADR {
-                        // Instruction word counts per `dds_opcodes.h` (the
-                        // "[ADR, ...]" table). Getting these wrong makes the
-                        // scan land mid-instruction, which either misses a real
-                        // TYPE_EXT (its jump word is then never patched) or
-                        // mistakes a data word for one and patches that.
-                        //
-                        // Several of these used to disagree with the header
-                        // (SEQ|ENU counted 2 instead of 3, SEQ|BST 4 instead of
-                        // 3, ARR|ENU and BSQ|ENU 3 instead of 4, ...). It
-                        // happened to work because a skipped data word rarely
-                        // has 0x01 in its top byte and so does not match
-                        // OP_ADR, letting the `else` branch resynchronise one
-                        // word at a time. That is a coincidence, not an
-                        // invariant.
-                        let __primary = __op & cyclonedds::DDS_OP_TYPE_MASK_CONST;
-                        let __subtype = __op & cyclonedds::DDS_OP_SUBTYPE_MASK_CONST;
-                        // Composite element types carry [elem-size] and a
-                        // [next-insn, elem-insn] word.
-                        let __sub_composite = __subtype == cyclonedds::SUBTYPE_STU
-                            || __subtype == cyclonedds::SUBTYPE_SEQ
-                            || __subtype == cyclonedds::SUBTYPE_BSQ
-                            // SUBTYPE_ARR is not re-exported; it is the same
-                            // typecode as TYPE_ARR shifted into the subtype
-                            // field (TYPE_x = VAL_x << 16, SUBTYPE_x = VAL_x << 8).
-                            || __subtype == (cyclonedds::TYPE_ARR >> 8);
-                        __scan += match __primary {
-                            // [ADR, BST, 0, f] [offset] [max-size]
-                            cyclonedds::TYPE_BST => 3,
-                            // [ADR, ENU, 0, f] [offset] [max]
-                            cyclonedds::TYPE_ENU => 3,
-                            // [ADR, SEQ, ...] [offset] (+[max] | +[max-size] | +[elem-size][next-insn])
-                            cyclonedds::TYPE_SEQ => {
-                                if __sub_composite {
-                                    4
-                                } else if __subtype == cyclonedds::SUBTYPE_ENU
-                                    || __subtype == cyclonedds::SUBTYPE_BST
-                                {
-                                    3
-                                } else {
-                                    2
-                                }
-                            }
-                            // [ADR, BSQ, ...] [offset] [sbound] (+...)
-                            cyclonedds::TYPE_BSQ => {
-                                if __sub_composite {
-                                    5
-                                } else if __subtype == cyclonedds::SUBTYPE_ENU
-                                    || __subtype == cyclonedds::SUBTYPE_BST
-                                {
-                                    4
-                                } else {
-                                    3
-                                }
-                            }
-                            // [ADR, ARR, ...] [offset] [alen] (+...)
-                            // ARR|BST is 5: [offset] [alen] [0] [max-size]
-                            cyclonedds::TYPE_ARR => {
-                                if __sub_composite || __subtype == cyclonedds::SUBTYPE_BST {
-                                    5
-                                } else if __subtype == cyclonedds::SUBTYPE_ENU {
-                                    4
-                                } else {
-                                    3
-                                }
-                            }
-                            // [ADR, UNI, d, z] [offset] [alen] [next-insn, cases]
-                            // (+[max] for an ENU discriminant)
-                            cyclonedds::TYPE_UNI => {
-                                if __subtype == cyclonedds::SUBTYPE_ENU {
-                                    5
-                                } else {
-                                    4
-                                }
-                            }
-                            _ => 2,
-                        };
-                    } else {
-                        __scan += 1;
-                    }
-                }
                 __ops.push(cyclonedds::OP_RTS);
                 let mut __tail_index = 0usize;
                 for __patch_pos in __patch_positions {
