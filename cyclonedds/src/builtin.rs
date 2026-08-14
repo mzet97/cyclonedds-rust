@@ -86,9 +86,9 @@ impl DdsType for BuiltinParticipantSample {
         Vec::new()
     }
 
-    unsafe fn clone_out(ptr: *const Self) -> Self {
+    unsafe fn clone_out(ptr: *const Self) -> crate::DdsResult<Self> {
         let src = &*ptr;
-        src.clone()
+        Ok(src.clone())
     }
 }
 
@@ -198,9 +198,9 @@ impl DdsType for BuiltinTopicSample {
         Vec::new()
     }
 
-    unsafe fn clone_out(ptr: *const Self) -> Self {
+    unsafe fn clone_out(ptr: *const Self) -> crate::DdsResult<Self> {
         let src = &*ptr;
-        src.clone()
+        Ok(src.clone())
     }
 }
 
@@ -472,9 +472,9 @@ impl DdsType for BuiltinEndpointSample {
         Vec::new()
     }
 
-    unsafe fn clone_out(ptr: *const Self) -> Self {
+    unsafe fn clone_out(ptr: *const Self) -> crate::DdsResult<Self> {
         let src = &*ptr;
-        src.clone()
+        Ok(src.clone())
     }
 }
 

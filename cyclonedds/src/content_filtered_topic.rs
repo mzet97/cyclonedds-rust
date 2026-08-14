@@ -68,8 +68,12 @@ unsafe extern "C" fn trampoline_filter_sample_arg<T: DdsType + 'static>(
         // #[repr(C)] native struct rather than the user struct T.  clone_out
         // correctly interprets the native-layout pointer, so use it instead of
         // a raw cast to *const T.
-        let data = T::clone_out(sample as *const T);
-        (fa.filter)(&data)
+        // An undecodable sample cannot be filtered, so exclude it -- same
+        // fail-closed choice the panic path below makes.
+        match T::clone_out(sample as *const T) {
+            Ok(data) => (fa.filter)(&data),
+            Err(_) => false,
+        }
     })) {
         Ok(keep) => keep,
         Err(_) => {

@@ -60,6 +60,7 @@ fn read_loan_iter_yields_intact_heap_fields() {
 
     let observed: Vec<(i32, String, Vec<i32>)> = loan
         .iter()
+        .map(|s| s.expect("sample failed to decode"))
         .map(|s| (s.data.id, s.data.text.clone(), s.data.values.clone()))
         .collect();
 
@@ -95,7 +96,7 @@ fn take_loan_to_vec_does_not_corrupt_heap() {
     let owned = {
         let loan = reader.take_loan().unwrap();
         assert_eq!(loan.len(), 4);
-        loan.to_vec()
+        loan.to_vec().expect("to_vec failed")
     };
 
     let mut ids: Vec<i32> = owned.iter().map(|s| s.data.id).collect();
@@ -135,7 +136,7 @@ fn peek_with_heap_fields_is_sound() {
         .is_empty()));
 
     let peeked = reader.peek().unwrap();
-    let first = peeked.iter().next().unwrap();
+    let first = peeked.iter().next().unwrap().expect("sample failed to decode");
     assert_eq!(first.data.id, 9);
     assert_eq!(first.data.text, "loan-heap-9");
 }

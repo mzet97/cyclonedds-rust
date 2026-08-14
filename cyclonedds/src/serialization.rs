@@ -274,7 +274,9 @@ impl<T: DdsType> CdrDeserializer<T> {
                 desc.as_ptr(),
             );
 
-            let result = T::clone_out(buf as *const T);
+            // Decode first, then clean up unconditionally: applying `?` before
+            // the frees below would leak the native sample and the stream.
+            let decoded = T::clone_out(buf as *const T);
 
             // Free any dynamically-allocated members that the read may have created.
             dds_stream_free_sample(
@@ -285,7 +287,7 @@ impl<T: DdsType> CdrDeserializer<T> {
             std::alloc::dealloc(buf, layout);
 
             dds_istream_fini(&mut is);
-            Ok(result)
+            decoded
         }
     }
 
@@ -318,7 +320,9 @@ impl<T: DdsType> CdrDeserializer<T> {
                 desc.as_ptr(),
             );
 
-            let result = T::clone_out(buf as *const T);
+            // Decode first, then clean up unconditionally: applying `?` before
+            // the frees below would leak the native sample and the stream.
+            let decoded = T::clone_out(buf as *const T);
 
             dds_stream_free_sample(
                 buf as *mut ::std::ffi::c_void,
@@ -328,7 +332,7 @@ impl<T: DdsType> CdrDeserializer<T> {
             std::alloc::dealloc(buf, layout);
 
             dds_istream_fini(&mut is);
-            Ok(result)
+            decoded
         }
     }
 }

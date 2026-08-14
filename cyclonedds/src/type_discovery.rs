@@ -317,14 +317,7 @@ fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> Vec<DynamicFieldSchema
                 field_index += 1;
 
                 // Advance past this ADR op
-                i += match primary {
-                    TYPE_BST => 3,
-                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
-                    TYPE_SEQ => 2,
-                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
-                    TYPE_BSQ => 3,
-                    _ => 2,
-                };
+                i += crate::xtypes::adr_step(ops, i);
             }
             OP_RTS | OP_DLC | OP_JEQ4 | OP_KOF | OP_MID => {
                 i += 1;
@@ -361,20 +354,15 @@ pub fn dynamic_data_to_cdr(
 
     let layout = std::alloc::Layout::from_size_align(size, align)
         .map_err(|_| DdsError::BadParameter("invalid type layout for dynamic data".into()))?;
-    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
-    if buf.is_null() {
-        return Err(DdsError::OutOfMemory);
-    }
-
-    // Write the DynamicValue into the native buffer
-    write_value_to_native(data.value(), buf, descriptor.ops(), 0);
 
     // Build CDR stream descriptor from topic descriptor ops
     let ops = descriptor.ops();
     let keys = descriptor.key_descriptors();
 
     // A key name carrying an interior NUL is bad input, not a bug — report it
-    // like every other name in this crate rather than panicking.
+    // like every other name in this crate rather than panicking. Note this runs
+    // *before* the native buffer is allocated: an early return here must not
+    // leak it, and the raw pointer has no Drop to do that for us.
     let key_names: Vec<std::ffi::CString> = keys
         .iter()
         .map(|k| {
@@ -382,6 +370,14 @@ pub fn dynamic_data_to_cdr(
                 .map_err(|_| DdsError::BadParameter("key name contains null".into()))
         })
         .collect::<DdsResult<_>>()?;
+
+    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
+    if buf.is_null() {
+        return Err(DdsError::OutOfMemory);
+    }
+
+    // Write the DynamicValue into the native buffer
+    write_value_to_native(data.value(), buf, ops, 0);
     let c_keys: Vec<dds_key_descriptor> = keys
         .iter()
         .enumerate()
@@ -468,16 +464,14 @@ pub fn cdr_to_dynamic_data(
 
     let layout = std::alloc::Layout::from_size_align(size, align)
         .map_err(|_| DdsError::BadParameter("invalid type layout for dynamic data".into()))?;
-    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
-    if buf.is_null() {
-        return Err(DdsError::OutOfMemory);
-    }
 
     let ops = descriptor.ops();
     let keys = descriptor.key_descriptors();
 
     // A key name carrying an interior NUL is bad input, not a bug — report it
-    // like every other name in this crate rather than panicking.
+    // like every other name in this crate rather than panicking. Note this runs
+    // *before* the native buffer is allocated: an early return here must not
+    // leak it, and the raw pointer has no Drop to do that for us.
     let key_names: Vec<std::ffi::CString> = keys
         .iter()
         .map(|k| {
@@ -485,6 +479,11 @@ pub fn cdr_to_dynamic_data(
                 .map_err(|_| DdsError::BadParameter("key name contains null".into()))
         })
         .collect::<DdsResult<_>>()?;
+
+    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
+    if buf.is_null() {
+        return Err(DdsError::OutOfMemory);
+    }
     let c_keys: Vec<dds_key_descriptor> = keys
         .iter()
         .enumerate()
@@ -564,6 +563,12 @@ pub(crate) fn write_value_to_native(
     };
 
     let mut i = ops_start;
+    // Field names must be assigned by ordinal, matching the schema builder and
+    // the reader. Deriving them from the word offset (`(i - ops_start) / 2`)
+    // assumed every instruction is 2 words wide, so a single 3-word field --
+    // a bounded string, say -- skewed every later name and the values silently
+    // failed to match the schema.
+    let mut field_index = 0usize;
     while i < ops.len() {
         let op = ops[i];
         let opcode = op & DDS_OP_MASK;
@@ -578,23 +583,16 @@ pub(crate) fn write_value_to_native(
                 };
                 let dst = unsafe { base.add(offset) };
 
-                let field_name = format!("field_{}", (i - ops_start) / 2);
+                let field_name = format!("field_{field_index}");
                 let field_val = struct_fields.get(&field_name);
 
                 if let Some(val) = field_val {
                     write_primitive_to_native(dst, val, primary, op);
                 }
+                field_index += 1;
 
                 // Advance
-                let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
-                i += match primary {
-                    TYPE_BST => 3,
-                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
-                    TYPE_SEQ => 2,
-                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
-                    TYPE_BSQ => 3,
-                    _ => 2,
-                };
+                i += crate::xtypes::adr_step(ops, i);
             }
             OP_RTS | OP_DLC => {
                 i += 1;
@@ -726,15 +724,7 @@ pub(crate) fn read_value_from_native_public(
                 values.insert(name, val);
                 field_idx += 1;
 
-                let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
-                i += match primary {
-                    TYPE_BST => 3,
-                    TYPE_SEQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 3,
-                    TYPE_SEQ => 2,
-                    TYPE_BSQ if subtype == SUBTYPE_BST || subtype == SUBTYPE_STR => 4,
-                    TYPE_BSQ => 3,
-                    _ => 2,
-                };
+                i += crate::xtypes::adr_step(ops, i);
             }
             OP_RTS | OP_DLC => {
                 i += 1;

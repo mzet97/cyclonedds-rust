@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING**: `DdsType::clone_out` returns `DdsResult<Self>` instead of `Self`. The
+  generated `clone_out` for a union without a `#[dds_default]` variant used to `panic!` on
+  a discriminator outside the declared set — and that discriminator arrives from the
+  network, so a peer built from a different revision of the IDL was enough to unwind
+  `reader.take()` on the caller's thread. The `catch_unwind` barriers kept it from
+  aborting the process through an `extern "C"` frame; they could not stop the unwind on
+  the user's own thread. An undecodable sample is now an error.
+
+  Call sites choose per context: `read`/`take` and the async streams skip the bad sample
+  and keep delivering the rest (one misbehaving peer must not stop everything else);
+  `read_next`/`take_next`, `instance_get_key` and the CDR deserializers propagate;
+  the content filter excludes the sample, matching its existing fail-closed behaviour.
+  `Loan::iter()` now yields `DdsResult<Sample<T>>` and `to_vec()` returns
+  `DdsResult<Vec<Sample<T>>>`.
+
 - **BREAKING**: `Topic::new`/`with_qos`, and `DataReader`/`DataWriter`'s `new`,
   `with_qos`, `with_listener` and `with_qos_and_listener` now take their parents by
   reference (`&DomainParticipant`, `&Subscriber`/`&Publisher`, `&Topic<T>`) instead of
@@ -43,6 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `STATUS_HEAP_CORRUPTION` before the fix. The pointer now lives in an `Rc<DescriptorOwner>`
   and is released once the last clone is dropped; `Rc` (not `Arc`) keeps the type
   `!Send`/`!Sync`, exactly as the raw-pointer version was. Found by the `xtypes.rs` audit.
+- **`#[derive(DdsUnionDerive)]` could not compile for any non-String case**
+  (`cyclonedds-derive`): `write_to_native` emitted a *runtime* `if #is_string { ... }`,
+  interpolating the macro-time flag as a `true`/`false` literal into a real `if`. Both
+  branches therefore had to typecheck for every case, so the derive demanded
+  `i32: AsRef<str>` and produced mismatched branch types. The union derive has never
+  worked for anything but strings; nothing in the repository derives a union, so nothing
+  caught it, while the README advertises union support. The branch is chosen at expansion
+  time now, and `union_unknown_discriminator.rs` is the first test to exercise this derive
+  at all.
 - **`SerdeSample<T>` handed a Rust `Vec` to CycloneDDS as a DDS sequence**
   (`cyclonedds/src/serde_sample.rs`): it declared `Native = Self` and
   `write_to_native` returned `self as *const Self as *const c_void`, but its ops say

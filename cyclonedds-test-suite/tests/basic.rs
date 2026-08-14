@@ -263,7 +263,7 @@ fn loan_peek_and_next_operations_work() {
 
     let peeked = reader.peek().unwrap();
     assert_eq!(peeked.len(), 1);
-    let first = peeked.iter().next().unwrap();
+    let first = peeked.iter().next().unwrap().expect("sample failed to decode");
     assert_eq!(first.data.id, 1);
     assert_eq!(first.data.text(), "peek-me");
 

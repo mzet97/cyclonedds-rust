@@ -186,8 +186,16 @@ pub trait DdsType: Sized + Send + 'static {
     /// CycloneDDS for the current topic descriptor. Implementations must return
     /// an owned Rust value that remains valid after any associated DDS loan is
     /// returned.
-    unsafe fn clone_out(ptr: *const Self) -> Self {
-        std::ptr::read(ptr)
+    ///
+    /// Returns `Err` when the sample cannot be represented as `Self` — the case
+    /// that matters is a union carrying a discriminator outside its declared
+    /// set, which arrives from the network and so is remote input. That used to
+    /// be a `panic!`, contained at the FFI boundary by `catch_unwind` but still
+    /// enough for a peer built from a different IDL revision to make
+    /// `reader.take()` unwind on the caller's thread. An undecodable sample is
+    /// now a discarded error instead.
+    unsafe fn clone_out(ptr: *const Self) -> DdsResult<Self> {
+        Ok(std::ptr::read(ptr))
     }
     fn write_to_native<'a>(&'a self, _arena: &'a mut WriteArena) -> DdsResult<*const c_void> {
         Ok(self as *const Self as *const c_void)

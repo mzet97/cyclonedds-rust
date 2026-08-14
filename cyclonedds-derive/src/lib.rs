@@ -784,11 +784,11 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 __ops
             }
 
-            unsafe fn clone_out(ptr: *const Self) -> Self {
+            unsafe fn clone_out(ptr: *const Self) -> cyclonedds::DdsResult<Self> {
                 #clone_ptr
-                Self {
+                Ok(Self {
                     #(#clone_fields)*
-                }
+                })
             }
 
             #descriptor_methods
@@ -1225,16 +1225,16 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         let is_string = is_direct_string(&cases[i].2);
         if *is_default {
             if is_string {
-                quote! { _ => #name::#variant(__native.__value.#arm_name.to_string_lossy()) }
+                quote! { _ => ::std::result::Result::Ok(#name::#variant(__native.__value.#arm_name.to_string_lossy())), }
             } else {
-                quote! { _ => #name::#variant(::std::ptr::read(&__native.__value.#arm_name)) }
+                quote! { _ => ::std::result::Result::Ok(#name::#variant(::std::ptr::read(&__native.__value.#arm_name))), }
             }
         } else {
             let val = case_values[i] as u32;
             if is_string {
-                quote! { #val => #name::#variant(__native.__value.#arm_name.to_string_lossy()) }
+                quote! { #val => ::std::result::Result::Ok(#name::#variant(__native.__value.#arm_name.to_string_lossy())), }
             } else {
-                quote! { #val => #name::#variant(::std::ptr::read(&__native.__value.#arm_name)) }
+                quote! { #val => ::std::result::Result::Ok(#name::#variant(::std::ptr::read(&__native.__value.#arm_name))), }
             }
         }
     }).collect();
@@ -1248,17 +1248,25 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             let arm_name = &union_arm_names[i];
             let is_string = is_direct_string(&cases[i].2);
 
+            // Pick the conversion at macro-expansion time. This used to emit a
+            // runtime `if #is_string { DdsString::new(value)? } else {
+            // Clone::clone(value) }`, interpolating the flag as a `true`/`false`
+            // literal into a real `if`. Both branches then had to typecheck for
+            // every case, so `DdsUnionDerive` demanded `i32: AsRef<str>` and
+            // failed on the mismatched branch types -- it could not compile for
+            // any non-String case at all. Nothing in the repository derived a
+            // union, so nothing caught it, while the README advertised support.
+            let assign = if is_string {
+                quote! { cyclonedds::DdsString::new(value)? }
+            } else {
+                quote! { ::std::clone::Clone::clone(value) }
+            };
+
             if *is_default {
                 quote! {
                     #name::#variant(ref value) => {
                         __native.__disc = __disc_default_sentinel as #disc_ty;
-                        __native.__value.#arm_name = {
-                            if #is_string {
-                                cyclonedds::DdsString::new(value)?
-                            } else {
-                                ::std::clone::Clone::clone(value)
-                            }
-                        };
+                        __native.__value.#arm_name = #assign;
                     }
                 }
             } else {
@@ -1266,13 +1274,7 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 quote! {
                     #name::#variant(ref value) => {
                         __native.__disc = #val as #disc_ty;
-                        __native.__value.#arm_name = {
-                            if #is_string {
-                                cyclonedds::DdsString::new(value)?
-                            } else {
-                                ::std::clone::Clone::clone(value)
-                            }
-                        };
+                        __native.__value.#arm_name = #assign;
                     }
                 }
             }
@@ -1337,39 +1339,34 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 ::std::mem::align_of::<#native_name>() as u32
             }
 
-            unsafe fn clone_out(ptr: *const Self) -> Self {
+            unsafe fn clone_out(ptr: *const Self) -> cyclonedds::DdsResult<Self> {
                 let __native = &*(ptr as *const #native_name);
                 let __disc = __native.__disc as u32;
                 match __disc {
                     #(#clone_out_arms)*
                     // Only reachable for unions declared without a
                     // `#[dds_default]` variant. The discriminator arrives from
-                    // the network, so this is remote-triggerable: a peer built
-                    // from a different revision of the IDL is enough.
+                    // the network, so this is remote input: a peer built from a
+                    // different revision of the IDL is enough to produce one.
                     //
-                    // Fabricating a variant here is not an option — reading a
-                    // union arm that is not the active one would dereference
-                    // garbage for any arm holding a string or sequence. So this
-                    // fails loudly instead. What makes that safe is that every
-                    // `extern "C"` entry point which can reach `clone_out`
-                    // (`content_filtered_topic::trampoline_filter_sample_arg`,
-                    // the listener trampolines) wraps it in `catch_unwind`, so
-                    // the panic is contained at the FFI boundary rather than
-                    // aborting the process. On the caller's own thread
-                    // (`read`/`take`) it is an ordinary, catchable panic.
-                    //
-                    // The real fix is a fallible `clone_out`, which is a
-                    // breaking change to the `DdsType` trait.
+                    // Fabricating a variant is not an option — reading a union
+                    // arm that is not the active one dereferences garbage for
+                    // any arm holding a string or sequence. This used to
+                    // `panic!`, which the `catch_unwind` barriers contained at
+                    // the FFI boundary but which still unwound on the caller's
+                    // own thread from `read`/`take`. It is an error now, so the
+                    // sample is discarded and the call returns normally.
                     //
                     // Declaring a `#[dds_default]` variant avoids this path
-                    // entirely and is the recommended shape for any union
+                    // entirely and remains the right shape for any union
                     // exchanged with peers you do not build in lockstep.
-                    _ => ::std::panic!(
-                        "DdsUnion clone_out: discriminator {} is not a declared case of {}; \
-                         add a #[dds_default] variant to accept unknown discriminators",
-                        __disc,
-                        #type_name_str,
-                    ),
+                    _ => ::std::result::Result::Err(cyclonedds::DdsError::BadParameter(
+                        ::std::format!(
+                            "DdsUnion clone_out: discriminator {} is not a declared case of {};                              add a #[dds_default] variant to accept unknown discriminators",
+                            __disc,
+                            #type_name_str,
+                        ),
+                    )),
                 }
             }
 
@@ -1585,12 +1582,12 @@ fn derive_bitmask_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 ::std::mem::align_of::<#native_name>() as u32
             }
 
-            unsafe fn clone_out(ptr: *const Self) -> Self {
+            unsafe fn clone_out(ptr: *const Self) -> cyclonedds::DdsResult<Self> {
                 let __native = &*(ptr as *const #native_name);
                 let bits = __native.__bits as u64;
-                Self {
+                Ok(Self {
                     #(#from_bits_fields)*
-                }
+                })
             }
 
             fn write_to_native<'a>(

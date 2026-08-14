@@ -59,7 +59,10 @@ unsafe fn drain<T: DdsType>(
             // Rust próprio — ptr::read aqui seria UB: a amostra nativa tem layout
             // C (strings = char* de 8B, não String de 24B) e o buffer é devolvido
             // ao DDS no return_loan abaixo.
-            result.push(T::clone_out(samples[i] as *const T));
+            // Amostra indecodificável é pulada, não derruba o lote inteiro.
+            if let Ok(data) = T::clone_out(samples[i] as *const T) {
+                result.push(data);
+            }
         }
     }
 

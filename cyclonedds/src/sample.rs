@@ -1,7 +1,7 @@
 use cyclonedds_rust_sys::dds_sample_info_t;
 use std::ffi::c_void;
 
-use crate::DdsEntity as _; // FFI-LIFE-011: Loan::drop chama reader.entity()
+use crate::{DdsEntity as _, DdsResult}; // FFI-LIFE-011: Loan::drop chama reader.entity()
 
 pub struct Sample<T> {
     pub data: T,
@@ -99,12 +99,12 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
     /// `read`/`take`/`read_next`.
     ///
     /// For a genuinely zero-copy view, use [`iter_native`](Self::iter_native).
-    pub fn iter(&self) -> impl Iterator<Item = Sample<T>> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = DdsResult<Sample<T>>> + '_ {
         (0..self.count).map(move |i| unsafe {
-            Sample {
-                data: T::clone_out(self.samples[i] as *const T),
+            Ok(Sample {
+                data: T::clone_out(self.samples[i] as *const T)?,
                 info: self.infos[i],
-            }
+            })
         })
     }
 
@@ -137,7 +137,7 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
     /// No longer requires `T: Clone` — the conversion goes through
     /// [`crate::DdsType::clone_out`], which is the only sound way to read the native
     /// buffer (see [`iter`](Self::iter)).
-    pub fn to_vec(&self) -> Vec<Sample<T>> {
+    pub fn to_vec(&self) -> DdsResult<Vec<Sample<T>>> {
         self.iter().collect()
     }
 }

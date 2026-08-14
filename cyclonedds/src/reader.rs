@@ -129,8 +129,17 @@ impl<T: DdsType> DataReader<T> {
             let mut result = Vec::with_capacity(n);
             for i in 0..n {
                 if infos[i].valid_data && !samples[i].is_null() {
-                    let data = T::clone_out(samples[i] as *const T);
-                    result.push(data);
+                    // An undecodable sample -- a union whose discriminator is not
+                    // a declared case, say -- is skipped rather than failing the
+                    // whole batch: one bad peer must not stop delivery of
+                    // everything else.
+                    match T::clone_out(samples[i] as *const T) {
+                        Ok(data) => result.push(data),
+                        Err(_e) => {
+                            #[cfg(feature = "tracing")]
+                            tracing::warn!(error = %_e, "skipping undecodable sample");
+                        }
+                    }
                 }
             }
 
@@ -338,9 +347,13 @@ impl<T: DdsType> DataReader<T> {
                 let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
                 return Ok(None);
             }
-            let data = T::clone_out(sample as *const T);
+            let decoded = T::clone_out(sample as *const T);
+            // Return the loan before propagating: `?` here would leak it.
             let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
-            Ok(Some(Sample { data, info }))
+            Ok(Some(Sample {
+                data: decoded?,
+                info,
+            }))
         }
     }
 
@@ -361,9 +374,13 @@ impl<T: DdsType> DataReader<T> {
                 let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
                 return Ok(None);
             }
-            let data = T::clone_out(sample as *const T);
+            let decoded = T::clone_out(sample as *const T);
+            // Return the loan before propagating: `?` here would leak it.
             let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
-            Ok(Some(Sample { data, info }))
+            Ok(Some(Sample {
+                data: decoded?,
+                info,
+            }))
         }
     }
 
@@ -405,7 +422,7 @@ impl<T: DdsType> DataReader<T> {
                 native.as_mut_ptr() as *mut std::ffi::c_void,
             );
             crate::error::check(ret)?;
-            Ok(T::clone_out(native.as_ptr() as *const T))
+            T::clone_out(native.as_ptr() as *const T)
         }
     }
 

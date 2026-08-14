@@ -121,12 +121,12 @@ impl<T: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + 'static> Dd
         ]
     }
 
-    unsafe fn clone_out(ptr: *const Self) -> Self {
+    unsafe fn clone_out(ptr: *const Self) -> DdsResult<Self> {
         let native = &*(ptr as *const SerdeSampleNative);
-        SerdeSample {
+        Ok(SerdeSample {
             payload: native.payload.to_vec(),
             _marker: std::marker::PhantomData,
-        }
+        })
     }
 
     fn write_to_native<'a>(&'a self, arena: &'a mut WriteArena) -> DdsResult<*const c_void> {
