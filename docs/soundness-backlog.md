@@ -103,15 +103,35 @@ pushes FFI users into `unsafe` for no real gain.
 
 ---
 
-## B. Never audited — 6,710 lines
+## B. Audit status — 6,710 lines
 
-Grep only. Not claiming these are correct; claiming they were not read. Ordered by risk
-(`unsafe` density × exposed surface), not size.
+Ordered by risk (`unsafe` density × exposed surface), not size. Two modules are done and
+produced two real defects, both fixed with before/after proof; the rest have had grep only.
+Not claiming the unread ones are correct — claiming they were not read.
+
+**Done — `xtypes.rs` (1,078).** Two defects, both public API:
+`TopicDescriptor` implemented a `Clone` that copied the raw pointer with no refcount
+alongside a `Drop` that freed it — double free, reproduced as `STATUS_HEAP_CORRUPTION`.
+`adr_step` was a second hand-maintained instruction-width table, missing `ENU`/`ARR`/`UNI`/
+`EXT`, so `parse_type` walked out of phase and dropped members from its result. Also swept
+the whole crate for the `Drop`+shallow-`Clone` pattern: 7 types have both, `TopicDescriptor`
+was the only broken one. Verified correct: `OwnedTypeId`'s `dup`/`fini`/`free` pairing (the
+default allocator is `ddsrt_*`, so `dds_free` matches), `MatchedEndpoint::type_info`
+ownership (the header says the callee allocates), `TypeIdRef`'s lifetime binding, and all
+four `from_raw_parts` (null and zero guarded).
+
+**Done — `qos.rs` (1,624).** One defect, already fixed earlier: `data_representation`
+leaked its array when a peer sent an unknown representation id, because `?` returned before
+`dds_free`. All 9 allocating getters re-checked against the C: the early return on
+`n == 0` never leaks, since `dds_qget_*` sets the out-pointer to NULL in that case, and the
+`dds_alloc`/`dds_free` + `dds_string_dup`/`dds_string_free` pairings are right.
+`Clone for Qos` not checking `dds_create_qos()` for null is harmless: `ddsrt_malloc` aborts
+on OOM, so it cannot return NULL.
+
+### Still unread
 
 | Module | Why it matters | Lines |
 |---|---|---:|
-| `xtypes.rs` | Highest `unsafe` density in the crate (63 blocks). Only the 4 `from_raw_parts` were checked. | 1,078 |
-| `qos.rs` | Only the 2 `unsafe impl`s and 3 `qget` functions — and one of those held a leak. The other ~20 unexamined. | 1,624 |
 | `dynamic_value.rs` | Builds and reads dynamic values through pointers; not a line read. | 1,186 |
 | `dynamic_type.rs` | Only the `expect`s. The rest of the builder and type registration unseen. | 1,071 |
 | `type_discovery.rs` | Converts CDR ↔ dynamic data over raw buffers; not a line read. | 986 |
