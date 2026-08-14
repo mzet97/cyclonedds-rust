@@ -13,7 +13,13 @@ use std::sync::{Mutex, OnceLock};
 // bridge Rust closures we store them in a global map keyed by the condition
 // entity handle.  The trampoline dispatches through this map.
 
-type QcClosure = Box<dyn Fn(*const c_void) -> bool + Send + Sync>;
+/// `Arc`, not `Box`: the trampoline must be able to keep the closure alive for
+/// the duration of the call *after* releasing the registry lock. Holding a raw
+/// pointer past the `MutexGuard` (as this used to) is a use-after-free — a
+/// `QueryCondition` is `Send` and its `Drop` removes the entry, so another
+/// thread dropping the condition between the lookup and the call would free the
+/// closure while it is about to be invoked.
+type QcClosure = std::sync::Arc<dyn Fn(*const c_void) -> bool + Send + Sync>;
 
 fn qc_registry() -> &'static Mutex<HashMap<dds_entity_t, QcClosure>> {
     static REGISTRY: OnceLock<Mutex<HashMap<dds_entity_t, QcClosure>>> = OnceLock::new();
@@ -41,19 +47,15 @@ unsafe extern "C" fn trampoline_qc_filter(sample: *const c_void) -> bool {
         eprintln!("QueryCondition filter invoked with no active condition; sample excluded");
         return false;
     }
+    // Clone the Arc *inside* the lock so the closure cannot be dropped out from
+    // under us once the guard is released.
     let closure = {
         let registry = qc_registry().lock().unwrap_or_else(|e| e.into_inner());
-        registry
-            .get(&handle)
-            .map(|c| &**c as *const (dyn Fn(*const c_void) -> bool + Send + Sync))
+        registry.get(&handle).cloned()
     };
     match closure {
-        // SAFETY: the pointer was just read from the registry; the closure
-        // outlives the condition entity (removed only in Drop, and a live
-        // filter call implies the condition is alive).
         Some(c) => {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { (*c)(sample) }))
-            {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c(sample))) {
                 Ok(keep) => keep,
                 Err(_) => {
                     eprintln!("QueryCondition filter closure panicked; sample excluded");
@@ -277,8 +279,11 @@ impl QueryCondition {
 
         // Register the closure.
         {
-            let mut registry = qc_registry().lock().unwrap();
-            registry.insert(entity, Box::new(filter));
+            // Recover from a poisoned registry instead of panicking — the
+            // trampoline already does, and a panic here would be raised from a
+            // constructor on the user's thread for an unrelated failure.
+            let mut registry = qc_registry().lock().unwrap_or_else(|e| e.into_inner());
+            registry.insert(entity, std::sync::Arc::new(filter));
         }
 
         Ok(QueryCondition {
@@ -306,7 +311,9 @@ impl DdsEntity for QueryCondition {
 impl Drop for QueryCondition {
     fn drop(&mut self) {
         if self.owns_closure {
-            let mut registry = qc_registry().lock().unwrap();
+            // Never panic in a Drop: if this runs during an unwind, a second
+            // panic aborts the process. A poisoned registry is recoverable.
+            let mut registry = qc_registry().lock().unwrap_or_else(|e| e.into_inner());
             registry.remove(&self.entity);
         }
         unsafe {
@@ -382,7 +389,7 @@ mod qc_tests {
         qc_registry()
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(handle, Box::new(f));
+            .insert(handle, std::sync::Arc::new(f));
     }
 
     fn unregister_fake(handle: dds_entity_t) {
@@ -392,7 +399,9 @@ mod qc_tests {
             .remove(&handle);
     }
 
-    fn call_trampoline(handle: dds_entity_t) -> bool {
+    /// O handle não é passado adiante: `trampoline_qc_filter` resolve a condition
+    /// pelo TLS `QC_ACTIVE`. O parâmetro fica só para deixar as chamadas legíveis.
+    fn call_trampoline(_handle: dds_entity_t) -> bool {
         let sample = 42i32;
         unsafe { trampoline_qc_filter(&sample as *const i32 as *const c_void) }
     }
@@ -441,7 +450,10 @@ mod qc_tests {
             let _guard = reg.lock().unwrap();
             panic!("envenenando o registry");
         }));
-        assert!(reg.is_poisoned() || true); // estado pós-panic
+        // O panic ocorreu com o guard vivo, então o envenenamento é determinístico.
+        // (Antes: `reg.is_poisoned() || true`, uma tautologia que não asseverava nada
+        // e ainda reprovava no gate `clippy -D warnings` do CI.)
+        assert!(reg.is_poisoned(), "mutex deveria estar envenenado");
         set_active_qc(handle);
         assert!(call_trampoline(handle)); // into_inner → closure ainda roda
         set_active_qc(0);

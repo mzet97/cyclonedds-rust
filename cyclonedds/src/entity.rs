@@ -7,6 +7,39 @@ use crate::{
 };
 use cyclonedds_rust_sys::*;
 
+/// Read a string-valued entity property, growing the buffer if it did not fit.
+///
+/// `dds_get_name`/`dds_get_type_name` follow `snprintf` semantics: the return
+/// value is the length the string *would* have needed, which can exceed the
+/// buffer passed in. The previous code did `buf.truncate(n)` with that value —
+/// and `Vec::truncate` only ever shrinks, so for a name of 256 bytes or more it
+/// silently returned the whole raw buffer, embedded NUL padding included.
+///
+/// # Safety
+/// `f` must be a CycloneDDS getter with `snprintf` return semantics that writes
+/// a NUL-terminated string into the supplied buffer.
+unsafe fn entity_string(
+    entity: dds_entity_t,
+    f: unsafe extern "C" fn(dds_entity_t, *mut i8, usize) -> dds_return_t,
+) -> DdsResult<String> {
+    let mut buf = vec![0u8; 256];
+    let n = f(entity, buf.as_mut_ptr() as *mut i8, buf.len());
+    if n < 0 {
+        return Err(DdsError::from(n));
+    }
+    let needed = n as usize;
+    if needed >= buf.len() {
+        // Did not fit: retry once with an exactly-sized buffer (+1 for the NUL).
+        buf = vec![0u8; needed + 1];
+        let n = f(entity, buf.as_mut_ptr() as *mut i8, buf.len());
+        if n < 0 {
+            return Err(DdsError::from(n));
+        }
+    }
+    buf.truncate(needed.min(buf.len()));
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
 pub trait DdsEntity {
     fn entity(&self) -> dds_entity_t;
 
@@ -47,27 +80,11 @@ pub trait DdsEntity {
     }
 
     fn get_name(&self) -> DdsResult<String> {
-        unsafe {
-            let mut buf = vec![0u8; 256];
-            let n = dds_get_name(self.entity(), buf.as_mut_ptr() as *mut i8, buf.len());
-            if n < 0 {
-                return Err(DdsError::from(n));
-            }
-            buf.truncate(n as usize);
-            Ok(String::from_utf8_lossy(&buf).into_owned())
-        }
+        unsafe { entity_string(self.entity(), dds_get_name) }
     }
 
     fn get_type_name(&self) -> DdsResult<String> {
-        unsafe {
-            let mut buf = vec![0u8; 256];
-            let n = dds_get_type_name(self.entity(), buf.as_mut_ptr() as *mut i8, buf.len());
-            if n < 0 {
-                return Err(DdsError::from(n));
-            }
-            buf.truncate(n as usize);
-            Ok(String::from_utf8_lossy(&buf).into_owned())
-        }
+        unsafe { entity_string(self.entity(), dds_get_type_name) }
     }
 
     fn get_domain_id(&self) -> DdsResult<u32> {
