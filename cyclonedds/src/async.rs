@@ -1,8 +1,89 @@
 use crate::{DataReader, DdsEntity, DdsResult, DdsType, WaitSet};
 use cyclonedds_rust_sys::*;
 
+/// Default batch size for the stream methods that do not take one explicitly.
+const DEFAULT_BATCH: usize = 256;
+
+/// Drain up to `max_samples` from a reader's history cache.
+///
+/// `dds_read` / `dds_take` do **not** block: they walk the reader history cache
+/// and return immediately. This therefore runs inline on the caller's thread.
+///
+/// It used to be wrapped in `tokio::task::spawn_blocking`, which bought nothing
+/// — the call never blocks — and opened a soundness hole. `spawn_blocking`
+/// requires a `'static` task, so only the raw `dds_entity_t` (an `i32`, `Copy`)
+/// could be moved in, not a borrow of the reader. Cancelling the future
+/// (`tokio::select!`, a timeout, dropping the stream) left that task running
+/// against a handle whose `DataReader` may already have been dropped and its
+/// entity deleted — and CycloneDDS recycles entity handles, so the call could
+/// land on an unrelated entity created in the meantime. Running inline ties the
+/// call to the borrow of `&self` that the future already holds.
+///
+/// # Safety
+/// `entity` must be a live reader entity for type `T`.
+unsafe fn drain<T: DdsType>(
+    entity: dds_entity_t,
+    take: bool,
+    max_samples: usize,
+) -> DdsResult<Vec<T>> {
+    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
+    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
+
+    let n = if take {
+        dds_take(
+            entity,
+            samples.as_mut_ptr(),
+            infos.as_mut_ptr() as *mut dds_sample_info_t,
+            max_samples,
+            max_samples as u32,
+        )
+    } else {
+        dds_read(
+            entity,
+            samples.as_mut_ptr(),
+            infos.as_mut_ptr() as *mut dds_sample_info_t,
+            max_samples,
+            max_samples as u32,
+        )
+    };
+
+    if n < 0 {
+        return Err(crate::DdsError::from(n));
+    }
+    let n = n as usize;
+
+    let mut result = Vec::with_capacity(n);
+    for i in 0..n {
+        if infos[i].valid_data && !samples[i].is_null() {
+            // clone_out converte a amostra nativa (DdsString/sequências) em valor
+            // Rust próprio — ptr::read aqui seria UB: a amostra nativa tem layout
+            // C (strings = char* de 8B, não String de 24B) e o buffer é devolvido
+            // ao DDS no return_loan abaixo.
+            result.push(T::clone_out(samples[i] as *const T));
+        }
+    }
+
+    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
+    Ok(result)
+}
+
 #[cfg(feature = "async")]
 impl WaitSet {
+    /// Wait for any attached entity to trigger, off the async runtime.
+    ///
+    /// Unlike `dds_read`/`dds_take`, `dds_waitset_wait` genuinely blocks, so it
+    /// stays on `spawn_blocking`.
+    ///
+    /// # Known limitation
+    ///
+    /// `spawn_blocking` tasks are not cancellable. If the future awaiting this
+    /// call is dropped while the wait is in flight, the blocking task keeps
+    /// running until the waitset triggers or the timeout expires — and if the
+    /// `WaitSet` is dropped in the meantime, that wait is left on a deleted
+    /// entity. Prefer the `*_timeout` stream variants over the infinite-timeout
+    /// ones so the task is guaranteed to wind down. Closing this properly needs
+    /// the waitset to be owned by something the blocking task can hold
+    /// (`Arc`), which is an API change.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub async fn wait_async(&self, timeout_ns: i64) -> DdsResult<Vec<i64>> {
         let entity = self.entity();
@@ -26,40 +107,39 @@ impl WaitSet {
 impl<T: DdsType> DataReader<T> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub async fn take_async(&self) -> DdsResult<Vec<T>> {
+        // `dds_take` does not block — see `drain`.
+        unsafe { drain::<T>(self.entity(), true, DEFAULT_BATCH) }
+    }
+
+    /// Shared implementation behind every `*_aiter*` method.
+    ///
+    /// Waits on a `WaitSet` for data, then drains the history cache inline.
+    fn sample_stream(
+        &self,
+        take: bool,
+        max_samples: usize,
+        timeout_ns: i64,
+    ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
         let entity = self.entity();
-        tokio::task::spawn_blocking(move || unsafe {
-            let max_samples: usize = 256;
-            let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-            let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
+        async_stream::try_stream! {
+            // Non-blocking lookup; no reason to hop threads for it.
+            let participant = unsafe { dds_get_participant(entity) };
 
-            let n = dds_take(
-                entity,
-                samples.as_mut_ptr(),
-                infos.as_mut_ptr() as *mut dds_sample_info_t,
-                max_samples,
-                max_samples as u32,
-            );
+            let waitset = WaitSet::new(participant)?;
+            waitset.attach(entity, 0)?;
 
-            if n < 0 {
-                return Err(crate::DdsError::from(n));
-            }
-            let n = n as usize;
-
-            let mut result = Vec::with_capacity(n);
-            for i in 0..n {
-                if infos[i].valid_data && !samples[i].is_null() {
-                    // clone_out converte a amostra nativa (layout C) em valor Rust
-                    // próprio; ptr::read aqui seria UB (strings nativas são char* de 8B).
-                    let data = T::clone_out(samples[i] as *const T);
-                    result.push(data);
+            loop {
+                let triggered = waitset.wait_async(timeout_ns).await?;
+                if triggered.is_empty() {
+                    // Timeout with no data — yield an empty batch so the caller
+                    // can still make progress / apply back-pressure.
+                    yield Vec::new();
+                    continue;
                 }
-            }
 
-            let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-            Ok(result)
-        })
-        .await
-        .map_err(|e| crate::DdsError::Other(e.to_string()))?
+                yield unsafe { drain::<T>(entity, take, max_samples) }?;
+            }
+        }
     }
 
     /// Async iterator that yields batches of samples via `read`.
@@ -85,63 +165,7 @@ impl<T: DdsType> DataReader<T> {
     /// ```
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn read_aiter(&self) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(dds_duration_t::MAX).await?;
-                if triggered.is_empty() {
-                    // timeout with no data — yield empty batch so caller
-                    // can still make progress / apply back-pressure.
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let max_samples: usize = 256;
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_read(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(false, DEFAULT_BATCH, dds_duration_t::MAX)
     }
 
     /// Async iterator that yields batches of samples via `read`, with a
@@ -170,60 +194,7 @@ impl<T: DdsType> DataReader<T> {
         &self,
         max_samples: usize,
     ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(dds_duration_t::MAX).await?;
-                if triggered.is_empty() {
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_read(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(false, max_samples, dds_duration_t::MAX)
     }
 
     /// Async iterator that yields batches of samples via `take`.
@@ -232,61 +203,7 @@ impl<T: DdsType> DataReader<T> {
     /// reader history cache.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn take_aiter(&self) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(dds_duration_t::MAX).await?;
-                if triggered.is_empty() {
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let max_samples: usize = 256;
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_take(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(true, DEFAULT_BATCH, dds_duration_t::MAX)
     }
 
     /// Async iterator that yields batches of samples via `take`, with a
@@ -298,60 +215,7 @@ impl<T: DdsType> DataReader<T> {
         &self,
         max_samples: usize,
     ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(dds_duration_t::MAX).await?;
-                if triggered.is_empty() {
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_take(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(true, max_samples, dds_duration_t::MAX)
     }
 
     /// Async iterator that yields batches of samples via `read` with a
@@ -381,61 +245,7 @@ impl<T: DdsType> DataReader<T> {
         &self,
         timeout_ns: i64,
     ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(timeout_ns).await?;
-                if triggered.is_empty() {
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let max_samples: usize = 256;
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_read(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(false, DEFAULT_BATCH, timeout_ns)
     }
 
     /// Async iterator that yields batches of samples via `read` with both
@@ -466,60 +276,7 @@ impl<T: DdsType> DataReader<T> {
         max_samples: usize,
         timeout_ns: i64,
     ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(timeout_ns).await?;
-                if triggered.is_empty() {
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_read(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(false, max_samples, timeout_ns)
     }
 
     /// Async iterator that yields batches of samples via `take` with both
@@ -532,60 +289,7 @@ impl<T: DdsType> DataReader<T> {
         max_samples: usize,
         timeout_ns: i64,
     ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(timeout_ns).await?;
-                if triggered.is_empty() {
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_take(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(true, max_samples, timeout_ns)
     }
 
     /// Async iterator that yields batches of samples via `take` with a
@@ -597,60 +301,6 @@ impl<T: DdsType> DataReader<T> {
         &self,
         timeout_ns: i64,
     ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
-        let entity = self.entity();
-        async_stream::try_stream! {
-            let participant = tokio::task::spawn_blocking(move || unsafe {
-                dds_get_participant(entity)
-            }).await.map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-            let waitset = WaitSet::new(participant)?;
-            waitset.attach(entity, 0)?;
-
-            loop {
-                let triggered = waitset.wait_async(timeout_ns).await?;
-                if triggered.is_empty() {
-                    yield Vec::new();
-                    continue;
-                }
-
-                let batch = tokio::task::spawn_blocking(move || unsafe {
-                    let max_samples: usize = 256;
-                    let mut samples: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); max_samples];
-                    let mut infos: Vec<dds_sample_info> = vec![std::mem::zeroed(); max_samples];
-
-                    let n = dds_take(
-                        entity,
-                        samples.as_mut_ptr(),
-                        infos.as_mut_ptr() as *mut dds_sample_info_t,
-                        max_samples,
-                        max_samples as u32,
-                    );
-
-                    if n < 0 {
-                        return Err::<Vec<T>, crate::DdsError>(crate::DdsError::from(n));
-                    }
-                    let n = n as usize;
-
-                    let mut result = Vec::with_capacity(n);
-                    for i in 0..n {
-                        if infos[i].valid_data && !samples[i].is_null() {
-                            // clone_out converte a amostra nativa (DdsString/sequências)
-                            // em valor Rust próprio — ptr::read aqui seria UB: a amostra
-                            // nativa tem layout C (strings = char* de 8B, não String de 24B)
-                            // e o buffer é devolvido ao DDS no return_loan abaixo.
-                            let data = T::clone_out(samples[i] as *const T);
-                            result.push(data);
-                        }
-                    }
-
-                    let _ = dds_return_loan(entity, samples.as_mut_ptr(), n as i32);
-                    Ok(result)
-                })
-                .await
-                .map_err(|e| crate::DdsError::Other(e.to_string()))?;
-
-                yield batch?;
-            }
-        }
+        self.sample_stream(true, DEFAULT_BATCH, timeout_ns)
     }
 }
