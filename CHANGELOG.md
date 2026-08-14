@@ -43,14 +43,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `STATUS_HEAP_CORRUPTION` before the fix. The pointer now lives in an `Rc<DescriptorOwner>`
   and is released once the last clone is dropped; `Rc` (not `Arc`) keeps the type
   `!Send`/`!Sync`, exactly as the raw-pointer version was. Found by the `xtypes.rs` audit.
-- **Three more copies of the wrong instruction-width table, one of them writing through
-  it** (`cyclonedds/src/type_discovery.rs`): the schema builder, `write_value_to_native`
-  and `read_value_from_native` each carried their own copy, all missing `ENU`, `ARR`,
-  `UNI` and `EXT`. The writer is the serious one: it takes `ops[i + 1]` as a byte offset
-  and does `base.add(offset)` before writing the field, so a desynchronised walk turns a
-  `max`, an `alen` or a jump word into an offset and writes out of bounds — heap
-  corruption, not merely wrong metadata. All three now call one shared, header-checked
-  `adr_step`.
+- **Three more copies of the wrong instruction-width table**
+  (`cyclonedds/src/type_discovery.rs`): the schema builder, `write_value_to_native` and
+  `read_value_from_native` each carried their own copy, all missing `ENU`, `ARR`, `UNI`
+  and `EXT`. With the derive's scanner and `xtypes::adr_step` that made five copies in the
+  crate, written independently, all drifting from `dds_opcodes.h`. All three now call one
+  shared, header-checked `adr_step`.
+
+  **No failing case was demonstrated for these three.** `write_value_to_native` takes
+  `ops[i + 1]` as a byte offset and does `base.add(offset)` before writing, so a
+  desynchronised walk could in principle write out of bounds — but it does not in
+  practice, for the same reason the derive's scanner did not: a skipped data word rarely
+  carries `0x01` in its top byte, so it reads as opcode 0 (`OP_RTS`), and these walkers
+  treat that as `i += 1` and resynchronise. `parse_type` was the one that actually
+  misbehaved because its `OP_RTS` arm is `break`, not `+= 1`, so it ended the walk early
+  and dropped members — that one is measured. Fixed here regardless: correctness resting
+  on data words not looking like opcodes is a coincidence, not an invariant.
 - **`write_value_to_native` named fields by word position** while the schema builder and
   the reader name them by ordinal. `format!("field_{}", (i - ops_start) / 2)` assumes every
   instruction is 2 words, so one 3-word field (a bounded string, say) skewed every later
