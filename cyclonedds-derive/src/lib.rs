@@ -755,17 +755,96 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                     if (__op & cyclonedds::DDS_OP_MASK_CONST) == cyclonedds::OP_ADR
                         && (__op & cyclonedds::DDS_OP_TYPE_MASK_CONST) == cyclonedds::TYPE_EXT
                     {
+                        // [ADR, e|EXT, 0, f] [offset] [next-insn, elem-insn]
+                        // [elem-size iff the external flag e is set, or f has
+                        // DDS_OP_FLAG_OPT]. The scan advance and the
+                        // `next-insn` word written by the patch below must
+                        // agree — the scan used a hardcoded 3 while the patch
+                        // already accounted for the EXT flag.
                         __patch_positions.push(__scan);
-                        __scan += 3;
+                        __scan += if (__op
+                            & (cyclonedds::OP_FLAG_EXT | cyclonedds::OP_FLAG_OPT))
+                            != 0
+                        {
+                            4
+                        } else {
+                            3
+                        };
                     } else if (__op & cyclonedds::DDS_OP_MASK_CONST) == cyclonedds::OP_ADR {
+                        // Instruction word counts per `dds_opcodes.h` (the
+                        // "[ADR, ...]" table). Getting these wrong makes the
+                        // scan land mid-instruction, which either misses a real
+                        // TYPE_EXT (its jump word is then never patched) or
+                        // mistakes a data word for one and patches that.
+                        //
+                        // Several of these used to disagree with the header
+                        // (SEQ|ENU counted 2 instead of 3, SEQ|BST 4 instead of
+                        // 3, ARR|ENU and BSQ|ENU 3 instead of 4, ...). It
+                        // happened to work because a skipped data word rarely
+                        // has 0x01 in its top byte and so does not match
+                        // OP_ADR, letting the `else` branch resynchronise one
+                        // word at a time. That is a coincidence, not an
+                        // invariant.
                         let __primary = __op & cyclonedds::DDS_OP_TYPE_MASK_CONST;
                         let __subtype = __op & cyclonedds::DDS_OP_SUBTYPE_MASK_CONST;
+                        // Composite element types carry [elem-size] and a
+                        // [next-insn, elem-insn] word.
+                        let __sub_composite = __subtype == cyclonedds::SUBTYPE_STU
+                            || __subtype == cyclonedds::SUBTYPE_SEQ
+                            || __subtype == cyclonedds::SUBTYPE_BSQ
+                            // SUBTYPE_ARR is not re-exported; it is the same
+                            // typecode as TYPE_ARR shifted into the subtype
+                            // field (TYPE_x = VAL_x << 16, SUBTYPE_x = VAL_x << 8).
+                            || __subtype == (cyclonedds::TYPE_ARR >> 8);
                         __scan += match __primary {
+                            // [ADR, BST, 0, f] [offset] [max-size]
                             cyclonedds::TYPE_BST => 3,
-                            cyclonedds::TYPE_SEQ => if __subtype == cyclonedds::SUBTYPE_BST || __subtype == cyclonedds::SUBTYPE_STU { 4 } else { 2 },
-                            cyclonedds::TYPE_BSQ => if __subtype == cyclonedds::SUBTYPE_BST || __subtype == cyclonedds::SUBTYPE_STU { 5 } else { 3 },
-                            cyclonedds::TYPE_ARR => if __subtype == cyclonedds::SUBTYPE_STU { 5 } else if __subtype == cyclonedds::SUBTYPE_BST { 5 } else { 3 },
+                            // [ADR, ENU, 0, f] [offset] [max]
                             cyclonedds::TYPE_ENU => 3,
+                            // [ADR, SEQ, ...] [offset] (+[max] | +[max-size] | +[elem-size][next-insn])
+                            cyclonedds::TYPE_SEQ => {
+                                if __sub_composite {
+                                    4
+                                } else if __subtype == cyclonedds::SUBTYPE_ENU
+                                    || __subtype == cyclonedds::SUBTYPE_BST
+                                {
+                                    3
+                                } else {
+                                    2
+                                }
+                            }
+                            // [ADR, BSQ, ...] [offset] [sbound] (+...)
+                            cyclonedds::TYPE_BSQ => {
+                                if __sub_composite {
+                                    5
+                                } else if __subtype == cyclonedds::SUBTYPE_ENU
+                                    || __subtype == cyclonedds::SUBTYPE_BST
+                                {
+                                    4
+                                } else {
+                                    3
+                                }
+                            }
+                            // [ADR, ARR, ...] [offset] [alen] (+...)
+                            // ARR|BST is 5: [offset] [alen] [0] [max-size]
+                            cyclonedds::TYPE_ARR => {
+                                if __sub_composite || __subtype == cyclonedds::SUBTYPE_BST {
+                                    5
+                                } else if __subtype == cyclonedds::SUBTYPE_ENU {
+                                    4
+                                } else {
+                                    3
+                                }
+                            }
+                            // [ADR, UNI, d, z] [offset] [alen] [next-insn, cases]
+                            // (+[max] for an ENU discriminant)
+                            cyclonedds::TYPE_UNI => {
+                                if __subtype == cyclonedds::SUBTYPE_ENU {
+                                    5
+                                } else {
+                                    4
+                                }
+                            }
                             _ => 2,
                         };
                     } else {
@@ -777,11 +856,12 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 for __patch_pos in __patch_positions {
                     let __child_start = __ops.len() as u32;
                     let __op = __ops[__patch_pos];
-                    let __next_insn_words = if (__op & cyclonedds::OP_FLAG_EXT) != 0 {
-                        4u32
-                    } else {
-                        3u32
-                    };
+                    let __next_insn_words =
+                        if (__op & (cyclonedds::OP_FLAG_EXT | cyclonedds::OP_FLAG_OPT)) != 0 {
+                            4u32
+                        } else {
+                            3u32
+                        };
                     __ops[__patch_pos + 2] =
                         (__next_insn_words << 16) + (__child_start - (__patch_pos as u32));
                     let __child_ops = __tail_blocks[__tail_index].clone();
@@ -1349,7 +1429,34 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 let __disc = __native.__disc as u32;
                 match __disc {
                     #(#clone_out_arms)*
-                    _ => ::std::panic!("DdsUnion clone_out: unknown discriminator"),
+                    // Only reachable for unions declared without a
+                    // `#[dds_default]` variant. The discriminator arrives from
+                    // the network, so this is remote-triggerable: a peer built
+                    // from a different revision of the IDL is enough.
+                    //
+                    // Fabricating a variant here is not an option — reading a
+                    // union arm that is not the active one would dereference
+                    // garbage for any arm holding a string or sequence. So this
+                    // fails loudly instead. What makes that safe is that every
+                    // `extern "C"` entry point which can reach `clone_out`
+                    // (`content_filtered_topic::trampoline_filter_sample_arg`,
+                    // the listener trampolines) wraps it in `catch_unwind`, so
+                    // the panic is contained at the FFI boundary rather than
+                    // aborting the process. On the caller's own thread
+                    // (`read`/`take`) it is an ordinary, catchable panic.
+                    //
+                    // The real fix is a fallible `clone_out`, which is a
+                    // breaking change to the `DdsType` trait.
+                    //
+                    // Declaring a `#[dds_default]` variant avoids this path
+                    // entirely and is the recommended shape for any union
+                    // exchanged with peers you do not build in lockstep.
+                    _ => ::std::panic!(
+                        "DdsUnion clone_out: discriminator {} is not a declared case of {}; \
+                         add a #[dds_default] variant to accept unknown discriminators",
+                        __disc,
+                        #type_name_str,
+                    ),
                 }
             }
 
