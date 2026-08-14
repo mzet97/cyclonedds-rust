@@ -43,6 +43,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `STATUS_HEAP_CORRUPTION` before the fix. The pointer now lives in an `Rc<DescriptorOwner>`
   and is released once the last clone is dropped; `Rc` (not `Arc`) keeps the type
   `!Send`/`!Sync`, exactly as the raw-pointer version was. Found by the `xtypes.rs` audit.
+- **Three more copies of the wrong instruction-width table, one of them writing through
+  it** (`cyclonedds/src/type_discovery.rs`): the schema builder, `write_value_to_native`
+  and `read_value_from_native` each carried their own copy, all missing `ENU`, `ARR`,
+  `UNI` and `EXT`. The writer is the serious one: it takes `ops[i + 1]` as a byte offset
+  and does `base.add(offset)` before writing the field, so a desynchronised walk turns a
+  `max`, an `alen` or a jump word into an offset and writes out of bounds — heap
+  corruption, not merely wrong metadata. All three now call one shared, header-checked
+  `adr_step`.
+- **`write_value_to_native` named fields by word position** while the schema builder and
+  the reader name them by ordinal. `format!("field_{}", (i - ops_start) / 2)` assumes every
+  instruction is 2 words, so one 3-word field (a bounded string, say) skewed every later
+  name and those values silently failed to match the schema — data quietly not written.
+  Now uses a monotonic counter like the other two.
+- **Native sample buffer leaked on an early return** (`cyclonedds/src/type_discovery.rs`):
+  in both `dynamic_data_to_cdr` and `cdr_to_dynamic_data` the buffer was allocated before
+  the fallible key-name conversion, so a key name with an interior NUL returned through `?`
+  and leaked it — a raw pointer has no `Drop` to clean up. Introduced by this cycle's own
+  change from `unwrap()` to `map_err(..)?`; the allocation now happens after the fallible
+  work.
 - **`TopicDescriptor::parse_type` walked the ops array out of step**
   (`cyclonedds/src/xtypes.rs`): `adr_step` carried a second hand-maintained table of ADR
   instruction widths — the same class of defect as the derive's `ops()` scanner, in

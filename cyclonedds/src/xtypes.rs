@@ -941,7 +941,7 @@ fn classify_primary_type(primary: u32) -> TypeKind {
 /// scanner: it knows where it emitted each instruction. That is not available
 /// here, since this parses an ops array handed over by CycloneDDS, so the table
 /// has to be right.
-fn adr_step(ops: &[u32], i: usize) -> usize {
+pub(crate) fn adr_step(ops: &[u32], i: usize) -> usize {
     if i >= ops.len() {
         return ops.len().saturating_sub(i).max(1);
     }
