@@ -8,7 +8,7 @@ description = "Proc-macro derive for cyclonedds-rust DdsType trait"
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
-readme.workspace = true
+readme = "README.md"
 keywords = ["dds", "cyclonedds", "derive", "macro"]
 categories = ["network-programming", "development-tools::procedural-macro-helpers"]
 

@@ -12,7 +12,7 @@ Linux: `sudo apt install cyclonedds-dev` | macOS: `brew install cyclonedds` | Wi
 
 ```toml
 [dependencies]
-cyclonedds = "1.7"  # async is enabled by default
+cyclonedds = "2.0"  # async is enabled by default
 ```
 
 ## Define a Topic Type
@@ -24,6 +24,12 @@ use cyclonedds::*;
 struct HelloWorld { id: i32, message: [u8; 256] }
 
 impl DdsType for HelloWorld {
+    // Mandatory since 2.0.0: the DDS wire representation of this type. For a
+    // fixed-size `#[repr(C)]` type with no heap-allocated fields it is `Self`;
+    // for a type with `String`/`Vec` fields the derive macro generates a
+    // distinct, smaller struct instead.
+    type Native = Self;
+
     fn type_name() -> &'static str { "HelloWorld" }
     fn ops() -> Vec<u32> {
         let mut ops = Vec::new();

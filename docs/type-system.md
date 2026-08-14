@@ -8,12 +8,12 @@ Every topic type must implement `DdsType`. Required methods: `type_name()`, `ops
 
 ## DdsType Derive
 
-The `#[derive(DdsType)]` macro generates all trait methods automatically from a struct with named fields.
+The `#[derive(DdsTypeDerive)]` macro generates all trait methods automatically from a struct with named fields.
 
 ```rust
-use cyclonedds::DdsType;
+use cyclonedds::DdsTypeDerive;
 
-#[derive(DdsType)]
+#[derive(DdsTypeDerive)]
 struct SensorReading {
     #[key]
     sensor_id: i32,
@@ -29,7 +29,7 @@ The macro generates: `type_name()`, `ops()`, `clone_out()`, `descriptor_size()`,
 Mark fields with `#[key]` to define DDS instance keys:
 
 ```rust
-#[derive(DdsType)]
+#[derive(DdsTypeDerive)]
 struct Measurement {
     #[key]
     device_id: i32,
@@ -44,10 +44,10 @@ struct Measurement {
 Mark fields with `#[dds_enum]` to indicate the field type is a DDS enum:
 
 ```rust
-#[derive(DdsEnum)]
+#[derive(DdsEnumDerive)]
 enum Status { Ok = 0, Warning = 1, Error = 2 }
 
-#[derive(DdsType)]
+#[derive(DdsTypeDerive)]
 struct Reading {
     #[key]
     id: i32,
@@ -61,7 +61,7 @@ struct Reading {
 For fieldless (C-like) enums used as DDS enumerations:
 
 ```rust
-#[derive(DdsEnum)]
+#[derive(DdsEnumDerive)]
 enum Color {
     Red = 0,
     Green = 1,
@@ -76,7 +76,7 @@ Generates the `DdsEnumType` trait impl with `max_discriminant()`. Supports expli
 Discriminated unions mapping to IDL `union` types. Use attributes to define the discriminant and each case.
 
 ```rust
-#[derive(DdsUnion)]
+#[derive(DdsUnionDerive)]
 #[dds_discriminant(u8)]
 enum Value {
     #[dds_case(0)]
@@ -102,7 +102,7 @@ Case members support primitives (i8..i64, u8..u64, f32, f64, bool) and String.
 Bitmask types mapping to IDL `bitmask` with a configurable bit bound.
 
 ```rust
-#[derive(DdsBitmask)]
+#[derive(DdsBitmaskDerive)]
 #[bit_bound(8)]
 struct Permissions {
     read: bool,
@@ -148,10 +148,10 @@ p.set_write(true);               // setter
 ## Nested Types
 
 ```rust
-#[derive(DdsType)]
+#[derive(DdsTypeDerive)]
 struct Position { x: f64, y: f64, z: f64 }
 
-#[derive(DdsType)]
+#[derive(DdsTypeDerive)]
 struct Vehicle {
     #[key]
     id: i32,

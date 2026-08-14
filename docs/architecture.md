@@ -74,7 +74,7 @@ flowchart TB
     TEST --> SYS
 
     %% Derive macro usage
-    DERIVE -.->|"#[derive(DdsType)]\ngenerates ops() impl"| CYCLONE
+    DERIVE -.->|"#[derive(DdsTypeDerive)]\ngenerates ops() impl"| CYCLONE
 
     %% Build tools
     BUILD -.->|"IDL → Rust code\ngeneration at build time"| CYCLONE
@@ -97,7 +97,7 @@ sequenceDiagram
     participant C as CycloneDDS C
     participant Net as DDS Network
 
-    Note over App: Define topic type<br/>#[derive(DdsType)]
+    Note over App: Define topic type<br/>#[derive(DdsTypeDerive)]
     
     App->>API: DomainParticipant::new(0)
     API->>FFI: dds_create_participant()
@@ -177,7 +177,7 @@ flowchart LR
     end
 
     subgraph "Layer 2: Code Generation"
-        L2A["cyclonedds-derive\n#[derive(DdsType)]"]
+        L2A["cyclonedds-derive\n#[derive(DdsTypeDerive)]"]
         L2B["cyclonedds-build\nIDL → Rust codegen"]
     end
 

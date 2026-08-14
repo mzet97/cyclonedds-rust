@@ -105,7 +105,7 @@ let cft = ContentFilteredTopic::new(&topic, |s: &T| s.id > 10)?;
 
 1. **Entity handles**: Rust uses `entity()` to get the raw handle; Python entities are handles directly.
 2. **Lifetime**: Rust `Topic`, `DataReader`, `DataWriter` are bound to their parent participant's lifetime. Dropping the participant invalidates children.
-3. **Type registration**: In Rust, `Topic::<T>` requires `T: DdsType`. Use `#[derive(DdsType)]` or implement the trait manually.
+3. **Type registration**: In Rust, `Topic::<T>` requires `T: DdsType`. Use `#[derive(DdsTypeDerive)]` or implement the trait manually.
 4. **No `Sample<T>` wrapper**: Unlike Python, Rust `read()` / `take()` return `Vec<T>` directly.
 
 ## Feature Parity
