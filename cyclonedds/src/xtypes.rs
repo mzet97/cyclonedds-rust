@@ -2,7 +2,8 @@ use crate::{
     error::check, qos::Qos, DdsError, DdsResult, TopicKeyDescriptor, UntypedTopic,
     DDS_OP_MASK_CONST, DDS_OP_SUBTYPE_MASK_CONST, DDS_OP_TYPE_MASK_CONST, OP_ADR, OP_DLC,
     OP_FLAG_EXT, OP_FLAG_KEY, OP_FLAG_MU, OP_FLAG_OPT, OP_JEQ4, OP_KOF, OP_MID, OP_RTS,
-    SUBTYPE_BST, TYPE_1BY, TYPE_2BY, TYPE_4BY, TYPE_8BY, TYPE_ARR, TYPE_BSQ, TYPE_BST, TYPE_ENU,
+    SUBTYPE_BSQ, SUBTYPE_BST, SUBTYPE_ENU, SUBTYPE_SEQ, SUBTYPE_STU, TYPE_1BY, TYPE_2BY, TYPE_4BY,
+    TYPE_8BY, TYPE_ARR, TYPE_BSQ, TYPE_BST, TYPE_ENU,
     TYPE_EXT, TYPE_SEQ, TYPE_STR, TYPE_UNI,
 };
 use cyclonedds_rust_sys::*;
@@ -925,23 +926,90 @@ fn classify_primary_type(primary: u32) -> TypeKind {
     }
 }
 
-/// Determine the step size (number of u32 words consumed) for an ADR opcode
-/// starting at position `i` in the ops array.
+/// Number of `u32` words an ADR instruction at `i` occupies.
+///
+/// Widths come from the `[ADR, ...]` table in `dds_opcodes.h`. Getting one wrong
+/// makes [`TopicDescriptor::parse_type`] land mid-instruction, read a data word
+/// as an opcode and invent members that do not exist.
+///
+/// The previous version omitted `ENU`, `ARR`, `UNI` and `EXT` entirely — they all
+/// fell through to 2 — so any type containing an enum, array, union or nested
+/// struct was mis-walked. `ARR` alone is 3 words minimum, so a plain `[i32; N]`
+/// field put the walk permanently out of phase.
+///
+/// The derive had the same class of defect and was fixed by *deleting* its
+/// scanner: it knows where it emitted each instruction. That is not available
+/// here, since this parses an ops array handed over by CycloneDDS, so the table
+/// has to be right.
 fn adr_step(ops: &[u32], i: usize) -> usize {
     if i >= ops.len() {
-        return ops.len() - i;
+        return ops.len().saturating_sub(i).max(1);
     }
     let op = ops[i];
     let primary = op & DDS_OP_TYPE_MASK_CONST;
     let subtype = op & DDS_OP_SUBTYPE_MASK_CONST;
-    match primary {
+    // Composite element types carry [elem-size] and a [next-insn, elem-insn] word.
+    let sub_composite = subtype == SUBTYPE_STU
+        || subtype == SUBTYPE_SEQ
+        || subtype == SUBTYPE_BSQ
+        || subtype == (TYPE_ARR >> 8);
+    let step = match primary {
+        // [ADR, BST, 0, f] [offset] [max-size]
         TYPE_BST => 3,
-        TYPE_SEQ if subtype == SUBTYPE_BST => 3,
-        TYPE_SEQ => 2,
-        TYPE_BSQ if subtype == SUBTYPE_BST => 4,
-        TYPE_BSQ => 3,
+        // [ADR, ENU, 0, f] [offset] [max]
+        TYPE_ENU => 3,
+        // [ADR, SEQ, ...] [offset] (+[max] | +[max-size] | +[elem-size][next-insn])
+        TYPE_SEQ => {
+            if sub_composite {
+                4
+            } else if subtype == SUBTYPE_ENU || subtype == SUBTYPE_BST {
+                3
+            } else {
+                2
+            }
+        }
+        // [ADR, BSQ, ...] [offset] [sbound] (+...)
+        TYPE_BSQ => {
+            if sub_composite {
+                5
+            } else if subtype == SUBTYPE_ENU || subtype == SUBTYPE_BST {
+                4
+            } else {
+                3
+            }
+        }
+        // [ADR, ARR, ...] [offset] [alen] (+...); ARR|BST adds [0] [max-size]
+        TYPE_ARR => {
+            if sub_composite || subtype == SUBTYPE_BST {
+                5
+            } else if subtype == SUBTYPE_ENU {
+                4
+            } else {
+                3
+            }
+        }
+        // [ADR, UNI, d, z] [offset] [alen] [next-insn, cases] (+[max] for ENU)
+        TYPE_UNI => {
+            if subtype == SUBTYPE_ENU {
+                5
+            } else {
+                4
+            }
+        }
+        // [ADR, e|EXT, 0, f] [offset] [next-insn, elem-insn]
+        // [elem-size iff the external flag e is set, or f has DDS_OP_FLAG_OPT]
+        TYPE_EXT => {
+            if (op & (OP_FLAG_EXT | OP_FLAG_OPT)) != 0 {
+                4
+            } else {
+                3
+            }
+        }
+        // 1BY/2BY/4BY/8BY/BLN/STR/WSTR: [ADR, ..] [offset]
         _ => 2,
-    }
+    };
+    // Never return 0: the caller's loop would not terminate.
+    step.max(1)
 }
 
 impl TopicDescriptor {

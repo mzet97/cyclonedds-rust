@@ -43,6 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `STATUS_HEAP_CORRUPTION` before the fix. The pointer now lives in an `Rc<DescriptorOwner>`
   and is released once the last clone is dropped; `Rc` (not `Arc`) keeps the type
   `!Send`/`!Sync`, exactly as the raw-pointer version was. Found by the `xtypes.rs` audit.
+- **`TopicDescriptor::parse_type` walked the ops array out of step**
+  (`cyclonedds/src/xtypes.rs`): `adr_step` carried a second hand-maintained table of ADR
+  instruction widths — the same class of defect as the derive's `ops()` scanner, in
+  another location — and this one omitted `ENU`, `ARR`, `UNI` and `EXT` entirely; all
+  fell through to 2 words. `ARR` is 3 minimum and `ENU`/`EXT` are 3, so a single array,
+  enum or nested-struct field put the walk permanently out of phase and members after it
+  simply vanished from the result (a 3-member type reported 2). Bounds-checked
+  throughout, so never memory-unsafe — it just made a public introspection API describe
+  a type that does not exist. The table now matches `dds_opcodes.h`. Unlike the derive,
+  this one cannot be deleted: the ops array comes from CycloneDDS, so it has to be right.
+  Found by the `xtypes.rs` audit.
 - Pre-existing clippy findings that only surface on the MSRV toolchain: a duplicated
   `#[cfg(feature = "std")]` in `lib.rs` and two needless lifetimes.
 
