@@ -341,20 +341,43 @@ impl<T: DdsType> DataReader<T> {
 
     // ── Instance management ──
 
+    /// Resolve the instance handle for the given sample's key.
+    ///
+    /// Routes through [`DdsType::write_to_native`] like every writer-side
+    /// method: CycloneDDS reads the key at the *native* offsets, so passing
+    /// `&T` directly made it interpret the middle of a Rust `String` as a
+    /// `char*` (`strlen` over an arbitrary address). Mirrors
+    /// [`DataWriter::lookup_instance`](crate::DataWriter::lookup_instance),
+    /// including returning `0` when the sample cannot be converted.
     pub fn lookup_instance(&self, data: &T) -> dds_instance_handle_t {
-        unsafe { dds_lookup_instance(self.entity, data as *const T as *const std::ffi::c_void) }
+        let mut arena = crate::write_arena::WriteArena::new();
+        match data.write_to_native(&mut arena) {
+            Ok(ptr) => unsafe { dds_lookup_instance(self.entity, ptr) },
+            Err(_) => 0,
+        }
     }
 
+    /// Recover the key fields of an instance as an owned `T`.
+    ///
+    /// CycloneDDS writes the key using the topic descriptor's layout — that is
+    /// `T::Native`, whose size is what `descriptor_size()` reports. The buffer
+    /// is therefore a `MaybeUninit<T::Native>` (any bit pattern is legal there)
+    /// and is converted with [`DdsType::clone_out`]. The previous
+    /// `let mut data: T = mem::zeroed()` was invalid three ways over: an
+    /// all-zero `String`/`Vec` violates the `NonNull` niche inside it (rustc
+    /// rejects it outright in debug builds), the buffer was sized
+    /// `size_of::<T>()` rather than the native size, and the returned value
+    /// would have been freed by Rust over `ddsrt_malloc`-owned memory.
     pub fn instance_get_key(&self, ih: dds_instance_handle_t) -> DdsResult<T> {
         unsafe {
-            let mut data: T = std::mem::zeroed();
+            let mut native = std::mem::MaybeUninit::<T::Native>::zeroed();
             let ret = dds_instance_get_key(
                 self.entity,
                 ih,
-                &mut data as *mut T as *mut std::ffi::c_void,
+                native.as_mut_ptr() as *mut std::ffi::c_void,
             );
-            check_entity(ret)?;
-            Ok(data)
+            crate::error::check(ret)?;
+            Ok(T::clone_out(native.as_ptr() as *const T))
         }
     }
 

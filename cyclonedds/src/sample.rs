@@ -86,10 +86,39 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = Sample<&T>> {
+    /// Iterate over the loaned samples as owned `T` values.
+    ///
+    /// The loaned memory holds `T::Native`, *not* `T` — for a type with
+    /// `String`/`Vec` fields those are `DdsString` (8 bytes) / `DdsSequence` on
+    /// the wire, where `T` expects `String` (24 bytes) / `Vec`. Handing out
+    /// `&T` over that buffer (as this method used to do) is an out-of-bounds
+    /// read, and cloning through such a reference corrupts the heap: the
+    /// resulting `String` carries a garbage capacity/length and is later freed
+    /// by Rust over memory it never allocated. Each sample is therefore
+    /// converted with [`DdsType::clone_out`], the same path already used by
+    /// `read`/`take`/`read_next`.
+    ///
+    /// For a genuinely zero-copy view, use [`iter_native`](Self::iter_native).
+    pub fn iter(&self) -> impl Iterator<Item = Sample<T>> + '_ {
         (0..self.count).map(move |i| unsafe {
             Sample {
-                data: &*(self.samples[i] as *const T),
+                data: T::clone_out(self.samples[i] as *const T),
+                info: self.infos[i],
+            }
+        })
+    }
+
+    /// Zero-copy view over the loaned samples, borrowing the DDS-owned buffers
+    /// directly as [`DdsType::Native`].
+    ///
+    /// This is the wire representation: for a type with `String`/`Vec` fields
+    /// you get `DdsString`/`DdsSequence`, not `String`/`Vec`. Nothing is
+    /// copied, so this is the path to use when the sample is large and only a
+    /// few fields are read. The borrow ends when the `Loan` is dropped.
+    pub fn iter_native(&self) -> impl Iterator<Item = Sample<&T::Native>> + '_ {
+        (0..self.count).map(move |i| unsafe {
+            Sample {
+                data: &*(self.samples[i] as *const T::Native),
                 info: self.infos[i],
             }
         })
@@ -103,16 +132,13 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
         self.count == 0
     }
 
-    pub fn to_vec(&self) -> Vec<Sample<T>>
-    where
-        T: Clone,
-    {
-        self.iter()
-            .map(|s| Sample {
-                data: s.data.clone(),
-                info: s.info,
-            })
-            .collect()
+    /// Copy every loaned sample out into owned values.
+    ///
+    /// No longer requires `T: Clone` — the conversion goes through
+    /// [`DdsType::clone_out`], which is the only sound way to read the native
+    /// buffer (see [`iter`](Self::iter)).
+    pub fn to_vec(&self) -> Vec<Sample<T>> {
+        self.iter().collect()
     }
 }
 
