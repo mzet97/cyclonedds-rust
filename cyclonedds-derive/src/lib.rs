@@ -245,6 +245,9 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 quote! { #word_count }
             } else {
                 main_ops_parts.push(quote! {
+                    // See the sibling TYPE_EXT emission below: the position is
+                    // recorded here rather than recovered by scanning.
+                    __patch_positions.push(__ops.len());
                     __ops.push(cyclonedds::OP_ADR | cyclonedds::OP_FLAG_OPT | cyclonedds::OP_FLAG_EXT | cyclonedds::TYPE_EXT);
                     __ops.push(#offset_expr);
                     __ops.push(0u32);
@@ -500,6 +503,9 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             quote! { #word_count }
         } else {
             main_ops_parts.push(quote! {
+                // Record where this TYPE_EXT lands so the patch step below can
+                // find it without re-scanning the instruction stream.
+                __patch_positions.push(__ops.len());
                 __ops.push(
                     cyclonedds::OP_ADR
                         | if <#field_ty as cyclonedds::DdsType>::key_count() > 0 {
@@ -746,42 +752,29 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             fn ops() -> ::std::vec::Vec<u32> {
                 let mut __ops = ::std::vec::Vec::new();
                 let mut __tail_blocks: ::std::vec::Vec<::std::vec::Vec<u32>> = ::std::vec::Vec::new();
+                // Filled in by the field emitters as they push each
+                // ADR|TYPE_EXT instruction. This replaces a scanner that
+                // re-walked the finished instruction stream trying to recover
+                // those positions, which required a table of per-instruction
+                // widths that has to stay in lockstep with dds_opcodes.h — ten
+                // of its entries did not, and it only worked because a skipped
+                // data word rarely looks like an opcode. The emitter already
+                // knows where it put them, so nothing needs to be inferred.
+                #[allow(unused_mut)]
+                let mut __patch_positions: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
                 #(#main_ops_parts)*
                 #(#tail_block_parts)*
-                let mut __patch_positions = ::std::vec::Vec::new();
-                let mut __scan = 0usize;
-                while __scan < __ops.len() {
-                    let __op = __ops[__scan];
-                    if (__op & cyclonedds::DDS_OP_MASK_CONST) == cyclonedds::OP_ADR
-                        && (__op & cyclonedds::DDS_OP_TYPE_MASK_CONST) == cyclonedds::TYPE_EXT
-                    {
-                        __patch_positions.push(__scan);
-                        __scan += 3;
-                    } else if (__op & cyclonedds::DDS_OP_MASK_CONST) == cyclonedds::OP_ADR {
-                        let __primary = __op & cyclonedds::DDS_OP_TYPE_MASK_CONST;
-                        let __subtype = __op & cyclonedds::DDS_OP_SUBTYPE_MASK_CONST;
-                        __scan += match __primary {
-                            cyclonedds::TYPE_BST => 3,
-                            cyclonedds::TYPE_SEQ => if __subtype == cyclonedds::SUBTYPE_BST || __subtype == cyclonedds::SUBTYPE_STU { 4 } else { 2 },
-                            cyclonedds::TYPE_BSQ => if __subtype == cyclonedds::SUBTYPE_BST || __subtype == cyclonedds::SUBTYPE_STU { 5 } else { 3 },
-                            cyclonedds::TYPE_ARR => if __subtype == cyclonedds::SUBTYPE_STU { 5 } else if __subtype == cyclonedds::SUBTYPE_BST { 5 } else { 3 },
-                            cyclonedds::TYPE_ENU => 3,
-                            _ => 2,
-                        };
-                    } else {
-                        __scan += 1;
-                    }
-                }
                 __ops.push(cyclonedds::OP_RTS);
                 let mut __tail_index = 0usize;
                 for __patch_pos in __patch_positions {
                     let __child_start = __ops.len() as u32;
                     let __op = __ops[__patch_pos];
-                    let __next_insn_words = if (__op & cyclonedds::OP_FLAG_EXT) != 0 {
-                        4u32
-                    } else {
-                        3u32
-                    };
+                    let __next_insn_words =
+                        if (__op & (cyclonedds::OP_FLAG_EXT | cyclonedds::OP_FLAG_OPT)) != 0 {
+                            4u32
+                        } else {
+                            3u32
+                        };
                     __ops[__patch_pos + 2] =
                         (__next_insn_words << 16) + (__child_start - (__patch_pos as u32));
                     let __child_ops = __tail_blocks[__tail_index].clone();
@@ -1349,7 +1342,34 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 let __disc = __native.__disc as u32;
                 match __disc {
                     #(#clone_out_arms)*
-                    _ => ::std::panic!("DdsUnion clone_out: unknown discriminator"),
+                    // Only reachable for unions declared without a
+                    // `#[dds_default]` variant. The discriminator arrives from
+                    // the network, so this is remote-triggerable: a peer built
+                    // from a different revision of the IDL is enough.
+                    //
+                    // Fabricating a variant here is not an option — reading a
+                    // union arm that is not the active one would dereference
+                    // garbage for any arm holding a string or sequence. So this
+                    // fails loudly instead. What makes that safe is that every
+                    // `extern "C"` entry point which can reach `clone_out`
+                    // (`content_filtered_topic::trampoline_filter_sample_arg`,
+                    // the listener trampolines) wraps it in `catch_unwind`, so
+                    // the panic is contained at the FFI boundary rather than
+                    // aborting the process. On the caller's own thread
+                    // (`read`/`take`) it is an ordinary, catchable panic.
+                    //
+                    // The real fix is a fallible `clone_out`, which is a
+                    // breaking change to the `DdsType` trait.
+                    //
+                    // Declaring a `#[dds_default]` variant avoids this path
+                    // entirely and is the recommended shape for any union
+                    // exchanged with peers you do not build in lockstep.
+                    _ => ::std::panic!(
+                        "DdsUnion clone_out: discriminator {} is not a declared case of {}; \
+                         add a #[dds_default] variant to accept unknown discriminators",
+                        __disc,
+                        #type_name_str,
+                    ),
                 }
             }
 

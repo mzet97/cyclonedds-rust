@@ -1,4 +1,4 @@
-use crate::DdsResult;
+use crate::{DdsError, DdsResult};
 use cyclonedds_rust_sys::*;
 use std::ffi::{CStr, CString};
 
@@ -523,12 +523,14 @@ impl QosBuilder {
             }
 
             if let Some(ref name) = self.partition {
-                let c_name = CString::new(name.as_str()).unwrap();
+                let c_name = CString::new(name.as_str())
+                    .map_err(|_| DdsError::BadParameter("QoS string contains null".into()))?;
                 dds_qset_partition1(qos.ptr, c_name.as_ptr());
             }
 
             if let Some(ref name) = self.entity_name {
-                let c_name = CString::new(name.as_str()).unwrap();
+                let c_name = CString::new(name.as_str())
+                    .map_err(|_| DdsError::BadParameter("QoS string contains null".into()))?;
                 dds_qset_entity_name(qos.ptr, c_name.as_ptr());
             }
 
@@ -662,7 +664,10 @@ impl QosBuilder {
             if let Some(values) = self.psmx_instances {
                 let cstrings: Vec<CString> = values
                     .iter()
-                    .map(|v| CString::new(v.as_str()).unwrap())
+                    .map(|v| CString::new(v.as_str())
+                        .map_err(|_| DdsError::BadParameter("QoS string contains null".into())))
+                    .collect::<DdsResult<Vec<_>>>()?
+                    .into_iter()
                     .collect();
                 let mut ptrs: Vec<*const ::std::ffi::c_char> =
                     cstrings.iter().map(|v| v.as_ptr()).collect();
@@ -670,8 +675,10 @@ impl QosBuilder {
             }
 
             for (name, value, propagate) in self.properties {
-                let c_name = CString::new(name).unwrap();
-                let c_value = CString::new(value).unwrap();
+                let c_name = CString::new(name)
+                    .map_err(|_| DdsError::BadParameter("QoS property name contains null".into()))?;
+                let c_value = CString::new(value)
+                    .map_err(|_| DdsError::BadParameter("QoS property value contains null".into()))?;
                 if propagate {
                     dds_qset_prop_propagate(qos.ptr, c_name.as_ptr(), c_value.as_ptr(), true);
                 } else {
@@ -680,7 +687,8 @@ impl QosBuilder {
             }
 
             for (name, value, propagate) in self.binary_properties {
-                let c_name = CString::new(name).unwrap();
+                let c_name = CString::new(name)
+                    .map_err(|_| DdsError::BadParameter("QoS property name contains null".into()))?;
                 if propagate {
                     dds_qset_bprop_propagate(
                         qos.ptr,
@@ -1319,7 +1327,7 @@ impl Qos {
                 return Ok(Some(Vec::new()));
             }
             let slice = std::slice::from_raw_parts(values, n as usize);
-            let result = slice
+            let collected: Vec<crate::DdsResult<DataRepresentation>> = slice
                 .iter()
                 .map(|value| match *value as u32 {
                     x if x == DDS_DATA_REPRESENTATION_XCDR1 => Ok(DataRepresentation::Xcdr1),
@@ -1329,8 +1337,13 @@ impl Qos {
                         "unknown data representation id: {other}"
                     ))),
                 })
-                .collect::<crate::DdsResult<Vec<_>>>()?;
+                .collect();
+            // Free before propagating. Collecting straight into
+            // `DdsResult<Vec<_>>` and applying `?` here skipped this call on the
+            // error path, so a peer advertising an unknown representation id —
+            // a remote input — leaked the array on every read of this policy.
             dds_free(values.cast());
+            let result = collected.into_iter().collect::<crate::DdsResult<Vec<_>>>()?;
             Ok(Some(result))
         }
     }

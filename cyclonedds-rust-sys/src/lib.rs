@@ -352,15 +352,69 @@ unsafe extern "C" {
 //   offset 96:  free
 //   ...
 
+/// Prefix of `struct ddsi_serdata` (ddsi_serdata.h). Only the leading fields
+/// are declared — the trailing ones (`kind`, `type`, `timestamp`, …) are not
+/// touched from Rust, but the layout up to `refc` must match exactly.
+#[repr(C)]
+struct SerdataHeader {
+    ops: *const SerdataOps,
+    hash: u32,
+    refc: ddsrt_atomic_uint32_t,
+}
+
+/// The `struct ddsi_serdata_ops` vtable (ddsi_serdata.h), in declaration order.
+///
+/// Slots this crate does not call are typed as opaque pointers — only their
+/// *position* matters, since every entry is a function pointer of uniform
+/// size. Declaring the struct instead of doing offset arithmetic is what keeps
+/// this correct: the previous version hand-computed byte offsets and, worse,
+/// dereferenced them as `u8` (`*(ops as *const u8).add(96)` reads one byte, not
+/// a pointer), then transmuted that 0..=255 value into a function pointer and
+/// called it — an immediate jump into an unmapped page on the first
+/// `read_cdr`/`take_cdr` with a live sample.
+#[repr(C)]
+struct SerdataOps {
+    eqkey: *const ::std::ffi::c_void,
+    get_size: Option<unsafe extern "C" fn(*const ddsi_serdata) -> u32>,
+    from_ser: *const ::std::ffi::c_void,
+    from_ser_iov: *const ::std::ffi::c_void,
+    from_keyhash: *const ::std::ffi::c_void,
+    from_sample: *const ::std::ffi::c_void,
+    to_ser: Option<
+        unsafe extern "C" fn(*const ddsi_serdata, usize, usize, *mut ::std::ffi::c_void),
+    >,
+    to_ser_ref: *const ::std::ffi::c_void,
+    to_ser_unref: *const ::std::ffi::c_void,
+    to_sample: *const ::std::ffi::c_void,
+    to_untyped: *const ::std::ffi::c_void,
+    untyped_to_sample: *const ::std::ffi::c_void,
+    free: Option<unsafe extern "C" fn(*mut ddsi_serdata)>,
+    // Trailing slots (print, get_keyhash, from_loaned_sample, from_psmx) are
+    // never read here and are intentionally omitted.
+}
+
+/// # Safety
+/// `d` must be a valid, non-null `ddsi_serdata` pointer.
+#[inline]
+unsafe fn serdata_refc(d: *const ddsi_serdata) -> *const AtomicU32 {
+    let hdr = d as *const SerdataHeader;
+    ::std::ptr::addr_of!((*hdr).refc.v) as *const AtomicU32
+}
+
+/// # Safety
+/// `d` must be a valid, non-null `ddsi_serdata` pointer.
+#[inline]
+unsafe fn serdata_ops(d: *const ddsi_serdata) -> *const SerdataOps {
+    (*(d as *const SerdataHeader)).ops
+}
+
 /// Increment the reference count of a serdata, returning the same pointer.
 ///
 /// # Safety
 /// `d` must be a valid, non-null `ddsi_serdata` pointer.
 #[inline]
 pub unsafe fn ddsi_serdata_ref(d: *const ddsi_serdata) -> *mut ddsi_serdata {
-    // refc is at offset 12 on 64-bit (after ops:8, hash:4)
-    let refc_ptr = (d as *const u8).add(12) as *const AtomicU32;
-    (*refc_ptr).fetch_add(1, Ordering::SeqCst);
+    (*serdata_refc(d)).fetch_add(1, Ordering::SeqCst);
     d as *mut ddsi_serdata
 }
 
@@ -371,13 +425,8 @@ pub unsafe fn ddsi_serdata_ref(d: *const ddsi_serdata) -> *mut ddsi_serdata {
 /// currently holds a reference to.
 #[inline]
 pub unsafe fn ddsi_serdata_unref(d: *mut ddsi_serdata) {
-    // refc at offset 12
-    let refc_ptr = (d as *const u8).add(12) as *const AtomicU32;
-    if (*refc_ptr).fetch_sub(1, Ordering::SeqCst) == 1 {
-        // ops at offset 0; free is at offset 96 in the vtable
-        let ops = *(d as *const *const u8);
-        let free_fn: unsafe extern "C" fn(*mut ddsi_serdata) =
-            ::std::mem::transmute(*(ops as *const u8).add(96) as *const ::std::ffi::c_void);
+    if (*serdata_refc(d)).fetch_sub(1, Ordering::SeqCst) == 1 {
+        let free_fn = (*serdata_ops(d)).free.expect("ddsi_serdata_ops.free");
         free_fn(d);
     }
 }
@@ -388,9 +437,9 @@ pub unsafe fn ddsi_serdata_unref(d: *mut ddsi_serdata) {
 /// `d` must be a valid, non-null `ddsi_serdata` pointer.
 #[inline]
 pub unsafe fn ddsi_serdata_size(d: *const ddsi_serdata) -> u32 {
-    let ops = *(d as *const *const u8);
-    let get_size: unsafe extern "C" fn(*const ddsi_serdata) -> u32 =
-        ::std::mem::transmute(*(ops as *const u8).add(8) as *const ::std::ffi::c_void);
+    let get_size = (*serdata_ops(d))
+        .get_size
+        .expect("ddsi_serdata_ops.get_size");
     get_size(d)
 }
 
@@ -406,9 +455,7 @@ pub unsafe fn ddsi_serdata_to_ser(
     sz: usize,
     buf: *mut ::std::ffi::c_void,
 ) {
-    let ops = *(d as *const *const u8);
-    let to_ser: unsafe extern "C" fn(*const ddsi_serdata, usize, usize, *mut ::std::ffi::c_void) =
-        ::std::mem::transmute(*(ops as *const u8).add(48) as *const ::std::ffi::c_void);
+    let to_ser = (*serdata_ops(d)).to_ser.expect("ddsi_serdata_ops.to_ser");
     to_ser(d, off, sz, buf);
 }
 

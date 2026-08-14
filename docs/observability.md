@@ -8,7 +8,7 @@ Add the `tracing` feature to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cyclonedds = { version = "1.7", features = ["tracing"] }
+cyclonedds = { version = "2.0", features = ["tracing"] }
 ```
 
 ## Instrumented operations

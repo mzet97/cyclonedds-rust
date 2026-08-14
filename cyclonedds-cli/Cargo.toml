@@ -8,7 +8,7 @@ description = "Command-line tools for CycloneDDS"
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
-readme.workspace = true
+readme = "README.md"
 keywords = ["dds", "cyclonedds", "cli", "tools"]
 categories = ["network-programming", "command-line-utilities"]
 

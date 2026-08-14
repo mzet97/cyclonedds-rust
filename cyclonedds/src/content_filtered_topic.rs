@@ -48,12 +48,35 @@ unsafe extern "C" fn trampoline_filter_sample_arg<T: DdsType + 'static>(
     if fa.type_id != std::any::TypeId::of::<T>() {
         return true;
     }
-    // The sample pointer comes from write_to_native, which may point to a
-    // #[repr(C)] native struct rather than the user struct T.  clone_out
-    // correctly interprets the native-layout pointer, so use it instead of
-    // a raw cast to *const T.
-    let data = T::clone_out(sample as *const T);
-    (fa.filter)(&data)
+
+    // Panic barrier. CycloneDDS calls this from its own thread, and a panic
+    // crossing the `extern "C"` frame aborts the process. Two independent
+    // sources of panic reach this point:
+    //
+    //   * the user's filter closure, and
+    //   * `T::clone_out` itself — for a `#[derive(DdsUnionDerive)]` type
+    //     declared without a `#[dds_default]` variant it panics on a
+    //     discriminator outside the known set, and that discriminator arrives
+    //     from the network. Without this barrier a remote peer (or one built
+    //     from a different revision of the IDL) could abort this process at
+    //     will.
+    //
+    // Fail closed on panic (exclude the sample) rather than passing unfiltered
+    // data through, matching `waitset.rs::trampoline_qc_filter`.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // The sample pointer comes from write_to_native, which may point to a
+        // #[repr(C)] native struct rather than the user struct T.  clone_out
+        // correctly interprets the native-layout pointer, so use it instead of
+        // a raw cast to *const T.
+        let data = T::clone_out(sample as *const T);
+        (fa.filter)(&data)
+    })) {
+        Ok(keep) => keep,
+        Err(_) => {
+            eprintln!("cyclonedds: content filter panicked; sample excluded");
+            false
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +246,12 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
             let key_defs = T::keys();
             let key_names: Vec<std::ffi::CString> = key_defs
                 .iter()
-                .map(|k| std::ffi::CString::new(k.name.as_str()).unwrap())
+                .map(|k| {
+                    std::ffi::CString::new(k.name.as_str())
+                        .map_err(|_| DdsError::BadParameter("key name contains null".into()))
+                })
+                .collect::<DdsResult<Vec<_>>>()?
+                .into_iter()
                 .collect();
             let mut keys: Vec<dds_key_descriptor> = Vec::with_capacity(key_defs.len());
             for (i, kd) in key_defs.iter().enumerate() {
@@ -241,7 +269,7 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
             if !post_key_ops.is_empty() {
                 ops.extend(post_key_ops);
             }
-            let meta = std::ffi::CString::new("").unwrap();
+            let meta = std::ffi::CString::default();
 
             let descriptor = dds_topic_descriptor {
                 m_size: T::descriptor_size(),

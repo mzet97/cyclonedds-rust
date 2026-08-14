@@ -6,9 +6,15 @@
 //! # Features
 //!
 //! - **`tracing`** -- enables `#[tracing::instrument]` spans on DDS operations.
-//! - **`opentelemetry`** -- re-exports `tracing-opentelemetry` and `opentelemetry-otlp`
-//!   so you can wire up OTLP export in your application.
+//! - **`opentelemetry`** -- pulls in `tracing-subscriber` and provides
+//!   [`init_json_logging`], a JSON + `RUST_LOG` subscriber suitable as the base
+//!   layer for an OTLP pipeline.
 //! - **`tokio-console`** -- exposes tokio tasks to the tokio-console debugger.
+//!
+//! This crate does **not** re-export `tracing-opentelemetry` or
+//! `opentelemetry-otlp` — they are not dependencies of `cyclonedds`. Add them to
+//! your own `Cargo.toml` and compose them with the subscriber below. (An earlier
+//! version of this doc claimed the re-export; it never existed.)
 //!
 //! # OpenTelemetry Setup
 //!
@@ -18,7 +24,8 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     init_json_logging();
-//!     // Configure your OTLP exporter here using opentelemetry-otlp
+//!     // Wire your OTLP exporter here with your own `opentelemetry-otlp` and
+//!     // `tracing-opentelemetry` dependencies.
 //!     // ... DDS code
 //! }
 //! ```

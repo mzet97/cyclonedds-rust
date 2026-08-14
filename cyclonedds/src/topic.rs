@@ -302,10 +302,16 @@ impl<T: DdsType> Topic<T> {
             }
 
             let key_defs = T::keys();
+            // A key name with an interior NUL is bad input, not a bug: report
+            // it like the topic name a few lines above rather than panicking.
             let key_names: Vec<CString> = key_defs
                 .iter()
-                .map(|k| CString::new(k.name.as_str()).unwrap())
-                .collect();
+                .map(|k| {
+                    CString::new(k.name.as_str()).map_err(|_| {
+                        DdsError::BadParameter("key name contains null".into())
+                    })
+                })
+                .collect::<DdsResult<_>>()?;
             let mut keys: Vec<dds_key_descriptor> = Vec::with_capacity(key_defs.len());
             for (i, kd) in key_defs.iter().enumerate() {
                 let offset = ops.len() as u32;
@@ -322,7 +328,7 @@ impl<T: DdsType> Topic<T> {
             if !post_key_ops.is_empty() {
                 ops.extend(post_key_ops);
             }
-            let meta = CString::new("").unwrap();
+            let meta = CString::default();
 
             // Blobs XTypes (TypeInformation/TypeMapping do idlc) quando o tipo os tem:
             // habilita DDS_TOPIC_XTYPES_METADATA para o SEDP anunciar type info.

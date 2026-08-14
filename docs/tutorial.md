@@ -21,7 +21,7 @@ Edit `Cargo.toml`:
 
 ```toml
 [dependencies]
-cyclonedds = "1.4"
+cyclonedds = "2.0"
 cyclonedds-derive = "1.4"
 ```
 

@@ -9,7 +9,7 @@ description = "Eclipse CycloneDDS C library source for building from source"
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
-readme.workspace = true
+readme = "README.md"
 keywords = ["dds", "cyclonedds", "source"]
 categories = ["external-ffi-bindings", "network-programming"]
 

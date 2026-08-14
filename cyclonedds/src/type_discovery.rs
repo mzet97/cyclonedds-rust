@@ -373,10 +373,15 @@ pub fn dynamic_data_to_cdr(
     let ops = descriptor.ops();
     let keys = descriptor.key_descriptors();
 
+    // A key name carrying an interior NUL is bad input, not a bug — report it
+    // like every other name in this crate rather than panicking.
     let key_names: Vec<std::ffi::CString> = keys
         .iter()
-        .map(|k| std::ffi::CString::new(k.name.as_str()).unwrap())
-        .collect();
+        .map(|k| {
+            std::ffi::CString::new(k.name.as_str())
+                .map_err(|_| DdsError::BadParameter("key name contains null".into()))
+        })
+        .collect::<DdsResult<_>>()?;
     let c_keys: Vec<dds_key_descriptor> = keys
         .iter()
         .enumerate()
@@ -471,10 +476,15 @@ pub fn cdr_to_dynamic_data(
     let ops = descriptor.ops();
     let keys = descriptor.key_descriptors();
 
+    // A key name carrying an interior NUL is bad input, not a bug — report it
+    // like every other name in this crate rather than panicking.
     let key_names: Vec<std::ffi::CString> = keys
         .iter()
-        .map(|k| std::ffi::CString::new(k.name.as_str()).unwrap())
-        .collect();
+        .map(|k| {
+            std::ffi::CString::new(k.name.as_str())
+                .map_err(|_| DdsError::BadParameter("key name contains null".into()))
+        })
+        .collect::<DdsResult<_>>()?;
     let c_keys: Vec<dds_key_descriptor> = keys
         .iter()
         .enumerate()

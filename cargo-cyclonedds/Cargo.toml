@@ -7,6 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Cargo plugin for generating Rust types from OMG IDL files for CycloneDDS"
+readme = "README.md"
 keywords = ["dds", "cyclonedds", "idl", "cargo-plugin"]
 categories = ["command-line-utilities", "development-tools"]
 

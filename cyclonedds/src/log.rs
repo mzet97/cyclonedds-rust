@@ -77,13 +77,36 @@ pub struct LogEntry {
 // ---------------------------------------------------------------------------
 
 /// Type-erased callback that the C trampoline will invoke.
-type LogCallback = Box<dyn Fn(LogEntry) + Send + Sync>;
+///
+/// `Arc`, not `Box`, so the trampoline can clone it out and release the mutex
+/// *before* running user code. Invoking the callback while holding the lock
+/// deadlocks the process if that callback logs anything that flows back through
+/// CycloneDDS.
+type LogCallback = std::sync::Arc<dyn Fn(LogEntry) + Send + Sync>;
 
 /// Global slot for the *log* sink callback.
 static LOG_SINK: Mutex<Option<LogCallback>> = Mutex::new(None);
 
 /// Global slot for the *trace* sink callback.
 static TRACE_SINK: Mutex<Option<LogCallback>> = Mutex::new(None);
+
+// Sink discriminators. Both sinks share one trampoline, so without a tag it is
+// impossible to tell which one fired — the previous version passed a null
+// `logdatum` for both and simply invoked *both* sinks, delivering every line
+// twice whenever a log sink and a trace sink were installed together.
+//
+// The addresses of these statics are the tags (an integer-to-pointer cast is
+// not permitted in const context).
+static LOG_SINK_TAG: u8 = 0;
+static TRACE_SINK_TAG: u8 = 0;
+
+fn log_tag() -> *mut std::ffi::c_void {
+    &LOG_SINK_TAG as *const u8 as *mut std::ffi::c_void
+}
+
+fn trace_tag() -> *mut std::ffi::c_void {
+    &TRACE_SINK_TAG as *const u8 as *mut std::ffi::c_void
+}
 
 // ---------------------------------------------------------------------------
 // C trampoline
@@ -95,7 +118,7 @@ static TRACE_SINK: Mutex<Option<LogCallback>> = Mutex::new(None);
 /// The `logdatum` pointer is a transparent `Box<LogCallback>` stored in the
 /// corresponding global.  We reconstruct a reference to it and call the
 /// Rust closure with a [`LogEntry`] built from the C data.
-unsafe extern "C" fn log_trampoline(_logdatum: *mut std::ffi::c_void, data: *const dds_log_data_t) {
+unsafe extern "C" fn log_trampoline(logdatum: *mut std::ffi::c_void, data: *const dds_log_data_t) {
     if data.is_null() {
         return;
     }
@@ -140,20 +163,31 @@ unsafe extern "C" fn log_trampoline(_logdatum: *mut std::ffi::c_void, data: *con
         domain_id,
     };
 
-    // _logdatum is unused – we look up the global instead.  This is safe
-    // because the trampoline is only active while the global contains a
-    // callback.
-    // We cannot know which sink (log vs trace) fired from here, so we
-    // attempt both.  Only the one that is set will invoke.
-    if let Ok(guard) = LOG_SINK.lock() {
-        if let Some(ref cb) = *guard {
-            cb(entry.clone());
-        }
-    }
-    if let Ok(guard) = TRACE_SINK.lock() {
-        if let Some(ref cb) = *guard {
-            cb(entry);
-        }
+    // `logdatum` tells us which sink fired, so each line is delivered exactly
+    // once. A null tag means the sink was registered by an older code path;
+    // fall back to trying both rather than dropping the line.
+    let slots: &[&Mutex<Option<LogCallback>>] = if logdatum == log_tag() {
+        &[&LOG_SINK]
+    } else if logdatum == trace_tag() {
+        &[&TRACE_SINK]
+    } else {
+        &[&LOG_SINK, &TRACE_SINK]
+    };
+
+    for slot in slots {
+        // Clone the Arc out and drop the guard before calling: holding the
+        // mutex across user code deadlocks if that code logs.
+        let callback = match slot.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let Some(cb) = callback else { continue };
+
+        // Panic barrier: this is an `extern "C"` frame called from a CycloneDDS
+        // thread, so a panicking user sink would abort the process. Contain it
+        // and keep going — losing a log line beats losing the application.
+        let entry = entry.clone();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || cb(entry)));
     }
 }
 
@@ -165,8 +199,8 @@ unsafe extern "C" fn log_trampoline(_logdatum: *mut std::ffi::c_void, data: *con
 ///
 /// Pass `None` to restore the default sink (writes to stderr).
 pub fn set_log_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
-    let mut slot = LOG_SINK.lock().unwrap();
-    *slot = callback;
+    let mut slot = LOG_SINK.lock().unwrap_or_else(|e| e.into_inner());
+    *slot = callback.map(LogCallback::from);
     let (cb, arg) = if slot.is_some() {
         (
             Some(
@@ -176,7 +210,7 @@ pub fn set_log_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
                         *const cyclonedds_rust_sys::dds_log_data_t,
                     ),
             ),
-            std::ptr::null_mut::<std::ffi::c_void>(),
+            log_tag(),
         )
     } else {
         (None, std::ptr::null_mut::<std::ffi::c_void>())
@@ -190,8 +224,8 @@ pub fn set_log_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
 ///
 /// Pass `None` to restore the default sink (writes to stderr).
 pub fn set_trace_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
-    let mut slot = TRACE_SINK.lock().unwrap();
-    *slot = callback;
+    let mut slot = TRACE_SINK.lock().unwrap_or_else(|e| e.into_inner());
+    *slot = callback.map(LogCallback::from);
     let (cb, arg) = if slot.is_some() {
         (
             Some(
@@ -201,7 +235,7 @@ pub fn set_trace_sink(callback: Option<Box<dyn Fn(LogEntry) + Send + Sync>>) {
                         *const cyclonedds_rust_sys::dds_log_data_t,
                     ),
             ),
-            std::ptr::null_mut::<std::ffi::c_void>(),
+            trace_tag(),
         )
     } else {
         (None, std::ptr::null_mut::<std::ffi::c_void>())
