@@ -167,6 +167,11 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         let direct_vec_composite = direct_vec_composite_info(field_ty)?;
         let composite_seq = composite_sequence_type(field_ty)?;
         let composite_bounded_seq = composite_bounded_sequence_type(field_ty)?;
+        // Which composite shape the ops chain below settled on, recorded once so
+        // the native-layout chain does not have to re-derive it from the same
+        // predicates in the same order. Two chains that must agree by
+        // construction is the shape the width-table defect had.
+        let mut native_kind = NativeKind::Plain;
         let nested_sequence = nested_sequence_info(field_ty, &offset_expr)?;
         let bounded_type = bounded_sequence_typecode(field_ty)?;
         let primitive_array = primitive_or_string_array_info(field_ty)?;
@@ -246,22 +251,18 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             } else {
                 main_ops_parts.push(quote! {
                     // See the sibling TYPE_EXT emission below: the position is
-                    // recorded here rather than recovered by scanning.
-                    __patch_positions.push(__ops.len());
+                    // recorded here rather than recovered by scanning. The `0`
+                    // width means "read it back off the opcode flags".
+                    __patch_positions.push((__ops.len(), 2usize, 0u32));
                     __ops.push(cyclonedds::OP_ADR | cyclonedds::OP_FLAG_OPT | cyclonedds::OP_FLAG_EXT | cyclonedds::TYPE_EXT);
                     __ops.push(#offset_expr);
                     __ops.push(0u32);
-                    __ops.push(::std::mem::size_of::<#inner_ty>() as u32);
+                    __ops.push(<#inner_ty as cyclonedds::DdsType>::descriptor_size());
                 });
                 tail_block_parts.push(quote! {
-                    __tail_blocks.push({
-                        let mut __v = ::std::vec::Vec::new();
-                        __v.extend(<#inner_ty as cyclonedds::DdsType>::ops());
-                        __v.push(cyclonedds::OP_RTS);
-                        __v
-                    });
+                    __tail_blocks.push(<#inner_ty as cyclonedds::DdsType>::ops());
                 });
-                quote! { 4u32 + <#inner_ty as cyclonedds::DdsType>::ops().len() as u32 + 1u32 }
+                quote! { 4u32 }
             }
         } else if is_enum {
             if let Some(inner_ty) = enum_direct_vec.clone() {
@@ -359,15 +360,16 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         } else if let Some(inner_ty) = direct_vec_composite.clone() {
             uses_native = true;
             main_ops_parts.push(quote! {
+                __patch_positions.push((__ops.len(), 3usize, 4u32));
                 __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_SEQ | cyclonedds::SUBTYPE_STU);
                 __ops.push(#offset_expr);
-                __ops.push(::std::mem::size_of::<#inner_ty>() as u32);
-                __ops.push((4u32 << 16) + 5u32);
-                __ops.push(cyclonedds::OP_RTS);
-                __ops.extend(<#inner_ty as cyclonedds::DdsType>::ops());
-                __ops.push(cyclonedds::OP_RTS);
+                __ops.push(<#inner_ty as cyclonedds::DdsType>::descriptor_size());
+                __ops.push(0u32);
             });
-            quote! { 6u32 + <#inner_ty as cyclonedds::DdsType>::ops().len() as u32 }
+            tail_block_parts.push(quote! {
+                __tail_blocks.push(<#inner_ty as cyclonedds::DdsType>::ops());
+            });
+            quote! { 4u32 }
         } else if direct_vec_string.is_some() {
             uses_native = true;
             main_ops_parts.push(quote! {
@@ -403,16 +405,18 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                     "keyed sequence-of-struct fields are not supported yet",
                 ));
             }
+            native_kind = NativeKind::CompositeSeq(inner_ty.clone());
             main_ops_parts.push(quote! {
+                __patch_positions.push((__ops.len(), 3usize, 4u32));
                 __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_SEQ | cyclonedds::SUBTYPE_STU);
                 __ops.push(#offset_expr);
-                __ops.push(::std::mem::size_of::<#inner_ty>() as u32);
-                __ops.push((4u32 << 16) + 5u32);
-                __ops.push(cyclonedds::OP_RTS);
-                __ops.extend(<#inner_ty as cyclonedds::DdsType>::ops());
-                __ops.push(cyclonedds::OP_RTS);
+                __ops.push(<#inner_ty as cyclonedds::DdsType>::descriptor_size());
+                __ops.push(0u32);
             });
-            quote! { 6u32 + <#inner_ty as cyclonedds::DdsType>::ops().len() as u32 }
+            tail_block_parts.push(quote! {
+                __tail_blocks.push(<#inner_ty as cyclonedds::DdsType>::ops());
+            });
+            quote! { 4u32 }
         } else if let Some((inner_ty, bound_expr)) = composite_bounded_seq {
             if is_key {
                 return Err(syn::Error::new_spanned(
@@ -420,17 +424,19 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                     "keyed bounded-sequence-of-struct fields are not supported yet",
                 ));
             }
+            native_kind = NativeKind::CompositeBoundedSeq(inner_ty.clone(), bound_expr.clone());
             main_ops_parts.push(quote! {
+                __patch_positions.push((__ops.len(), 4usize, 5u32));
                 __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_BSQ | cyclonedds::SUBTYPE_STU);
                 __ops.push(#offset_expr);
                 __ops.push(#bound_expr);
-                __ops.push(::std::mem::size_of::<#inner_ty>() as u32);
-                __ops.push((5u32 << 16) + 6u32);
-                __ops.push(cyclonedds::OP_RTS);
-                __ops.extend(<#inner_ty as cyclonedds::DdsType>::ops());
-                __ops.push(cyclonedds::OP_RTS);
+                __ops.push(<#inner_ty as cyclonedds::DdsType>::descriptor_size());
+                __ops.push(0u32);
             });
-            quote! { 7u32 + <#inner_ty as cyclonedds::DdsType>::ops().len() as u32 }
+            tail_block_parts.push(quote! {
+                __tail_blocks.push(<#inner_ty as cyclonedds::DdsType>::ops());
+            });
+            quote! { 5u32 }
         } else if let Some((typecode_expr, bound_expr)) = bounded_type {
             uses_native = true;
             if is_key {
@@ -474,17 +480,19 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 unreachable!()
             };
             let len_expr_tokens = &arr.len;
+            native_kind = NativeKind::CompositeArray(inner_ty.clone());
             main_ops_parts.push(quote! {
+                __patch_positions.push((__ops.len(), 3usize, 5u32));
                 __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_ARR | cyclonedds::SUBTYPE_STU);
                 __ops.push(#offset_expr);
                 __ops.push((#len_expr_tokens) as u32);
-                __ops.push((5u32 << 16) + 6u32);
-                __ops.push(::std::mem::size_of::<#inner_ty>() as u32);
-                __ops.push(cyclonedds::OP_RTS);
-                __ops.extend(<#inner_ty as cyclonedds::DdsType>::ops());
-                __ops.push(cyclonedds::OP_RTS);
+                __ops.push(0u32);
+                __ops.push(<#inner_ty as cyclonedds::DdsType>::descriptor_size());
             });
-            quote! { 7u32 + <#inner_ty as cyclonedds::DdsType>::ops().len() as u32 }
+            tail_block_parts.push(quote! {
+                __tail_blocks.push(<#inner_ty as cyclonedds::DdsType>::ops());
+            });
+            quote! { 5u32 }
         } else if let Some((typecode_expr, word_count)) = primitive_type {
             // DdsSequence / DdsBoundedSequence fields need native struct conversion
             // because the CDR serializer uses offsets from the #[repr(C)] native layout.
@@ -502,10 +510,11 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             }
             quote! { #word_count }
         } else {
+            native_kind = NativeKind::CompositeNested;
             main_ops_parts.push(quote! {
                 // Record where this TYPE_EXT lands so the patch step below can
                 // find it without re-scanning the instruction stream.
-                __patch_positions.push(__ops.len());
+                __patch_positions.push((__ops.len(), 2usize, 0u32));
                 __ops.push(
                     cyclonedds::OP_ADR
                         | if <#field_ty as cyclonedds::DdsType>::key_count() > 0 {
@@ -519,14 +528,9 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 __ops.push(0);
             });
             tail_block_parts.push(quote! {
-                __tail_blocks.push({
-                    let mut __v = ::std::vec::Vec::new();
-                    __v.extend(<#field_ty as cyclonedds::DdsType>::ops());
-                    __v.push(cyclonedds::OP_RTS);
-                    __v
-                });
+                __tail_blocks.push(<#field_ty as cyclonedds::DdsType>::ops());
             });
-            quote! { 3u32 + <#field_ty as cyclonedds::DdsType>::ops().len() as u32 + 1u32 }
+            quote! { 3u32 }
         };
         key_steps.push(if is_key {
             quote! {
@@ -648,15 +652,42 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             clone_fields.push(quote! {
                 #field_name: __raw.#field_name.to_vec(),
             });
-        } else if let Some(inner_ty) = direct_vec_composite.as_ref() {
-            let native_ty = quote! { cyclonedds::DdsSequence<#inner_ty> };
+        } else if let Some(inner_ty) = direct_vec_composite.as_ref().filter(|_| !is_enum) {
+            // `!is_enum` mirrors the ops chain, which gives `#[dds_enum]` first
+            // refusal: `Vec<SomeEnum>` matches "vector of non-primitive" too, but
+            // an enum is a scalar on the wire and has no native layout of its own.
+            // The element type on the wire is the inner type's *native* layout.
+            // Using `#inner_ty` here handed CycloneDDS a buffer of Rust values —
+            // with a `String` where the ops array said `char *` — and a stride
+            // that was too large by the difference between the two layouts.
+            let native_ty =
+                quote! { cyclonedds::DdsSequence<<#inner_ty as cyclonedds::DdsType>::Native> };
             native_fields.push(quote! { pub #field_name: #native_ty, });
             native_init_fields.push(quote! {
-                #field_name: <#native_ty>::from_slice(&self.#field_name)?,
+                #field_name: {
+                    let mut __elems = ::std::vec::Vec::with_capacity(self.#field_name.len());
+                    for __value in self.#field_name.iter() {
+                        __elems.push(
+                            <#inner_ty as cyclonedds::DdsNativeValue>::to_native_value(
+                                __value, arena,
+                            )?,
+                        );
+                    }
+                    cyclonedds::DdsSequence::from_vec(__elems)?
+                },
             });
             clone_fields.pop();
             clone_fields.push(quote! {
-                #field_name: __raw.#field_name.to_vec(),
+                #field_name: {
+                    let mut __out = ::std::vec::Vec::with_capacity(__raw.#field_name.len());
+                    for __element in __raw.#field_name.iter() {
+                        __out.push(<#inner_ty as cyclonedds::DdsType>::clone_out(
+                            __element as *const <#inner_ty as cyclonedds::DdsType>::Native
+                                as *const #inner_ty,
+                        )?);
+                    }
+                    __out
+                },
             });
         } else if direct_vec_string.is_some() {
             native_fields
@@ -690,6 +721,160 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             clone_fields.push(quote! {
                 #field_name: __raw.#field_name.to_vec(),
             });
+        } else if let NativeKind::CompositeSeq(inner_ty) = &native_kind {
+            // `DdsSequence<Inner>` declared directly by the user: same
+            // translation as `Vec<Inner>`, the element type on the wire is
+            // `Inner::Native`.
+            uses_native = true;
+            native_fields.push(quote! {
+                pub #field_name:
+                    cyclonedds::DdsSequence<<#inner_ty as cyclonedds::DdsType>::Native>,
+            });
+            native_init_fields.push(quote! {
+                #field_name: {
+                    let mut __elems = ::std::vec::Vec::with_capacity(self.#field_name.len());
+                    for __value in self.#field_name.iter() {
+                        __elems.push(
+                            <#inner_ty as cyclonedds::DdsNativeValue>::to_native_value(
+                                __value, arena,
+                            )?,
+                        );
+                    }
+                    cyclonedds::DdsSequence::from_vec(__elems)?
+                },
+            });
+            clone_fields.pop();
+            clone_fields.push(quote! {
+                #field_name: {
+                    let mut __out = ::std::vec::Vec::with_capacity(__raw.#field_name.len());
+                    for __element in __raw.#field_name.iter() {
+                        __out.push(<#inner_ty as cyclonedds::DdsType>::clone_out(
+                            __element as *const <#inner_ty as cyclonedds::DdsType>::Native
+                                as *const #inner_ty,
+                        )?);
+                    }
+                    cyclonedds::DdsSequence::from_vec(__out)?
+                },
+            });
+        } else if let NativeKind::CompositeBoundedSeq(inner_ty, bound_expr) = &native_kind {
+            uses_native = true;
+            native_fields.push(quote! {
+                pub #field_name: cyclonedds::DdsBoundedSequence<
+                    <#inner_ty as cyclonedds::DdsType>::Native,
+                    { #bound_expr as usize },
+                >,
+            });
+            native_init_fields.push(quote! {
+                #field_name: {
+                    let mut __elems = ::std::vec::Vec::with_capacity(self.#field_name.len());
+                    for __value in self.#field_name.iter() {
+                        __elems.push(
+                            <#inner_ty as cyclonedds::DdsNativeValue>::to_native_value(
+                                __value, arena,
+                            )?,
+                        );
+                    }
+                    cyclonedds::DdsBoundedSequence::from_vec(__elems)?
+                },
+            });
+            clone_fields.pop();
+            clone_fields.push(quote! {
+                #field_name: {
+                    let mut __out = ::std::vec::Vec::with_capacity(__raw.#field_name.len());
+                    for __element in __raw.#field_name.iter() {
+                        __out.push(<#inner_ty as cyclonedds::DdsType>::clone_out(
+                            __element as *const <#inner_ty as cyclonedds::DdsType>::Native
+                                as *const #inner_ty,
+                        )?);
+                    }
+                    cyclonedds::DdsBoundedSequence::from_vec(__out)?
+                },
+            });
+        } else if let NativeKind::CompositeArray(inner_ty) = &native_kind {
+            uses_native = true;
+            let Type::Array(arr) = field_ty else {
+                unreachable!()
+            };
+            let arr_len = &arr.len;
+            native_fields.push(quote! {
+                pub #field_name: [<#inner_ty as cyclonedds::DdsType>::Native; #arr_len],
+            });
+            native_init_fields.push(quote! {
+                #field_name: {
+                    let mut __elems = ::std::vec::Vec::with_capacity(#arr_len);
+                    for __value in self.#field_name.iter() {
+                        __elems.push(
+                            <#inner_ty as cyclonedds::DdsNativeValue>::to_native_value(
+                                __value, arena,
+                            )?,
+                        );
+                    }
+                    // Length is `#arr_len` by construction; `map_err` avoids
+                    // requiring `Debug` on the native element type.
+                    match <::std::vec::Vec<_> as ::std::convert::TryInto<
+                        [<#inner_ty as cyclonedds::DdsType>::Native; #arr_len],
+                    >>::try_into(__elems)
+                    {
+                        Ok(__array) => __array,
+                        Err(_) => return Err(cyclonedds::DdsError::BadParameter(
+                            concat!(
+                                "array length mismatch converting field `",
+                                stringify!(#field_name),
+                                "` to its native layout",
+                            )
+                            .into(),
+                        )),
+                    }
+                },
+            });
+            clone_fields.pop();
+            clone_fields.push(quote! {
+                #field_name: {
+                    let mut __out = ::std::vec::Vec::with_capacity(#arr_len);
+                    for __element in __raw.#field_name.iter() {
+                        __out.push(<#inner_ty as cyclonedds::DdsType>::clone_out(
+                            __element as *const <#inner_ty as cyclonedds::DdsType>::Native
+                                as *const #inner_ty,
+                        )?);
+                    }
+                    match <::std::vec::Vec<_> as ::std::convert::TryInto<
+                        [#inner_ty; #arr_len],
+                    >>::try_into(__out)
+                    {
+                        Ok(__array) => __array,
+                        Err(_) => return Err(cyclonedds::DdsError::BadParameter(
+                            concat!(
+                                "array length mismatch reading field `",
+                                stringify!(#field_name),
+                                "` from its native layout",
+                            )
+                            .into(),
+                        )),
+                    }
+                },
+            });
+        } else if matches!(native_kind, NativeKind::CompositeNested) {
+            // A nested struct/union member. Its sub-ops address the field
+            // through `Inner::Native`, so the enclosing native struct has to
+            // hold that layout too — keeping `#field_ty` here made the outer
+            // offsets and the inner ops describe two different structs.
+            uses_native = true;
+            native_fields.push(quote! {
+                pub #field_name: <#field_ty as cyclonedds::DdsType>::Native,
+            });
+            native_init_fields.push(quote! {
+                #field_name: <#field_ty as cyclonedds::DdsNativeValue>::to_native_value(
+                    &self.#field_name,
+                    arena,
+                )?,
+            });
+            clone_fields.pop();
+            clone_fields.push(quote! {
+                #field_name: <#field_ty as cyclonedds::DdsType>::clone_out(
+                    &__raw.#field_name as *const <#field_ty as cyclonedds::DdsType>::Native
+                        as *const #field_ty,
+                )?,
+            });
         } else {
             native_fields.push(quote! { pub #field_name: #field_ty, });
             native_init_fields.push(quote! {
@@ -719,14 +904,30 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 &'a self,
                 arena: &'a mut cyclonedds::write_arena::WriteArena,
             ) -> cyclonedds::DdsResult<*const ::std::ffi::c_void> {
-                let native = #native_name {
-                    #(#native_init_fields)*
-                };
+                let native =
+                    <Self as cyclonedds::DdsNativeValue>::to_native_value(self, arena)?;
                 Ok(arena.hold(native) as *const #native_name as *const ::std::ffi::c_void)
             }
         }
     } else {
         quote! {}
+    };
+
+    // Emitted for every type, not just the ones that need an arena write: a
+    // composite used as another type's element has to be convertible to its
+    // native layout even when it is POD itself.
+    let native_value_impl = quote! {
+        impl cyclonedds::DdsNativeValue for #name {
+            #[allow(unused_variables)]
+            fn to_native_value(
+                &self,
+                arena: &mut cyclonedds::write_arena::WriteArena,
+            ) -> cyclonedds::DdsResult<#native_name> {
+                Ok(#native_name {
+                    #(#native_init_fields)*
+                })
+            }
+        }
     };
 
     let clone_ptr = quote! {
@@ -735,6 +936,8 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
     let expanded = quote! {
         #native_struct
+
+        #native_value_impl
 
         impl cyclonedds::DdsType for #name {
             type Native = #native_name;
@@ -760,23 +963,37 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 // of its entries did not, and it only worked because a skipped
                 // data word rarely looks like an opcode. The emitter already
                 // knows where it put them, so nothing needs to be inferred.
+                // (instruction start, index of the jump word within it, width of
+                // the instruction). A width of 0 means "read it back off the
+                // opcode flags", which only TYPE_EXT needs — it is 3 words
+                // normally and 4 when OP_FLAG_EXT/OP_FLAG_OPT is set.
                 #[allow(unused_mut)]
-                let mut __patch_positions: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
+                let mut __patch_positions: ::std::vec::Vec<(usize, usize, u32)> =
+                    ::std::vec::Vec::new();
                 #(#main_ops_parts)*
                 #(#tail_block_parts)*
                 __ops.push(cyclonedds::OP_RTS);
                 let mut __tail_index = 0usize;
-                for __patch_pos in __patch_positions {
+                for (__insn_start, __jump_word, __insn_words) in __patch_positions {
                     let __child_start = __ops.len() as u32;
-                    let __op = __ops[__patch_pos];
-                    let __next_insn_words =
+                    let __next_insn_words = if __insn_words != 0 {
+                        __insn_words
+                    } else {
+                        let __op = __ops[__insn_start];
                         if (__op & (cyclonedds::OP_FLAG_EXT | cyclonedds::OP_FLAG_OPT)) != 0 {
                             4u32
                         } else {
                             3u32
-                        };
-                    __ops[__patch_pos + 2] =
-                        (__next_insn_words << 16) + (__child_start - (__patch_pos as u32));
+                        }
+                    };
+                    // High half: where the *next member* instruction is, relative
+                    // to this one — i.e. this instruction's width, because the
+                    // child block lives after the terminating RTS rather than
+                    // inline. Low half: where the child block starts. Emitting
+                    // the child inline made the high half point at an RTS, so
+                    // every member declared after a composite one was skipped.
+                    __ops[__insn_start + __jump_word] =
+                        (__next_insn_words << 16) + (__child_start - (__insn_start as u32));
                     let __child_ops = __tail_blocks[__tail_index].clone();
                     __ops.extend(__child_ops);
                     __tail_index += 1;
@@ -1827,6 +2044,25 @@ fn bounded_sequence_typecode(ty: &Type) -> syn::Result<Option<(TokenStream2, Tok
 
     let bound_tokens = quote! { (#bound_expr) as u32 };
     Ok(Some((typecode, bound_tokens)))
+}
+
+/// Which composite shape a field turned out to be, as decided by the ops chain.
+///
+/// The native-layout chain switches on this instead of re-running the same
+/// predicates: a member typed `[[Enum; 2]; 2]` matches several of them, and only
+/// the ops chain's ordering says which one wins. Deciding twice is how the ops
+/// width table went out of step with `dds_opcodes.h`.
+enum NativeKind {
+    /// Nothing to translate — the native field keeps the declared Rust type.
+    Plain,
+    /// `DdsSequence<Inner>` where `Inner` is a composite.
+    CompositeSeq(Type),
+    /// `DdsBoundedSequence<Inner, N>` where `Inner` is a composite.
+    CompositeBoundedSeq(Type, TokenStream2),
+    /// `[Inner; N]` where `Inner` is a composite.
+    CompositeArray(Type),
+    /// A directly nested composite member, emitted as `TYPE_EXT`.
+    CompositeNested,
 }
 
 fn composite_sequence_type(ty: &Type) -> syn::Result<Option<Type>> {

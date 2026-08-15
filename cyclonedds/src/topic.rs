@@ -268,6 +268,24 @@ pub trait DdsType: Sized + Send + 'static {
     }
 }
 
+/// Value-level conversion from a Rust sample to its [`DdsType::Native`] layout.
+///
+/// [`DdsType::write_to_native`] produces a *pointer* into a [`WriteArena`], which
+/// is all a top-level write needs. Building the element buffer of a
+/// `sequence<Struct>` needs the value itself, because the elements have to sit
+/// contiguously with the stride CycloneDDS was told about — and that stride is
+/// `size_of::<Native>()`, not `size_of::<Self>()`, for any element type with
+/// `String`/`Vec` fields.
+///
+/// This is a separate trait, and not another method on [`DdsType`], so that the
+/// manual `impl DdsType` blocks that already exist for POD types keep compiling.
+/// The derive implements it for every type it generates; a hand-written type
+/// used as a composite element without it fails with a missing-bound error at
+/// compile time rather than mis-serializing at run time.
+pub trait DdsNativeValue: DdsType {
+    fn to_native_value(&self, arena: &mut WriteArena) -> DdsResult<Self::Native>;
+}
+
 pub trait DdsEnumType: Sized + Copy + Send + 'static {
     fn max_discriminant() -> u32;
     fn enum_op_flags() -> u32 {

@@ -169,7 +169,8 @@ pub use string::DdsString;
 pub use subscriber::Subscriber;
 #[cfg(feature = "std")]
 pub use topic::{
-    adr, adr_bst, adr_key, rebase_ops, DdsEnumType, DdsType, DdsUnionType, DiscriminantType,
+    adr, adr_bst, adr_key, rebase_ops, DdsEnumType, DdsNativeValue, DdsType, DdsUnionType,
+    DiscriminantType,
     KeyDescriptor, Topic, TopicKeyDescriptor, UntypedTopic, DDS_OP_MASK_CONST,
     DDS_OP_SUBTYPE_MASK_CONST, DDS_OP_TYPE_MASK_CONST, OP_ADR, OP_DLC, OP_FLAG_EXT, OP_FLAG_FP,
     OP_FLAG_KEY, OP_FLAG_MU, OP_FLAG_OPT, OP_FLAG_SGN, OP_FLAG_SZ_SHIFT, OP_JEQ4, OP_KOF, OP_MID,

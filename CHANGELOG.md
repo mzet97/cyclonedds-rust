@@ -10,6 +10,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 `main` carries breaking changes and is versioned `3.0.0-alpha.1`. Anything tagged
 `v2.0.4` is the last release without them.
 
+### Fixed
+
+- **The member declared after a composite one was never serialized.** For a
+  `sequence<Struct>`, `sequence<Struct, N>` or `Struct[N]` member, the derive emitted the
+  element's sub-ops *inline*, immediately after the instruction, and wrote a constant jump
+  word — `(4<<16)+5` for sequences, `(5<<16)+6` for bounded sequences and arrays. In
+  CycloneDDS's encoding the high half of that word is the distance to the **next member's
+  instruction** and the low half the distance to the element's sub-ops. Both are positions,
+  not constants: the C `idlc` emits `(4<<16)+7` for the same sequence when a member follows
+  it, and puts the sub-ops after the terminating `RTS`. Hardcoding them made the "next
+  member" pointer land on an `RTS`, so the interpreter stopped there.
+
+  Consequences, in order of how quietly they happen: `struct { long h; sequence<P> items;
+  long tail; }` round-tripped with `tail` reset to `0`; with more members after it, or with
+  a keyed type, the same layout crashed the process — `STATUS_ACCESS_VIOLATION` on Windows.
+  Found by compiling the same IDL through `idlc` and comparing the arrays word by word,
+  which is now `cyclonedds-test-suite/tests/ops_vs_idlc.rs`. Reading the emitter had not
+  found it: the arrays look plausible, and the shape that works — a composite member
+  declared last — is the shape every existing test used.
+
+  All four composite shapes now go through the same patch step `TYPE_EXT` already used:
+  the child block is appended after the terminating `RTS` and the jump word is computed
+  once the layout is known.
+
+- **`#[key]` on a member declared after a composite one produced the wrong key offset.**
+  `keys()` advanced its ops index by the width of the instruction *plus the inlined child
+  block*, so the `KOF` operand pointed into the element's sub-ops rather than at the key's
+  own `ADR`. idlc emits `KOF | 1, 3` for `struct { P inner; @key long id; }`; the derive
+  emitted `9`. Fixed by counting only the main instruction stream, which is what the index
+  means. Also removes a redundant trailing `RTS` the derive appended to every nested block
+  — unreachable, but it inflated `m_nops` and was a real divergence from idlc.
+
+- **`Vec<Composite>` (and the other four composite shapes) mis-described any inner type
+  with heap fields.** The gap `writer.rs` documented in prose, now closed and wider than
+  recorded: the derive used the inner *Rust* type both as the `DdsSequence` element type
+  and as the element stride. For `Inner { name: String, v: i32 }` that stride is 32 where
+  the wire layout is 16, and the buffer handed to CycloneDDS held Rust `String` triples
+  where the ops array said `char *`. The same applied to a directly nested composite
+  member, to `DdsSequence<Inner>`, `DdsBoundedSequence<Inner, N>` and `[Inner; N]`, none of
+  which were named in the original note — for all of them the generated native struct kept
+  the Rust type while the sub-ops addressed the member through `Inner::Native`.
+
+  Each of the five reproduced first: four as `STATUS_ACCESS_VIOLATION`, one as a size
+  assertion. The `Native` translation is now applied recursively, via a new
+  `DdsNativeValue` trait (see below), and `tests/native_layout_recursive.rs` covers all
+  five shapes.
+
+### Added
+
+- `DdsNativeValue`, a trait carrying `to_native_value(&self, &mut WriteArena)`. Composite
+  elements need the native *value*, not the pointer `DdsType::write_to_native` returns,
+  because a `sequence<Struct>`'s elements have to sit contiguously at the stride the
+  descriptor declares. Deliberately a separate trait rather than another `DdsType` method,
+  so the ~19 hand-written `impl DdsType` blocks in this repository keep compiling; a manual
+  type used as a composite element without it fails to compile instead of mis-serializing.
+- `DdsSequence::from_vec` / `DdsBoundedSequence::from_vec`, the moving counterparts of
+  `from_slice`. The generated native structs own `DdsString`/`DdsSequence` fields and are
+  not `Clone`, so the element buffer has to be filled by moving rather than cloning.
+- `scripts/regen-ops-fixtures.sh` and `cyclonedds-test-suite/tests/idl/ops_reference.idl`:
+  the provenance of the expected ops arrays. `idlc` is not built by the normal build
+  (`-DBUILD_IDLC=OFF` in the `-sys` build script), so the script configures it out of tree.
+  Two differences from idlc are documented rather than matched: it appends a `KOF` chain to
+  `m_ops` where this crate builds one in `Topic::new` from `keys()`, and it shares one
+  sub-ops block between members of the same element type where the derive emits one each.
+  Both are valid encodings.
+
 ### Changed
 
 - **BREAKING**: every entity now owns its parents. `Publisher::new`, `Subscriber::new`,

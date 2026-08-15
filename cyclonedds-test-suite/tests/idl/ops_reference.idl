@@ -1,0 +1,83 @@
+// Reference IDL for the ops differential tests.
+//
+// `scripts/regen-ops-fixtures.sh` compiles this with the C `idlc` and prints the
+// generated ops arrays; `tests/ops_vs_idlc.rs` and `tests/nested_composite_seq.rs`
+// assert the derive's `DdsType::ops()` against them.
+//
+// Every struct here exists to pin one thing the derive gets wrong when it is
+// guessed rather than computed. Keep the Rust mirrors in those tests in sync
+// with the member order below — the ops arrays are position-dependent.
+
+module ops_reference {
+
+  struct P {
+    long x;
+    long y;
+  };
+
+  // A composite with a heap field: sizeof(Inner) in C is not size_of::<Inner>()
+  // in Rust, which is what the sequence element stride must be.
+  struct Inner {
+    string name;
+    long v;
+  };
+
+  // Sequence as the *last* member — the only case the old emitter got right.
+  struct SeqLast {
+    long h;
+    sequence<P> items;
+  };
+
+  // Sequence followed by another member: the jump word's high half must point
+  // past the sequence instruction to `tail`, and the low half at the sub-ops.
+  struct SeqMid {
+    long h;
+    sequence<P> items;
+    long tail;
+  };
+
+  struct BSeqMid {
+    long h;
+    sequence<P, 4> items;
+    long tail;
+  };
+
+  struct ArrMid {
+    long h;
+    P items[3];
+    long tail;
+  };
+
+  struct NestMid {
+    long h;
+    P inner;
+    long tail;
+  };
+
+  // Key declared after a composite member: the KOF operand is the index of the
+  // key's own ADR instruction, which counts only the main instruction stream.
+  struct KeyAfterNested {
+    P inner;
+    @key long id;
+  };
+
+  struct KeyAfterSeq {
+    sequence<P> items;
+    @key long id;
+  };
+
+  // Two members of the same element type. idlc emits one shared sub-ops block;
+  // the derive emits one per member. Both are valid.
+  struct TwoSeqs {
+    sequence<P> a1;
+    sequence<P> a2;
+    long tail;
+  };
+
+  // Sequence of a composite that owns heap memory.
+  struct HeapSeq {
+    @key long id;
+    sequence<Inner> items;
+  };
+
+};

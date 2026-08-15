@@ -90,6 +90,47 @@ impl<T: Clone> DdsSequence<T> {
     }
 }
 
+impl<T> DdsSequence<T> {
+    /// Move `values` into a CycloneDDS-allocated buffer.
+    ///
+    /// Unlike [`DdsSequence::from_slice`] this takes ownership instead of
+    /// cloning, so it works for element types that are not `Clone` — which is
+    /// what the derive needs for `<Inner as DdsType>::Native`, a generated
+    /// `#[repr(C)]` struct that owns `DdsString`/`DdsSequence` fields and
+    /// therefore must not be duplicated. `Drop` already runs each element's
+    /// destructor before freeing the buffer, so ownership transfers cleanly.
+    pub fn from_vec(values: Vec<T>) -> DdsResult<Self> {
+        if values.is_empty() {
+            return Ok(Self::new());
+        }
+
+        let len = values.len();
+        let total_size = len
+            .checked_mul(std::mem::size_of::<T>())
+            .ok_or(DdsError::OutOfMemory)?;
+        let buffer = unsafe { dds_alloc(total_size) as *mut T };
+        if buffer.is_null() {
+            return Err(DdsError::OutOfMemory);
+        }
+
+        // Move out of `values` without running any destructor on the source:
+        // the elements now belong to `buffer`.
+        let mut values = std::mem::ManuallyDrop::new(values);
+        unsafe {
+            ptr::copy_nonoverlapping(values.as_ptr(), buffer, len);
+            // Release the Vec's own allocation, whose elements have moved.
+            let _ = Vec::from_raw_parts(values.as_mut_ptr(), 0, values.capacity());
+        }
+
+        Ok(Self {
+            _maximum: len as u32,
+            _length: len as u32,
+            _buffer: buffer,
+            _release: true,
+        })
+    }
+}
+
 impl<T> Default for DdsSequence<T> {
     fn default() -> Self {
         Self::new()
@@ -174,6 +215,52 @@ impl<T, const N: usize> DdsBoundedSequence<T, N> {
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.as_slice().iter()
+    }
+}
+
+impl<T, const N: usize> DdsBoundedSequence<T, N> {
+    /// Move `values` into a CycloneDDS-allocated buffer of `N` elements.
+    ///
+    /// The moving counterpart of [`DdsBoundedSequence::from_slice`]; see
+    /// [`DdsSequence::from_vec`] for why the derive needs one.
+    pub fn from_vec(values: Vec<T>) -> DdsResult<Self> {
+        if values.len() > N {
+            return Err(DdsError::BadParameter(format!(
+                "bounded DDS sequence capacity exceeded: len={} bound={}",
+                values.len(),
+                N
+            )));
+        }
+
+        if values.is_empty() {
+            return Ok(Self::new());
+        }
+
+        let len = values.len();
+        let total_size = N
+            .checked_mul(std::mem::size_of::<T>())
+            .ok_or(DdsError::OutOfMemory)?;
+        let buffer = unsafe { dds_alloc(total_size) as *mut T };
+        if buffer.is_null() {
+            return Err(DdsError::OutOfMemory);
+        }
+
+        unsafe {
+            std::ptr::write_bytes(buffer.cast::<u8>(), 0, total_size);
+        }
+
+        let mut values = std::mem::ManuallyDrop::new(values);
+        unsafe {
+            ptr::copy_nonoverlapping(values.as_ptr(), buffer, len);
+            let _ = Vec::from_raw_parts(values.as_mut_ptr(), 0, values.capacity());
+        }
+
+        Ok(Self {
+            _maximum: N as u32,
+            _length: len as u32,
+            _buffer: buffer,
+            _release: true,
+        })
     }
 }
 
