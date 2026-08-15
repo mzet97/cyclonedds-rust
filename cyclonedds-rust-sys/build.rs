@@ -417,6 +417,23 @@ int main(void) {
     printf("pub const PROBE_DDS_RETURN_T_SIZE: usize = %zu;\n", sizeof(dds_return_t));
     printf("pub const PROBE_DDS_INSTANCE_HANDLE_T_SIZE: usize = %zu;\n", sizeof(dds_instance_handle_t));
     printf("pub const PROBE_DDS_ATTACH_T_SIZE: usize = %zu;\n", sizeof(dds_attach_t));
+    printf("pub const PROBE_DDS_GUID_T_SIZE: usize = %zu;\n", sizeof(dds_guid_t));
+
+    /* Status structs read by value in cyclonedds/src/entity.rs::status(): each is
+       zero-initialised on the Rust side and filled in by dds_get_*_status, so a
+       size mismatch is a silent stack overwrite. */
+    printf("pub const PROBE_INCONSISTENT_TOPIC_SIZE: usize = %zu;\n", sizeof(dds_inconsistent_topic_status_t));
+    printf("pub const PROBE_LIVELINESS_LOST_SIZE: usize = %zu;\n", sizeof(dds_liveliness_lost_status_t));
+    printf("pub const PROBE_LIVELINESS_CHANGED_SIZE: usize = %zu;\n", sizeof(dds_liveliness_changed_status_t));
+    printf("pub const PROBE_OFFERED_DEADLINE_MISSED_SIZE: usize = %zu;\n", sizeof(dds_offered_deadline_missed_status_t));
+    printf("pub const PROBE_OFFERED_INCOMPATIBLE_QOS_SIZE: usize = %zu;\n", sizeof(dds_offered_incompatible_qos_status_t));
+    printf("pub const PROBE_REQUESTED_DEADLINE_MISSED_SIZE: usize = %zu;\n", sizeof(dds_requested_deadline_missed_status_t));
+    printf("pub const PROBE_REQUESTED_INCOMPATIBLE_QOS_SIZE: usize = %zu;\n", sizeof(dds_requested_incompatible_qos_status_t));
+    printf("pub const PROBE_SAMPLE_LOST_SIZE: usize = %zu;\n", sizeof(dds_sample_lost_status_t));
+    printf("pub const PROBE_SAMPLE_REJECTED_SIZE: usize = %zu;\n", sizeof(dds_sample_rejected_status_t));
+    printf("pub const PROBE_PUBLICATION_MATCHED_SIZE: usize = %zu;\n", sizeof(dds_publication_matched_status_t));
+    printf("pub const PROBE_SUBSCRIPTION_MATCHED_SIZE: usize = %zu;\n", sizeof(dds_subscription_matched_status_t));
+
     return 0;
 }
 "#;

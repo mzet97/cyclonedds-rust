@@ -83,6 +83,59 @@ const _: () = {
         core::mem::size_of::<dds_attach_t>() == PROBE_DDS_ATTACH_T_SIZE,
         "ABI mismatch: size_of dds_attach_t"
     );
+    assert!(
+        core::mem::size_of::<dds_guid_t>() == PROBE_DDS_GUID_T_SIZE,
+        "ABI mismatch: size_of dds_guid_t"
+    );
+
+    // Status structs are zero-initialised on the Rust side and filled in by
+    // dds_get_*_status. If the C struct is larger than the Rust one, that write
+    // runs past the end of a stack local -- silent corruption with no diagnostic.
+    // entity.rs::status() reads all eleven by value in one call.
+    assert!(
+        core::mem::size_of::<dds_inconsistent_topic_status_t>() == PROBE_INCONSISTENT_TOPIC_SIZE,
+        "ABI mismatch: size_of dds_inconsistent_topic_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_liveliness_lost_status_t>() == PROBE_LIVELINESS_LOST_SIZE,
+        "ABI mismatch: size_of dds_liveliness_lost_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_liveliness_changed_status_t>() == PROBE_LIVELINESS_CHANGED_SIZE,
+        "ABI mismatch: size_of dds_liveliness_changed_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_offered_deadline_missed_status_t>() == PROBE_OFFERED_DEADLINE_MISSED_SIZE,
+        "ABI mismatch: size_of dds_offered_deadline_missed_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_offered_incompatible_qos_status_t>() == PROBE_OFFERED_INCOMPATIBLE_QOS_SIZE,
+        "ABI mismatch: size_of dds_offered_incompatible_qos_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_requested_deadline_missed_status_t>() == PROBE_REQUESTED_DEADLINE_MISSED_SIZE,
+        "ABI mismatch: size_of dds_requested_deadline_missed_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_requested_incompatible_qos_status_t>() == PROBE_REQUESTED_INCOMPATIBLE_QOS_SIZE,
+        "ABI mismatch: size_of dds_requested_incompatible_qos_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_sample_lost_status_t>() == PROBE_SAMPLE_LOST_SIZE,
+        "ABI mismatch: size_of dds_sample_lost_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_sample_rejected_status_t>() == PROBE_SAMPLE_REJECTED_SIZE,
+        "ABI mismatch: size_of dds_sample_rejected_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_publication_matched_status_t>() == PROBE_PUBLICATION_MATCHED_SIZE,
+        "ABI mismatch: size_of dds_publication_matched_status_t"
+    );
+    assert!(
+        core::mem::size_of::<dds_subscription_matched_status_t>() == PROBE_SUBSCRIPTION_MATCHED_SIZE,
+        "ABI mismatch: size_of dds_subscription_matched_status_t"
+    );
 };
 
 pub type ddsrt_hh_hash_fn =

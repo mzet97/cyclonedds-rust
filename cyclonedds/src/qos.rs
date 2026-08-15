@@ -716,9 +716,16 @@ pub struct Qos {
     ptr: *mut dds_qos_t,
 }
 
-// Segurança: o QoS é imutável após a construção e o CycloneDDS copia o conteúdo
-// ao criar entidades (participant/topic/reader/writer) — o handle só é lido
-// nessas chamadas e liberado no Drop do valor `Qos` (único dono).
+// Segurança: o `Qos` é o único dono do `dds_qos_t` (liberado no `Drop`), e toda
+// mutação exige `&mut self` — `set_property`, `set_partition` e as demais, além
+// de `as_mut_ptr`, que é `pub(crate)`. Os métodos de leitura só expõem `*const`.
+// Logo não há mutação por trás de `&Qos`, que é o que `Sync` exige, e a posse
+// exclusiva é o que `Send` exige.
+//
+// A justificativa anterior dizia que o QoS era "imutável após a construção".
+// Isso é falso — `set_property` existe — e a impl continuava sã por outro
+// motivo. Uma justificativa errada é pior que nenhuma: convida a próxima pessoa
+// a preservar a propriedade errada.
 unsafe impl Send for Qos {}
 unsafe impl Sync for Qos {}
 
