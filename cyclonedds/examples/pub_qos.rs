@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .keep_last(10)
         .build()?;
 
-    let publisher = Publisher::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
     let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldQosTopic")?;
     let writer = publisher.create_writer_with_qos(&topic, &qos)?;
 

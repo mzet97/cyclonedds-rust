@@ -23,8 +23,8 @@ struct StressMessage {
 fn stress_test_million_messages() {
     let count = 100_000;
     let participant = DomainParticipant::new(99).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
 
     let topic_pub = Topic::<StressMessage>::new(&participant, "Stress").unwrap();
     let topic_sub = Topic::<StressMessage>::new(&participant, "Stress").unwrap();

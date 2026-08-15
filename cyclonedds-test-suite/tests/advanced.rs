@@ -12,9 +12,9 @@ fn waitset_guard_entities_and_ack_paths_work() {
     let qos = QosBuilder::new().reliable().keep_last(8).build().unwrap();
     let writer = publisher.create_writer_with_qos(&topic, &qos).unwrap();
     let reader = subscriber.create_reader_with_qos(&topic, &qos).unwrap();
-    let waitset = WaitSet::new(participant.entity()).unwrap();
-    let read_condition = ReadCondition::not_read(reader.entity()).unwrap();
-    let guard = GuardCondition::new(participant.entity()).unwrap();
+    let waitset = WaitSet::new(&participant).unwrap();
+    let read_condition = ReadCondition::not_read(&reader).unwrap();
+    let guard = GuardCondition::new(&participant).unwrap();
 
     waitset.attach(read_condition.entity(), 101).unwrap();
     waitset.attach(guard.entity(), 202).unwrap();

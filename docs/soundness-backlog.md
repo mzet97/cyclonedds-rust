@@ -2,59 +2,31 @@
 
 Everything still open, with the fix for each item. Nothing curated out.
 
-Baseline: `main @ 16d1e4a` · version `3.0.0-alpha.1` · CI 6/6 green ·
+Baseline: `main @ HEAD` · version `3.0.0-alpha.1` · CI 6/6 green ·
 316 tests on each of linux/windows/macos, 17 more under the ASan job.
 
 `v2.0.4` is tagged at `f2ef9e6` and **not** published.
 
-Estimated ~7 days remaining, of which ~3 are the one API break that closes A1–A3 and A7.
+Estimated ~4 days remaining. The API breaks are done; what is left is verification and debt.
 
 ---
 
 ## A. Soundness still open
 
-A1 is the root: A2, A3 and A7 only close once it does.
+A1 was the root and is closed; A2 and A7 went with it and A3 is half closed. What remains
+here is small.
 
-### A1 — Drop order with unowned parents · High · breaks API · ~3d
+### A3 — WaitSet::wait_async is not cancellable · Low · ~0.5d · half closed
 
-Struct fields drop in declaration order. In `struct App { dp, sub, reader }` the participant
-dies first, CycloneDDS deletes its children recursively, and the later `Drop`s call
-`dds_delete` on handles that are already gone. Harmless **except** when the handle was
-recycled in between, where it destroys the wrong entity — silently and
-non-deterministically.
+The safety half went with A1: the stream's `WaitSet` now holds an `Arc` of the reader, so
+a `spawn_blocking` wait can no longer sit on an entity someone else deleted.
 
-Unchanged by 3.0.0-alpha.1. The typed constructors closed *type* confusion, not *lifetime*:
-each entity still stores a bare `dds_entity_t` and keeps nothing of its parent alive.
-`entity::delete_entity` (`cyclonedds/src/entity.rs:58`) now checks the return code across
-all 14 `Drop`s, but checking only turns a silent failure into a logged one — it cannot tell
-"parent already deleted me" apart from "this handle now belongs to someone else", which is
-precisely the dangerous case.
+What remains is cancellation itself. `spawn_blocking` tasks cannot be cancelled, so
+dropping the future still leaves the thread waiting until the waitset triggers or the
+timeout expires. It is now merely wasteful rather than dangerous.
 
-**Fix.** Each entity owns its parent: `Arc<ParticipantInner>` in `Publisher`/`Subscriber`/
-`Topic`, `Arc<SubscriberInner>` in `DataReader`, and so on. The parent's `Drop` only runs
-once the last child is gone, which makes ordering irrelevant by construction.
-
-**Verification.** Test with a struct in hostile field order, under ASan.
-
-### A2 — DataReader can outlive its Topic · High · breaks API · depends on A1
-
-The `&Topic<T>` reference only has to live for the call — the returned reader does not
-retain it. `DataReader::new(&sub, &Topic::new(&dp,"x")?)` still leaves the reader on a dead
-topic. The 3.0.0-alpha.1 CHANGELOG entry says so explicitly.
-
-**Fix.** Falls out of A1: the reader holds an `Arc` of the topic. Cheaper alternative if A1
-is deferred: a lifetime parameter (`DataReader<'a, T>`) — works, but is viral across the
-whole API.
-
-### A3 — WaitSet::wait_async is not cancellable · Medium · breaks API · depends on A1 · ~0.5d
-
-`spawn_blocking` tasks cannot be cancelled. Dropping the future leaves the thread waiting
-until the waitset triggers; if the `WaitSet` dies in the meantime, the wait sits on a
-deleted entity. Documented on the method, not closed.
-
-**Fix.** `WaitSet` under `Arc`, cloned into the blocking task so the entity outlives the
-wait. Complement: expose `dds_waitset_set_trigger` to wake the wait on drop, making
-cancellation effective rather than merely safe.
+**Fix.** Expose `dds_waitset_set_trigger` and call it when the stream is dropped, so the
+wait wakes immediately instead of hanging on to a thread.
 
 ### A5 — Remaining panics · Low/Medium · ~0.5d · downgraded
 
@@ -91,15 +63,6 @@ pinned only by the vendored header they were read from — and they are exactly 
 
 Also still open: the `abi/<triple>.rs` snapshots, which exist for no target (D8).
 
-### A7 — Publisher / Subscriber / WaitSet still take raw handles · Low · absorbed by A1
-
-Deliberate: they carry no type parameter, so the confusion that motivated the typed
-constructors does not apply. They do still accept a temporary's handle.
-
-**Fix.** Free with A1. Standalone it is a signature change to `&DomainParticipant` plus call
-site migration — the same pattern already applied to `Topic`/`DataReader`/`DataWriter`
-(~2h). See F2.
-
 ### A8 — DdsEntity::entity() is public · Low · decision, not code
 
 The review suggested `pub(crate)`. Not done: it is required for FFI interop and the
@@ -111,6 +74,18 @@ pushes FFI users into `unsafe` for no real gain.
 
 ### Closed since the last revision of this document
 
+- **A1, A2, A7 — owned parents**. Every entity holds an `Arc<OwnedEntity>` for each
+  ancestor, so a parent cannot be deleted while a child is alive and declaration order no
+  longer matters. `Publisher`/`Subscriber`/`WaitSet`/`GuardCondition` take
+  `&DomainParticipant`; `ReadCondition`/`QueryCondition` take `&DataReader<T>` (A7, and F2
+  answers itself). `parent_ownership.rs` reproduced the defect first: four entities that
+  escape their participant's scope returned `PreconditionNotMet` before the change.
+
+  **Severity corrected while fixing it.** A1 claimed a recycled handle destroys the wrong
+  entity. `dds_handle_create` (`dds_handles.c:116`) draws handles uniformly at random from
+  ~2.1e9 values and resolves them through a hash table, so a stale handle is almost always
+  absent and returns an error; hitting a live entity needs that exact value redrawn, ~1 in
+  2.1e9 per creation. The routine defect was the silent error returns, not corruption.
 - **A4 — fallible `clone_out`** · `62b1afd`. `DdsType::clone_out` returns `DdsResult<Self>`.
   Writing its first test uncovered a second defect: `DdsUnionDerive` interpolated a
   macro-time flag into a runtime `if`, so the union derive had never compiled for any
@@ -200,7 +175,7 @@ None of this is soundness. All of it is cheap and reduces recurring friction.
 | D2 | ASan job is still `continue-on-error` (`.github/workflows/ci.yml:70`); its output has never been read | read the log; promote to blocking if stable |
 | D3 | Trivy: CHANGELOG 2.0.2 records that CVE-by-CVE suppression is unsustainable | purge Perl/gzip from the final stage or move to distroless |
 | D4 | `._ROADMAP_v5.md` deletion uncommitted, predates this work | commit or restore — owner's call |
-| D5 | 8 files in `docs/` never checked against the current API: `qos-reference`, `security-guide`, `benchmarks`, `fuzzing`, `faq`, `async-patterns`, `security-production`, `architecture`. Now overdue twice: the typed-constructor break **and** fallible `clone_out` both changed example code | same sweep already done on the other six — but see F1 first |
+| D5 | 8 files in `docs/` never checked against the current API: `qos-reference`, `security-guide`, `benchmarks`, `fuzzing`, `faq`, `async-patterns`, `security-production`, `architecture`. Now overdue three times: the typed-constructor break, fallible `clone_out`, and owned parents all changed example code | same sweep already done on the other six — but see F1 first |
 | D6 | `cyclonedds-bench` never run; dropping `spawn_blocking` should have cut latency and it was not measured | run before/after and record |
 | D7 | `fuzz/` never executed | run the existing targets; consider a new one for `clone_out` |
 | D8 | `abi/<triple>.rs` snapshots exist for no target — cross-compilation fails by design | generate for the supported targets |
@@ -247,11 +222,9 @@ the conflict is now larger than it was.
 **Need to know.** Where they are. If they were in another `Z:\tese` project there is no
 conflict. If they were here, say so before documentation is touched again. D5 waits on this.
 
-### F2 — Typed Publisher / Subscriber / WaitSet? · Low
+### ~~F2 — Typed Publisher / Subscriber / WaitSet?~~ · answered by A1
 
-Left with raw handles, judging that consistency does not justify churn with no defect behind
-it (see A7). Quick to change if a uniform API is preferred. If A1 goes ahead the question
-disappears — it absorbs all three.
+They take `&DomainParticipant` now. A1 absorbed the question, as expected.
 
 ---
 
@@ -259,20 +232,17 @@ disappears — it absorbs all three.
 
 Each phase ends verifiable and committable.
 
-1. **Ownership: owned parents** — the central redesign, and the last real soundness item.
-   `Arc` parents close A1, A2, A3 and A7 together; attempting any in isolation is rework.
-   `A1, A2, A3, A7` · ~3d · breaks API
-2. **ops() differential test** — the largest unverified surface left, and the one where
+1. **ops() differential test** — the largest unverified surface left, and the one where
    reading has already proven insufficient. `B+` · ~1d
-3. **Nested composites and the remaining panics** — `B++` and A5's `dynamic_type.rs`
-   builder. `B++, A5` · ~1d
-4. **SerdeSample type naming** — needs a design decision on what a stable name is, not just
+2. **Nested composites and the remaining panics** — `B++` and A5's `dynamic_type.rs`
+   builder. `B++, A5, A3` · ~1.5d
+3. **SerdeSample type naming** — needs a design decision on what a stable name is, not just
    code. `B+++` · ~0.5d
-5. **ABI snapshots** — the `SerdataHeader`/`SerdataOps` probe gap and the cross-compile
+4. **ABI snapshots** — the `SerdataHeader`/`SerdataOps` probe gap and the cross-compile
    snapshots. `A6, D8` · ~1d
-6. **Release 3.0.0** — consolidate `[Unreleased]`, write the 2.x → 3.0 migration guide,
+5. **Release 3.0.0** — consolidate `[Unreleased]`, write the 2.x → 3.0 migration guide,
    bump `-sys`, decide A8, tag and publish. `C, A8` · ~0.5d
-7. **Debt and measurement** — D2 through D8. Blocks nothing, but D2 and D3 cut recurring
+6. **Debt and measurement** — D2 through D8. Blocks nothing, but D2 and D3 cut recurring
    friction and D6 measures a gain that is currently only a claim. `D2–D8` · ~1.5d
 
 **Publishing 2.0.4 (C) is orthogonal** and can happen at any point — it builds from the tag,

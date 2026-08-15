@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use cyclonedds::{
-    DataReader, DataWriter, DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Subscriber,
+    DataReader, DataWriter, DdsTypeDerive, DomainParticipant, Publisher, Subscriber,
     Topic,
 };
 use std::thread;
@@ -17,8 +17,8 @@ fn bench_dds_latency(c: &mut Criterion) {
     // This benchmark measures round-trip latency in the same process.
     // For true IPC comparison, run with --features async and use separate processes.
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
 
     let topic_pub = Topic::<PingPong>::new(&participant, "PingPong").unwrap();
     let topic_sub = Topic::<PingPong>::new(&participant, "PingPong").unwrap();

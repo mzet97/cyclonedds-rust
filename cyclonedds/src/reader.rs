@@ -1,5 +1,5 @@
 use crate::{
-    entity::DdsEntity,
+    entity::{DdsEntity, OwnedEntity, OwnedHandle},
     error::check_entity,
     serialization::{CdrDeserializer, CdrEncoding, CdrSample},
     xtypes::MatchedEndpoint,
@@ -8,11 +8,11 @@ use crate::{
 use cyclonedds_rust_sys::*;
 use std::marker::PhantomData;
 use std::ptr;
+use std::sync::Arc;
 
 /// A typed DDS DataReader that receives samples of type `T`.
 pub struct DataReader<T: DdsType> {
-    entity: dds_entity_t,
-    _listener: Option<Listener>,
+    inner: Arc<OwnedEntity>,
     _marker: PhantomData<T>,
 }
 
@@ -51,15 +51,23 @@ impl<T: DdsType> DataReader<T> {
         qos: Option<&Qos>,
         listener: Option<&Listener>,
     ) -> DdsResult<Self> {
-        Self::from_entities_with(subscriber.entity(), topic.entity(), qos, listener)
+        Self::create(
+            subscriber.entity(),
+            topic.entity(),
+            qos,
+            listener,
+            vec![subscriber.owned().clone(), topic.owned().clone()],
+        )
     }
 
     /// Create from raw handles.
     ///
+    /// # Unchecked
+    ///
     /// Escape hatch for handles obtained outside this crate (FFI interop). The
     /// caller guarantees `topic` really is a topic of type `T` and that both
-    /// handles outlive the returned datareader; neither is checked. Prefer
-    /// [`DataReader::new`].
+    /// handles outlive the returned datareader; neither is checked, and unlike
+    /// [`DataReader::new`] nothing is held alive on your behalf.
     pub fn from_entities(subscriber: dds_entity_t, topic: dds_entity_t) -> DdsResult<Self> {
         Self::from_entities_with(subscriber, topic, None, None)
     }
@@ -71,14 +79,23 @@ impl<T: DdsType> DataReader<T> {
         qos: Option<&Qos>,
         listener: Option<&Listener>,
     ) -> DdsResult<Self> {
+        Self::create(subscriber, topic, qos, listener, Vec::new())
+    }
+
+    fn create(
+        subscriber: dds_entity_t,
+        topic: dds_entity_t,
+        qos: Option<&Qos>,
+        listener: Option<&Listener>,
+        parents: Vec<Arc<OwnedEntity>>,
+    ) -> DdsResult<Self> {
         unsafe {
             let q = qos.map_or(std::ptr::null(), |q| q.as_ptr());
             let l = listener.map_or(std::ptr::null_mut(), |l| l.as_ptr());
             let handle = dds_create_reader(subscriber, topic, q, l);
             check_entity(handle)?;
             Ok(DataReader {
-                entity: handle,
-                _listener: listener.cloned(),
+                inner: OwnedEntity::new(handle, "DataReader", listener.cloned(), parents),
                 _marker: PhantomData,
             })
         }
@@ -105,7 +122,7 @@ impl<T: DdsType> DataReader<T> {
 
             let n = if take {
                 dds_take(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -113,7 +130,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else {
                 dds_read(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -143,7 +160,7 @@ impl<T: DdsType> DataReader<T> {
                 }
             }
 
-            let _ = dds_return_loan(self.entity, samples.as_mut_ptr(), n as i32);
+            let _ = dds_return_loan(self.entity(), samples.as_mut_ptr(), n as i32);
             Ok(result)
         }
     }
@@ -210,7 +227,7 @@ impl<T: DdsType> DataReader<T> {
 
             let n = if use_instance && take {
                 dds_take_instance(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -219,7 +236,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_instance {
                 dds_read_instance(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -228,7 +245,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_mask && take {
                 dds_take_mask(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -237,7 +254,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_mask {
                 dds_read_mask(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -246,7 +263,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if take {
                 dds_take(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -254,7 +271,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else {
                 dds_read(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -285,7 +302,7 @@ impl<T: DdsType> DataReader<T> {
 
             let n = if use_instance && use_mask {
                 dds_peek_instance_mask(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -295,7 +312,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_instance {
                 dds_peek_instance(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -304,7 +321,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_mask {
                 dds_peek_mask(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -313,7 +330,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else {
                 dds_peek(
-                    self.entity,
+                    self.entity(),
                     samples.as_mut_ptr(),
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
                     max_samples,
@@ -336,7 +353,7 @@ impl<T: DdsType> DataReader<T> {
             let mut sample: *mut std::ffi::c_void = ptr::null_mut();
             let mut info: dds_sample_info_t = std::mem::zeroed();
             let n = dds_read_next(
-                self.entity,
+                self.entity(),
                 &mut sample,
                 &mut info as *mut dds_sample_info_t,
             );
@@ -344,12 +361,12 @@ impl<T: DdsType> DataReader<T> {
                 return Err(DdsError::from(n));
             }
             if n == 0 || !info.valid_data || sample.is_null() {
-                let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
+                let _ = dds_return_loan(self.entity(), &mut sample as *mut _, 1);
                 return Ok(None);
             }
             let decoded = T::clone_out(sample as *const T);
             // Return the loan before propagating: `?` here would leak it.
-            let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
+            let _ = dds_return_loan(self.entity(), &mut sample as *mut _, 1);
             Ok(Some(Sample {
                 data: decoded?,
                 info,
@@ -363,7 +380,7 @@ impl<T: DdsType> DataReader<T> {
             let mut sample: *mut std::ffi::c_void = ptr::null_mut();
             let mut info: dds_sample_info_t = std::mem::zeroed();
             let n = dds_take_next(
-                self.entity,
+                self.entity(),
                 &mut sample,
                 &mut info as *mut dds_sample_info_t,
             );
@@ -371,12 +388,12 @@ impl<T: DdsType> DataReader<T> {
                 return Err(DdsError::from(n));
             }
             if n == 0 || !info.valid_data || sample.is_null() {
-                let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
+                let _ = dds_return_loan(self.entity(), &mut sample as *mut _, 1);
                 return Ok(None);
             }
             let decoded = T::clone_out(sample as *const T);
             // Return the loan before propagating: `?` here would leak it.
-            let _ = dds_return_loan(self.entity, &mut sample as *mut _, 1);
+            let _ = dds_return_loan(self.entity(), &mut sample as *mut _, 1);
             Ok(Some(Sample {
                 data: decoded?,
                 info,
@@ -397,7 +414,7 @@ impl<T: DdsType> DataReader<T> {
     pub fn lookup_instance(&self, data: &T) -> dds_instance_handle_t {
         let mut arena = crate::write_arena::WriteArena::new();
         match data.write_to_native(&mut arena) {
-            Ok(ptr) => unsafe { dds_lookup_instance(self.entity, ptr) },
+            Ok(ptr) => unsafe { dds_lookup_instance(self.entity(), ptr) },
             Err(_) => 0,
         }
     }
@@ -417,7 +434,7 @@ impl<T: DdsType> DataReader<T> {
         unsafe {
             let mut native = std::mem::MaybeUninit::<T::Native>::zeroed();
             let ret = dds_instance_get_key(
-                self.entity,
+                self.entity(),
                 ih,
                 native.as_mut_ptr() as *mut std::ffi::c_void,
             );
@@ -427,7 +444,7 @@ impl<T: DdsType> DataReader<T> {
     }
 
     pub fn wait_for_historical_data(&self, timeout: dds_duration_t) -> DdsResult<()> {
-        unsafe { crate::error::check(dds_reader_wait_for_historical_data(self.entity, timeout)) }
+        unsafe { crate::error::check(dds_reader_wait_for_historical_data(self.entity(), timeout)) }
     }
 
     // ── Raw CDR read/take (Part 1.2) ──
@@ -483,7 +500,7 @@ impl<T: DdsType> DataReader<T> {
 
             let n = if use_instance && take {
                 dds_takecdr_instance(
-                    self.entity,
+                    self.entity(),
                     buf.as_mut_ptr(),
                     max_samples as u32,
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
@@ -492,7 +509,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_instance {
                 dds_readcdr_instance(
-                    self.entity,
+                    self.entity(),
                     buf.as_mut_ptr(),
                     max_samples as u32,
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
@@ -501,7 +518,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_mask && take {
                 dds_takecdr(
-                    self.entity,
+                    self.entity(),
                     buf.as_mut_ptr(),
                     max_samples as u32,
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
@@ -509,7 +526,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if use_mask {
                 dds_readcdr(
-                    self.entity,
+                    self.entity(),
                     buf.as_mut_ptr(),
                     max_samples as u32,
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
@@ -517,7 +534,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else if take {
                 dds_takecdr(
-                    self.entity,
+                    self.entity(),
                     buf.as_mut_ptr(),
                     max_samples as u32,
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
@@ -525,7 +542,7 @@ impl<T: DdsType> DataReader<T> {
                 )
             } else {
                 dds_readcdr(
-                    self.entity,
+                    self.entity(),
                     buf.as_mut_ptr(),
                     max_samples as u32,
                     infos.as_mut_ptr() as *mut dds_sample_info_t,
@@ -573,7 +590,7 @@ impl<T: DdsType> DataReader<T> {
 
     pub fn matched_publications(&self) -> DdsResult<Vec<dds_instance_handle_t>> {
         unsafe {
-            let count = dds_get_matched_publications(self.entity, std::ptr::null_mut(), 0);
+            let count = dds_get_matched_publications(self.entity(), std::ptr::null_mut(), 0);
             if count < 0 {
                 return Err(DdsError::from(count));
             }
@@ -584,7 +601,7 @@ impl<T: DdsType> DataReader<T> {
 
             let mut handles = vec![0; count];
             let actual =
-                dds_get_matched_publications(self.entity, handles.as_mut_ptr(), handles.len());
+                dds_get_matched_publications(self.entity(), handles.as_mut_ptr(), handles.len());
             if actual < 0 {
                 return Err(DdsError::from(actual));
             }
@@ -597,7 +614,7 @@ impl<T: DdsType> DataReader<T> {
         let handles = self.matched_publications()?;
         handles
             .into_iter()
-            .map(|handle| MatchedEndpoint::from_publication(self.entity, handle))
+            .map(|handle| MatchedEndpoint::from_publication(self.entity(), handle))
             .collect()
     }
 
@@ -606,18 +623,18 @@ impl<T: DdsType> DataReader<T> {
         &self,
         handle: dds_instance_handle_t,
     ) -> DdsResult<MatchedEndpoint> {
-        MatchedEndpoint::from_publication(self.entity, handle)
+        MatchedEndpoint::from_publication(self.entity(), handle)
     }
 }
 
 impl<T: DdsType> DdsEntity for DataReader<T> {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl<T: DdsType> Drop for DataReader<T> {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "DataReader");
+impl<T: DdsType> OwnedHandle for DataReader<T> {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }

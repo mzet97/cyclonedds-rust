@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .keep_last(10)
         .build()?;
 
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldQosTopic")?;
     let reader = subscriber.create_reader_with_qos(&topic, &qos)?;
 

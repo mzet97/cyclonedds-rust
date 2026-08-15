@@ -9,7 +9,7 @@
 //!   [`TopicFilterExt`] trait) for setting/clearing writer-side filters.
 
 use crate::{
-    entity::DdsEntity,
+    entity::{DdsEntity, OwnedHandle},
     error::{check, check_entity},
     DdsError, DdsResult, DdsType, Topic,
 };
@@ -120,6 +120,13 @@ pub struct ContentFilteredTopic<T: DdsType> {
     _filter_arg: Option<Box<FilterArg<T>>>,
     _desc_holder: Rc<CftDescriptorHolder>,
     _marker: PhantomData<T>,
+    /// The topic this was filtered from, and through it the participant.
+    ///
+    /// Declared last so it is released only after `Drop` has cleared the C
+    /// filter and deleted the entity. Like `QueryCondition`, this type keeps its
+    /// own `Drop` instead of moving into `OwnedEntity`, because the filter has
+    /// to be detached before the entity goes.
+    _parents: Vec<std::sync::Arc<crate::entity::OwnedEntity>>,
 }
 
 impl<T: DdsType + 'static> ContentFilteredTopic<T> {
@@ -163,6 +170,7 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
             _filter_arg: Some(filter_arg),
             _desc_holder: desc_holder,
             _marker: PhantomData,
+            _parents: vec![topic.owned().clone()],
         })
     }
 

@@ -1,5 +1,8 @@
 use crate::{
-    entity::DdsEntity, write_arena::WriteArena, xtypes::TopicDescriptor, DdsError, DdsResult, Qos,
+    entity::{DdsEntity, OwnedEntity, OwnedHandle},
+    write_arena::WriteArena,
+    xtypes::TopicDescriptor,
+    DdsError, DdsResult, Qos,
 };
 use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
@@ -9,14 +12,43 @@ use std::sync::Arc;
 
 /// A topic without compile-time type information.
 pub struct UntypedTopic {
-    entity: dds_entity_t,
+    inner: Arc<OwnedEntity>,
 }
 
 impl UntypedTopic {
     pub(crate) fn from_entity(entity: dds_entity_t) -> Self {
-        Self { entity }
+        Self {
+            inner: OwnedEntity::unowned(entity, "UntypedTopic"),
+        }
     }
 
+    pub(crate) fn adopt(entity: dds_entity_t, parents: Vec<Arc<OwnedEntity>>) -> Self {
+        Self {
+            inner: OwnedEntity::new(entity, "UntypedTopic", None, parents),
+        }
+    }
+
+    /// Attach a parent to a topic that was just built without one.
+    ///
+    /// The `Arc` has to still be unique, which it is for every crate-internal
+    /// caller: they call this on the value returned by a constructor, before it
+    /// reaches anyone else. If that ever stopped holding, the topic would go
+    /// back to not owning its participant — no worse than before this change,
+    /// but wrong, so `debug_assert` makes it loud in tests rather than silent.
+    pub(crate) fn retaining(mut self, parent: Arc<OwnedEntity>) -> Self {
+        match Arc::get_mut(&mut self.inner) {
+            Some(inner) => inner.push_parent(parent),
+            None => debug_assert!(false, "retaining() on a shared UntypedTopic"),
+        }
+        self
+    }
+
+    /// # Unchecked
+    ///
+    /// Takes a raw participant handle and does not hold it alive. Prefer
+    /// [`DomainParticipant::create_topic_from_descriptor`], which does.
+    ///
+    /// [`DomainParticipant::create_topic_from_descriptor`]: crate::DomainParticipant::create_topic_from_descriptor
     pub fn from_descriptor(
         participant: dds_entity_t,
         name: &str,
@@ -25,11 +57,22 @@ impl UntypedTopic {
         Self::from_descriptor_with_qos(participant, name, descriptor, None)
     }
 
+    /// See [`UntypedTopic::from_descriptor`].
     pub fn from_descriptor_with_qos(
         participant: dds_entity_t,
         name: &str,
         descriptor: &TopicDescriptor,
         qos: Option<&Qos>,
+    ) -> DdsResult<Self> {
+        Self::create(participant, name, descriptor, qos, Vec::new())
+    }
+
+    pub(crate) fn create(
+        participant: dds_entity_t,
+        name: &str,
+        descriptor: &TopicDescriptor,
+        qos: Option<&Qos>,
+        parents: Vec<Arc<OwnedEntity>>,
     ) -> DdsResult<Self> {
         let topic_name = CString::new(name)
             .map_err(|_| DdsError::BadParameter("topic name contains null".into()))?;
@@ -42,25 +85,27 @@ impl UntypedTopic {
                 std::ptr::null(),
             );
             crate::error::check_entity(handle)?;
-            Ok(Self { entity: handle })
+            Ok(Self {
+                inner: OwnedEntity::new(handle, "UntypedTopic", None, parents),
+            })
         }
     }
 }
 
 impl DdsEntity for UntypedTopic {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl Drop for UntypedTopic {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "UntypedTopic");
+impl OwnedHandle for UntypedTopic {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }
 
 pub struct Topic<T> {
-    entity: dds_entity_t,
+    inner: Arc<OwnedEntity>,
     _holder: Arc<DescriptorHolder>,
     _marker: PhantomData<T>,
 }
@@ -316,14 +361,22 @@ impl<T: DdsType> Topic<T> {
         name: &str,
         qos: Option<&Qos>,
     ) -> DdsResult<Self> {
-        Self::with_qos_from_entity(participant.entity(), name, qos)
+        Self::create(
+            participant.entity(),
+            name,
+            qos,
+            vec![participant.owned().clone()],
+        )
     }
 
     /// Create a topic from a raw participant handle.
     ///
-    /// Escape hatch for handles obtained outside this crate (FFI interop). The
-    /// caller guarantees the handle is a live participant and outlives the
-    /// returned topic; prefer [`Topic::new`], which the compiler checks.
+    /// # Unchecked
+    ///
+    /// Escape hatch for handles obtained outside this crate (FFI interop).
+    /// Unlike [`Topic::new`], the returned topic does **not** hold the
+    /// participant alive: the caller guarantees the handle is a live
+    /// participant and outlives the topic.
     pub fn from_entity(participant: dds_entity_t, name: &str) -> DdsResult<Self> {
         Self::with_qos_from_entity(participant, name, None)
     }
@@ -333,6 +386,15 @@ impl<T: DdsType> Topic<T> {
         participant: dds_entity_t,
         name: &str,
         qos: Option<&Qos>,
+    ) -> DdsResult<Self> {
+        Self::create(participant, name, qos, Vec::new())
+    }
+
+    pub(crate) fn create(
+        participant: dds_entity_t,
+        name: &str,
+        qos: Option<&Qos>,
+        parents: Vec<Arc<OwnedEntity>>,
     ) -> DdsResult<Self> {
         unsafe {
             let type_name = CString::new(T::type_name())
@@ -431,7 +493,7 @@ impl<T: DdsType> Topic<T> {
             };
 
             Ok(Topic {
-                entity: handle,
+                inner: OwnedEntity::new(handle, "Topic", None, parents),
                 _holder: Arc::new(holder),
                 _marker: PhantomData,
             })
@@ -441,12 +503,12 @@ impl<T: DdsType> Topic<T> {
 
 impl<T> DdsEntity for Topic<T> {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl<T> Drop for Topic<T> {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "Topic");
+impl<T> OwnedHandle for Topic<T> {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }

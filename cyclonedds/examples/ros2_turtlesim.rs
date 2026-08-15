@@ -17,7 +17,7 @@
 //!
 //! The turtle should move in a circle.
 
-use cyclonedds::{DataWriter, DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Topic};
+use cyclonedds::{DataWriter, DdsTypeDerive, DomainParticipant, Publisher, Topic};
 
 #[derive(DdsTypeDerive, Clone, Debug)]
 #[allow(dead_code)]
@@ -35,7 +35,7 @@ struct Twist {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
-    let publisher = Publisher::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
 
     // ROS2 topic names use a leading slash and are mapped directly to DDS topics.
     let topic = Topic::<Twist>::new(&participant, "/turtle1/cmd_vel")?;

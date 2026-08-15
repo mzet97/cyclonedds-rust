@@ -1,4 +1,4 @@
-use cyclonedds::{DdsEntity, DdsTypeDerive, DomainParticipant, Subscriber};
+use cyclonedds::{DdsTypeDerive, DomainParticipant, Subscriber};
 
 #[repr(C)]
 #[derive(Debug, Clone, DdsTypeDerive)]
@@ -10,7 +10,7 @@ struct LoanSample {
 fn read_loan_returns_empty_when_no_data() {
     let participant = DomainParticipant::new(0).unwrap();
     let topic = participant.create_topic::<LoanSample>("LoanTest").unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let reader: cyclonedds::DataReader<LoanSample> =
         cyclonedds::DataReader::new(&subscriber, &topic).unwrap();
 
@@ -22,7 +22,7 @@ fn read_loan_returns_empty_when_no_data() {
 fn take_loan_returns_empty_when_no_data() {
     let participant = DomainParticipant::new(0).unwrap();
     let topic = participant.create_topic::<LoanSample>("LoanTest2").unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let reader: cyclonedds::DataReader<LoanSample> =
         cyclonedds::DataReader::new(&subscriber, &topic).unwrap();
 

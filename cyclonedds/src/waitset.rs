@@ -1,9 +1,10 @@
+use crate::entity::{OwnedEntity, OwnedHandle};
 use crate::error::check_entity;
-use crate::{DdsEntity, DdsResult};
+use crate::{DdsEntity, DdsResult, DdsType};
 use cyclonedds_rust_sys::*;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 // ---------------------------------------------------------------------------
 // Global registry for QueryCondition closures
@@ -110,35 +111,66 @@ impl Drop for QcGuard {
 // ---------------------------------------------------------------------------
 
 pub struct WaitSet {
-    entity: dds_entity_t,
+    inner: Arc<OwnedEntity>,
 }
 
 impl WaitSet {
-    pub fn new(participant: dds_entity_t) -> DdsResult<Self> {
+    /// Create a waitset on `participant`, holding it alive.
+    pub fn new(participant: &crate::DomainParticipant) -> DdsResult<Self> {
+        let entity = unsafe { dds_create_waitset(participant.entity()) };
+        check_entity(entity)?;
+        Ok(WaitSet {
+            inner: OwnedEntity::new(entity, "WaitSet", None, vec![participant.owned().clone()]),
+        })
+    }
+
+    /// Create a waitset on `participant`, keeping `parents` alive with it.
+    ///
+    /// Used by the async streams, which look the participant handle up from a
+    /// reader and want the *reader* held up for the duration of the wait.
+    pub(crate) fn for_parents(
+        participant: dds_entity_t,
+        parents: Vec<Arc<OwnedEntity>>,
+    ) -> DdsResult<Self> {
         let entity = unsafe { dds_create_waitset(participant) };
         check_entity(entity)?;
-        Ok(WaitSet { entity })
+        Ok(WaitSet {
+            inner: OwnedEntity::new(entity, "WaitSet", None, parents),
+        })
+    }
+
+    /// Create a waitset from a raw participant handle.
+    ///
+    /// # Unchecked
+    ///
+    /// Does not hold the participant alive. Prefer [`WaitSet::new`].
+    pub fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
+        let entity = unsafe { dds_create_waitset(participant) };
+        check_entity(entity)?;
+        Ok(WaitSet {
+            inner: OwnedEntity::unowned(entity, "WaitSet"),
+        })
     }
 
     pub fn attach(&self, entity: dds_entity_t, cookie: i64) -> DdsResult<()> {
-        let ret = unsafe { dds_waitset_attach(self.entity, entity, cookie as dds_attach_t) };
+        let ret = unsafe { dds_waitset_attach(self.entity(), entity, cookie as dds_attach_t) };
         crate::error::check(ret)
     }
 
     pub fn detach(&self, entity: dds_entity_t) -> DdsResult<()> {
-        let ret = unsafe { dds_waitset_detach(self.entity, entity) };
+        let ret = unsafe { dds_waitset_detach(self.entity(), entity) };
         crate::error::check(ret)
     }
 
     pub fn set_trigger(&self, trigger: bool) -> DdsResult<()> {
-        let ret = unsafe { dds_waitset_set_trigger(self.entity, trigger) };
+        let ret = unsafe { dds_waitset_set_trigger(self.entity(), trigger) };
         crate::error::check(ret)
     }
 
     pub fn wait(&self, timeout_ns: i64) -> DdsResult<Vec<i64>> {
         let max_results: usize = 64;
         let mut xs: Vec<dds_attach_t> = vec![0; max_results];
-        let n = unsafe { dds_waitset_wait(self.entity, xs.as_mut_ptr(), max_results, timeout_ns) };
+        let n = unsafe { dds_waitset_wait(self.entity(), xs.as_mut_ptr(), max_results, timeout_ns) };
         if n < 0 {
             return Err(crate::DdsError::from(n));
         }
@@ -149,7 +181,7 @@ impl WaitSet {
 
     pub fn get_entities(&self) -> DdsResult<Vec<dds_entity_t>> {
         unsafe {
-            let count = dds_waitset_get_entities(self.entity, std::ptr::null_mut(), 0);
+            let count = dds_waitset_get_entities(self.entity(), std::ptr::null_mut(), 0);
             if count < 0 {
                 return Err(crate::DdsError::from(count));
             }
@@ -160,7 +192,7 @@ impl WaitSet {
 
             let mut entities = vec![0; count];
             let actual =
-                dds_waitset_get_entities(self.entity, entities.as_mut_ptr(), entities.len());
+                dds_waitset_get_entities(self.entity(), entities.as_mut_ptr(), entities.len());
             if actual < 0 {
                 return Err(crate::DdsError::from(actual));
             }
@@ -172,13 +204,13 @@ impl WaitSet {
 
 impl DdsEntity for WaitSet {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl Drop for WaitSet {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "WaitSet");
+impl OwnedHandle for WaitSet {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }
 
@@ -187,40 +219,63 @@ impl Drop for WaitSet {
 // ---------------------------------------------------------------------------
 
 pub struct ReadCondition {
-    entity: dds_entity_t,
+    inner: Arc<OwnedEntity>,
 }
 
+const ANY_STATE: u32 = cyclonedds_rust_sys::DDS_ANY_SAMPLE_STATE
+    | cyclonedds_rust_sys::DDS_ANY_INSTANCE_STATE
+    | cyclonedds_rust_sys::DDS_ANY_VIEW_STATE;
+
+const NOT_READ_STATE: u32 = cyclonedds_rust_sys::DDS_NOT_READ_SAMPLE_STATE
+    | cyclonedds_rust_sys::DDS_ANY_INSTANCE_STATE
+    | cyclonedds_rust_sys::DDS_ANY_VIEW_STATE;
+
 impl ReadCondition {
-    pub fn new(reader: dds_entity_t, mask: u32) -> DdsResult<Self> {
+    /// Create a read condition on `reader`, holding it alive.
+    pub fn new<T: DdsType>(reader: &crate::DataReader<T>, mask: u32) -> DdsResult<Self> {
+        let entity = unsafe { dds_create_readcondition(reader.entity(), mask) };
+        check_entity(entity)?;
+        Ok(ReadCondition {
+            inner: OwnedEntity::new(
+                entity,
+                "ReadCondition",
+                None,
+                vec![reader.owned().clone()],
+            ),
+        })
+    }
+
+    pub fn any<T: DdsType>(reader: &crate::DataReader<T>) -> DdsResult<Self> {
+        Self::new(reader, ANY_STATE)
+    }
+
+    pub fn not_read<T: DdsType>(reader: &crate::DataReader<T>) -> DdsResult<Self> {
+        Self::new(reader, NOT_READ_STATE)
+    }
+
+    /// Create a read condition from a raw reader handle.
+    ///
+    /// # Unchecked
+    ///
+    /// Does not hold the reader alive. Prefer [`ReadCondition::new`].
+    pub fn from_entity(reader: dds_entity_t, mask: u32) -> DdsResult<Self> {
         let entity = unsafe { dds_create_readcondition(reader, mask) };
         check_entity(entity)?;
-        Ok(ReadCondition { entity })
-    }
-
-    pub fn any(reader: dds_entity_t) -> DdsResult<Self> {
-        let mask = cyclonedds_rust_sys::DDS_ANY_SAMPLE_STATE
-            | cyclonedds_rust_sys::DDS_ANY_INSTANCE_STATE
-            | cyclonedds_rust_sys::DDS_ANY_VIEW_STATE;
-        Self::new(reader, mask)
-    }
-
-    pub fn not_read(reader: dds_entity_t) -> DdsResult<Self> {
-        let mask = cyclonedds_rust_sys::DDS_NOT_READ_SAMPLE_STATE
-            | cyclonedds_rust_sys::DDS_ANY_INSTANCE_STATE
-            | cyclonedds_rust_sys::DDS_ANY_VIEW_STATE;
-        Self::new(reader, mask)
+        Ok(ReadCondition {
+            inner: OwnedEntity::unowned(entity, "ReadCondition"),
+        })
     }
 }
 
 impl DdsEntity for ReadCondition {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl Drop for ReadCondition {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "ReadCondition");
+impl OwnedHandle for ReadCondition {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }
 
@@ -232,6 +287,14 @@ pub struct QueryCondition {
     entity: dds_entity_t,
     /// Whether this QueryCondition owns a closure in the global registry.
     owns_closure: bool,
+    /// The reader this condition sits on. Declared last so it is released only
+    /// after `Drop` has deregistered the closure and deleted the entity.
+    ///
+    /// `QueryCondition` keeps its own `Drop` rather than moving into
+    /// `OwnedEntity`, because deleting the entity is not all it has to do: the
+    /// closure has to leave the global registry at the same moment, and that
+    /// ordering is easier to see here than threaded through a generic owner.
+    _parents: Vec<Arc<OwnedEntity>>,
 }
 
 impl QueryCondition {
@@ -239,7 +302,26 @@ impl QueryCondition {
     ///
     /// This is the low-level constructor matching the C API directly.
     /// For a Rust-closure-based API, see [`QueryCondition::with_filter`].
-    pub fn new(
+    pub fn new<T: DdsType>(
+        reader: &crate::DataReader<T>,
+        mask: u32,
+        filter: unsafe extern "C" fn(*const std::ffi::c_void) -> bool,
+    ) -> DdsResult<Self> {
+        let entity = unsafe { dds_create_querycondition(reader.entity(), mask, Some(filter)) };
+        check_entity(entity)?;
+        Ok(QueryCondition {
+            entity,
+            owns_closure: false,
+            _parents: vec![reader.owned().clone()],
+        })
+    }
+
+    /// [`QueryCondition::new`] from a raw reader handle.
+    ///
+    /// # Unchecked
+    ///
+    /// Does not hold the reader alive.
+    pub fn from_entity(
         reader: dds_entity_t,
         mask: u32,
         filter: unsafe extern "C" fn(*const std::ffi::c_void) -> bool,
@@ -249,6 +331,7 @@ impl QueryCondition {
         Ok(QueryCondition {
             entity,
             owns_closure: false,
+            _parents: Vec::new(),
         })
     }
 
@@ -266,11 +349,16 @@ impl QueryCondition {
     /// filter (`dds_read`, `dds_take`, `dds_waitset_wait`) in the RAII guard
     /// returned by [`QueryCondition::activate`], which sets and restores the
     /// thread-local for you.
-    pub fn with_filter<F>(reader: dds_entity_t, mask: u32, filter: F) -> DdsResult<Self>
+    pub fn with_filter<T: DdsType, F>(
+        reader: &crate::DataReader<T>,
+        mask: u32,
+        filter: F,
+    ) -> DdsResult<Self>
     where
         F: Fn(*const c_void) -> bool + Send + Sync + 'static,
     {
-        let entity = unsafe { dds_create_querycondition(reader, mask, Some(trampoline_qc_filter)) };
+        let entity =
+            unsafe { dds_create_querycondition(reader.entity(), mask, Some(trampoline_qc_filter)) };
         check_entity(entity)?;
 
         // Register the closure.
@@ -285,6 +373,7 @@ impl QueryCondition {
         Ok(QueryCondition {
             entity,
             owns_closure: true,
+            _parents: vec![reader.owned().clone()],
         })
     }
 
@@ -321,25 +410,46 @@ impl Drop for QueryCondition {
 // ---------------------------------------------------------------------------
 
 pub struct GuardCondition {
-    entity: dds_entity_t,
+    inner: Arc<OwnedEntity>,
 }
 
 impl GuardCondition {
-    pub fn new(participant: dds_entity_t) -> DdsResult<Self> {
+    /// Create a guard condition on `participant`, holding it alive.
+    pub fn new(participant: &crate::DomainParticipant) -> DdsResult<Self> {
+        let entity = unsafe { dds_create_guardcondition(participant.entity()) };
+        check_entity(entity)?;
+        Ok(GuardCondition {
+            inner: OwnedEntity::new(
+                entity,
+                "GuardCondition",
+                None,
+                vec![participant.owned().clone()],
+            ),
+        })
+    }
+
+    /// Create a guard condition from a raw participant handle.
+    ///
+    /// # Unchecked
+    ///
+    /// Does not hold the participant alive. Prefer [`GuardCondition::new`].
+    pub fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
         let entity = unsafe { dds_create_guardcondition(participant) };
         check_entity(entity)?;
-        Ok(GuardCondition { entity })
+        Ok(GuardCondition {
+            inner: OwnedEntity::unowned(entity, "GuardCondition"),
+        })
     }
 
     pub fn set_triggered(&self, triggered: bool) -> DdsResult<()> {
-        let ret = unsafe { dds_set_guardcondition(self.entity, triggered) };
+        let ret = unsafe { dds_set_guardcondition(self.entity(), triggered) };
         crate::error::check(ret)
     }
 
     /// Read the current trigger state without consuming it.
     pub fn read(&self) -> DdsResult<bool> {
         let mut triggered = false;
-        let ret = unsafe { dds_read_guardcondition(self.entity, &mut triggered) };
+        let ret = unsafe { dds_read_guardcondition(self.entity(), &mut triggered) };
         crate::error::check(ret)?;
         Ok(triggered)
     }
@@ -347,7 +457,7 @@ impl GuardCondition {
     /// Take (read and reset) the current trigger state.
     pub fn take(&self) -> DdsResult<bool> {
         let mut triggered = false;
-        let ret = unsafe { dds_take_guardcondition(self.entity, &mut triggered) };
+        let ret = unsafe { dds_take_guardcondition(self.entity(), &mut triggered) };
         crate::error::check(ret)?;
         Ok(triggered)
     }
@@ -355,13 +465,13 @@ impl GuardCondition {
 
 impl DdsEntity for GuardCondition {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl Drop for GuardCondition {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "GuardCondition");
+impl OwnedHandle for GuardCondition {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }
 

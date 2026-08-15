@@ -4,7 +4,7 @@
 //!   cargo run --example shm_sub
 
 use cyclonedds::{
-    DataReader, DdsEntity, DdsTypeDerive, DomainParticipant, QosBuilder, Subscriber, Topic,
+    DataReader, DdsTypeDerive, DomainParticipant, QosBuilder, Subscriber, Topic,
 };
 
 #[derive(DdsTypeDerive, Clone, Debug)]
@@ -15,7 +15,7 @@ struct LargeMessage {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
 
     let qos = QosBuilder::new().enable_iceoryx().build()?;
 

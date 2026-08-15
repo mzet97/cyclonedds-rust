@@ -22,7 +22,7 @@ impl DdsType for HelloWorld {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldTopic")?;
     let reader: DataReader<HelloWorld> = DataReader::new(&subscriber, &topic)?;
 

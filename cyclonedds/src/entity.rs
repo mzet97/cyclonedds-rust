@@ -42,19 +42,16 @@ unsafe fn entity_string(
 
 /// Delete an entity from a `Drop`, surfacing failure instead of discarding it.
 ///
-/// Every wrapper's `Drop` used to call `dds_delete` and drop the return on the
-/// floor. That hides a real failure mode: struct fields drop in declaration
-/// order, so a `struct App { dp, sub, reader }` deletes the participant first —
-/// CycloneDDS then deletes its children recursively — and the later
-/// `Subscriber`/`DataReader` drops run `dds_delete` on handles that are already
-/// gone. CycloneDDS returns `BAD_PARAMETER` and nothing happens *unless* the
-/// handle was recycled in the meantime, in which case the wrong entity is
-/// destroyed. Silent, non-deterministic, and very hard to diagnose in
-/// production.
+/// With [`OwnedEntity`] holding every ancestor up, a failure here no longer
+/// means "my parent deleted me first" — that ordering is now impossible by
+/// construction. It means something genuinely unexpected, so it is still worth
+/// reporting rather than discarding.
 ///
-/// This cannot be fixed by checking a return code — the ordering has to change —
-/// but making it observable is the difference between a bug report and a
-/// mystery. Never panics: a panicking `Drop` during an unwind aborts.
+/// The raw constructors (`Topic::from_entity`, `Data{Reader,Writer}::from_entities`,
+/// `Publisher::from_entity`, …) are the remaining way to reach the old failure:
+/// they adopt a handle whose lifetime this crate does not control.
+///
+/// Never panics: a panicking `Drop` during an unwind aborts.
 pub(crate) fn delete_entity(entity: dds_entity_t, what: &str) {
     let ret = unsafe { dds_delete(entity) };
     if ret < 0 {
@@ -74,6 +71,92 @@ pub(crate) fn delete_entity(entity: dds_entity_t, what: &str) {
         );
         #[cfg(all(not(debug_assertions), not(feature = "tracing")))]
         let _ = (entity, what);
+    }
+}
+
+/// A `dds_entity_t` together with everything that has to outlive it.
+///
+/// CycloneDDS deletes an entity's entire subtree when the entity is deleted, so
+/// a child handle is only valid while its parent is. Storing the handle bare —
+/// which is what every wrapper in this crate used to do — made that invariant
+/// depend on the order the *user* happened to declare their struct fields, and
+/// fields drop in declaration order:
+///
+/// ```text
+/// struct App { participant, subscriber, reader }   // participant dies first
+/// ```
+///
+/// Every entity now holds an `Arc<OwnedEntity>` for each of its ancestors
+/// instead. The parent's `dds_delete` cannot run until the last child has
+/// released it, which makes declaration order irrelevant by construction, and
+/// lets a child outlive the binding it was created from.
+///
+/// The field order below is the load-bearing part. `Drop::drop` runs before any
+/// field is dropped, so the sequence is always: delete this entity → drop the
+/// listener it could still have invoked → release the ancestors.
+pub(crate) struct OwnedEntity {
+    entity: dds_entity_t,
+    what: &'static str,
+    /// Held so the C callback data outlives the entity that can invoke it.
+    _listener: Option<crate::Listener>,
+    /// Ancestors, released only once this entity is gone.
+    _parents: Vec<std::sync::Arc<OwnedEntity>>,
+}
+
+impl OwnedEntity {
+    /// Adopt `entity` as a child of `parents`.
+    pub(crate) fn new(
+        entity: dds_entity_t,
+        what: &'static str,
+        listener: Option<crate::Listener>,
+        parents: Vec<std::sync::Arc<OwnedEntity>>,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            entity,
+            what,
+            _listener: listener,
+            _parents: parents,
+        })
+    }
+
+    /// Adopt a handle whose ancestors this crate does not hold.
+    ///
+    /// Only for the documented raw/FFI constructors: nothing keeps the parent
+    /// alive, so the caller carries the invariant the rest of the crate now
+    /// enforces.
+    pub(crate) fn unowned(entity: dds_entity_t, what: &'static str) -> std::sync::Arc<Self> {
+        Self::new(entity, what, None, Vec::new())
+    }
+
+    pub(crate) fn handle(&self) -> dds_entity_t {
+        self.entity
+    }
+
+    /// The listener this entity is holding up, if any.
+    #[cfg(test)]
+    pub(crate) fn listener(&self) -> Option<&crate::Listener> {
+        self._listener.as_ref()
+    }
+
+    /// Add an ancestor after construction.
+    ///
+    /// Only reachable through [`retaining`](crate::UntypedTopic::retaining),
+    /// which requires the `Arc` to still be unique — i.e. the entity has not
+    /// been handed to anyone yet.
+    pub(crate) fn push_parent(&mut self, parent: std::sync::Arc<OwnedEntity>) {
+        self._parents.push(parent);
+    }
+}
+
+/// Crate-internal access to a wrapper's owned handle, so a constructor can take
+/// its parent's `Arc` without every type needing a bespoke accessor.
+pub(crate) trait OwnedHandle {
+    fn owned(&self) -> &std::sync::Arc<OwnedEntity>;
+}
+
+impl Drop for OwnedEntity {
+    fn drop(&mut self) {
+        delete_entity(self.entity, self.what);
     }
 }
 

@@ -12,6 +12,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING**: every entity now owns its parents. `Publisher::new`, `Subscriber::new`,
+  `WaitSet::new` and `GuardCondition::new` take `&DomainParticipant` instead of a
+  `dds_entity_t`; `ReadCondition::new`/`any`/`not_read` and `QueryCondition::new`/
+  `with_filter` take `&DataReader<T>`. Each entity holds an `Arc` of its ancestors, so a
+  parent's `dds_delete` cannot run until the last child has released it.
+
+  What this closes: CycloneDDS deletes an entity's whole subtree when the entity is
+  deleted, and struct fields drop in declaration order, so
+  `struct App { participant, subscriber, reader }` destroyed the participant first and the
+  children's `Drop`s then ran `dds_delete` on handles that were already gone. The same root
+  cause let a `DataReader` outlive the `Topic` and `DomainParticipant` it was built from,
+  after which **every call on it failed** — reproduced in `parent_ownership.rs`, where a
+  reader, writer, topic and subscriber that escape the scope their participant was declared
+  in all returned `PreconditionNotMet` before this change and now work. Declaration order
+  is irrelevant by construction.
+
+  **Severity, stated accurately.** The previous note in `docs/soundness-backlog.md` said a
+  recycled handle would destroy the wrong entity. That is possible but rare, and the
+  measurement belongs here: `dds_handle_create` (`dds_handles.c:116`) draws each handle
+  uniformly at random from `[1, DDS_MIN_PSEUDO_HANDLE)` — about 2.1e9 values — and every C
+  entry point resolves a handle through a hash table, so a stale handle is almost always
+  simply absent and yields an error. Reaching a *different live* entity needs that exact
+  value redrawn: ~1 in 2.1e9 per entity created. The routine, always-present defect is the
+  silent error returns, not memory corruption.
+
+  The raw constructors remain for FFI interop and are documented as unchecked — they adopt
+  a handle without holding anything alive: `Topic::from_entity`/`with_qos_from_entity`,
+  `Data{Reader,Writer}::from_entities`/`from_entities_with`, and the new
+  `Publisher::from_entity`, `Subscriber::from_entity`, `WaitSet::from_entity`,
+  `GuardCondition::from_entity`, `ReadCondition::from_entity`, `QueryCondition::from_entity`.
+
+  Two side effects worth naming. The async streams' `WaitSet` now holds the reader (and
+  through it the whole chain) alive for the life of the stream, so a `spawn_blocking` wait
+  can no longer be left sitting on an entity someone else deleted — the safety half of A3;
+  cancellation itself is still open. And `Listener` moved inside the owned handle, so a
+  listener is dropped after the entity that could invoke it rather than alongside it.
+
 - **BREAKING**: `DdsType::clone_out` returns `DdsResult<Self>` instead of `Self`. The
   generated `clone_out` for a union without a `#[dds_default]` variant used to `panic!` on
   a discriminator outside the declared set — and that discriminator arrives from the
@@ -40,12 +77,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Data{Reader,Writer}::from_entities`/`from_entities_with` for FFI interop, documented
   as unchecked.
 
-  `Publisher::new`, `Subscriber::new` and `WaitSet::new` still take a participant
-  handle: they carry no type parameter, so there is no equivalent confusion to prevent.
-
-  Note this does **not** fix drop ordering — a `DataReader` can still outlive the
-  `Topic` it borrowed from, because the reference is only required for the call. Owning
-  the parent (via `Arc`) is what closes that, and is not done here.
+  This step fixed type confusion only, not lifetimes: the reference was required for the
+  call and nothing was retained, so a `DataReader` could still outlive its `Topic`. The
+  owned-parents change above closes that, and moved `Publisher`/`Subscriber`/`WaitSet` to
+  references as well.
 
 ### Fixed
 

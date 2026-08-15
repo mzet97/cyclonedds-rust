@@ -371,7 +371,7 @@ fn cmd_subscribe(
 
     // Create the topic and reader
     let topic = topic_descriptor.create_topic(participant.entity(), topic_name)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;
@@ -386,7 +386,7 @@ fn cmd_subscribe(
     };
 
     // Create a waitset to wait for data
-    let waitset = WaitSet::new(participant.entity())?;
+    let waitset = WaitSet::new(&participant)?;
 
     // Enable data-available status on reader
     unsafe {
@@ -515,7 +515,7 @@ fn cmd_subscribe_multi(
     filter: Option<&str>,
 ) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
     let topic_names: Vec<&str> = topics_str.split(',').map(|s| s.trim()).collect();
@@ -585,7 +585,7 @@ fn cmd_subscribe_multi(
         return Ok(());
     }
 
-    let waitset = WaitSet::new(participant.entity())?;
+    let waitset = WaitSet::new(&participant)?;
     for (i, dr) in discovered_readers.iter().enumerate() {
         unsafe {
             cyclonedds_rust_sys::dds_set_status_mask(dr.reader_entity, STATUS_DATA_AVAILABLE);
@@ -709,7 +709,7 @@ fn cmd_bridge(
     max_samples: usize,
 ) -> cyclonedds::DdsResult<()> {
     let participant_src = DomainParticipant::new(domain_src)?;
-    let subscriber = Subscriber::new(participant_src.entity())?;
+    let subscriber = Subscriber::new(&participant_src)?;
     let pub_reader = participant_src.create_builtin_publication_reader()?;
 
     println!(
@@ -757,14 +757,14 @@ fn cmd_bridge(
         ))?
     };
 
-    let waitset = WaitSet::new(participant_src.entity())?;
+    let waitset = WaitSet::new(&participant_src)?;
     unsafe {
         cyclonedds_rust_sys::dds_set_status_mask(reader_entity, STATUS_DATA_AVAILABLE);
     }
     waitset.attach(reader_entity, 1)?;
 
     let (_participant_dst, _publisher, writer_entity) = if domain_src == domain_dst {
-        let publisher = Publisher::new(participant_src.entity())?;
+        let publisher = Publisher::new(&participant_src)?;
         let topic_dst = discovered.create_topic(participant_src.entity(), dst_topic)?;
         let writer = unsafe {
             check_entity(cyclonedds_rust_sys::dds_create_writer(
@@ -777,7 +777,7 @@ fn cmd_bridge(
         (participant_src, publisher, writer)
     } else {
         let pd = DomainParticipant::new(domain_dst)?;
-        let publisher = Publisher::new(pd.entity())?;
+        let publisher = Publisher::new(&pd)?;
         let topic_dst = discovered.create_topic(pd.entity(), dst_topic)?;
         let writer = unsafe {
             check_entity(cyclonedds_rust_sys::dds_create_writer(
@@ -898,8 +898,8 @@ struct PerfSample {
 
 fn cmd_perf(domain_id: u32, num_samples: usize) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
-    let publisher = Publisher::new(participant.entity())?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
+    let subscriber = Subscriber::new(&participant)?;
 
     let unique_id = std::process::id();
     let ping_topic_name = format!("cyclonedds_cli_perf_ping_{}", unique_id);
@@ -926,8 +926,8 @@ fn cmd_perf(domain_id: u32, num_samples: usize) -> cyclonedds::DdsResult<()> {
         cyclonedds_rust_sys::dds_set_status_mask(pong_reader.entity(), STATUS_DATA_AVAILABLE);
     }
 
-    let ping_waitset = WaitSet::new(participant.entity())?;
-    let pong_waitset = WaitSet::new(participant.entity())?;
+    let ping_waitset = WaitSet::new(&participant)?;
+    let pong_waitset = WaitSet::new(&participant)?;
 
     ping_waitset.attach(ping_reader.entity(), 1)?;
     pong_waitset.attach(pong_reader.entity(), 1)?;
@@ -1588,7 +1588,7 @@ fn cmd_publish(
         (count, delay_ms)
     };
     let participant = DomainParticipant::new(domain_id)?;
-    let publisher = Publisher::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
     println!("Searching for writers on topic '{}'...", topic_name);
@@ -1708,8 +1708,8 @@ fn cmd_publish(
 
 fn cmd_echo(topic_name: &str, domain_id: u32, max_samples: usize) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
-    let publisher = Publisher::new(participant.entity())?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
+    let subscriber = Subscriber::new(&participant)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
     println!("Echo mode on topic '{}' — discovering type...", topic_name);
@@ -1854,7 +1854,7 @@ fn cmd_record(
     use std::io::Write;
 
     let participant = DomainParticipant::new(domain_id)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
     println!(
@@ -1998,7 +1998,7 @@ fn cmd_replay(
     delay_ms: u64,
 ) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
-    let publisher = Publisher::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
     println!(
@@ -2079,7 +2079,7 @@ fn cmd_replay(
 
 fn cmd_monitor(topic_name: &str, domain_id: u32, interval_secs: u64) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
     println!("Monitoring topic '{}'... Press Ctrl+C to stop.", topic_name);
@@ -2372,7 +2372,7 @@ fn cmd_diagnose(domain_id: u32) -> cyclonedds::DdsResult<()> {
 
 fn cmd_metrics(topic_name: &str, domain_id: u32, max_samples: usize) -> cyclonedds::DdsResult<()> {
     let participant = DomainParticipant::new(domain_id)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let pub_reader = participant.create_builtin_publication_reader()?;
 
     let endpoint = 'search: {

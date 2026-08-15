@@ -74,8 +74,8 @@ fn test_participant() -> Result<String, String> {
 }
 
 fn test_publisher_subscriber(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     Ok(format!("pub={}, sub={}", pub_.entity(), sub.entity()))
 }
 
@@ -94,8 +94,8 @@ fn test_topic_creation(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_basic_pubsub(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let topic =
         Topic::<SensorData>::new(dp, "pubsub_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
@@ -128,8 +128,8 @@ fn test_basic_pubsub(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_multiple_writes(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let topic =
         Topic::<SensorData>::new(dp, "multi_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
@@ -158,8 +158,8 @@ fn test_multiple_writes(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_keyed_data(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let topic =
         Topic::<KeyValue>::new(dp, "keyed_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
@@ -190,8 +190,8 @@ fn test_keyed_data(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_sequence_fields(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let topic =
         Topic::<BatchReading>::new(dp, "seq_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
@@ -226,7 +226,7 @@ fn test_qos_builder(dp: &DomainParticipant) -> Result<String, String> {
 
     let topic =
         Topic::<SensorData>::new(dp, "qos_test").map_err(|e| format!("{:?}", e))?;
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let writer = pub_
         .create_writer_with_qos(&topic, &qos)
         .map_err(|e| format!("create_writer_with_qos: {:?}", e))?;
@@ -243,15 +243,15 @@ fn test_qos_builder(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_waitset(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let topic =
         Topic::<SensorData>::new(dp, "waitset_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<SensorData> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
 
-    let ws = WaitSet::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let ws = WaitSet::new(dp).map_err(|e| format!("{:?}", e))?;
     ws.attach(reader.entity(), STATUS_DATA_AVAILABLE as i64)
         .map_err(|e| format!("attach: {:?}", e))?;
 
@@ -283,8 +283,8 @@ fn test_waitset(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_read_vs_take(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let topic =
         Topic::<SensorData>::new(dp, "readtake_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
@@ -326,8 +326,8 @@ fn test_read_vs_take(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_write_dispose(dp: &DomainParticipant) -> Result<String, String> {
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let topic =
         Topic::<KeyValue>::new(dp, "dispose_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
@@ -352,8 +352,8 @@ fn test_content_filtered_topic(dp: &DomainParticipant) -> Result<String, String>
         cyclonedds::ContentFilteredTopic::new(&topic, |data: &SensorData| data.temperature > 20.0)
             .map_err(|e| format!("cft new: {:?}", e))?;
 
-    let pub_ = Publisher::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
-    let sub = Subscriber::new(dp.entity()).map_err(|e| format!("{:?}", e))?;
+    let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
+    let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::from_entities(pub_.entity(), cft.entity()).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<SensorData> =
         DataReader::from_entities(sub.entity(), cft.entity()).map_err(|e| format!("{:?}", e))?;

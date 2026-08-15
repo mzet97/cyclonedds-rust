@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let participant = DomainParticipant::with_qos(0, Some(&qos))?;
-    let publisher = Publisher::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
     let topic = Topic::<HelloWorld>::new(&participant, "HelloWorld")?;
     let writer = DataWriter::new(&publisher, &topic)?;
 

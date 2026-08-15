@@ -1,5 +1,5 @@
 use crate::{
-    entity::DdsEntity,
+    entity::{DdsEntity, OwnedEntity, OwnedHandle},
     error::{check, check_entity},
     serialization::CdrSerializer,
     write_arena::WriteArena,
@@ -9,11 +9,11 @@ use crate::{
 use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 /// A typed DDS DataWriter that publishes samples of type `T`.
 pub struct DataWriter<T: DdsType> {
-    entity: dds_entity_t,
-    _listener: Option<Listener>,
+    inner: Arc<OwnedEntity>,
     _marker: PhantomData<T>,
 }
 
@@ -62,15 +62,23 @@ impl<T: DdsType> DataWriter<T> {
         qos: Option<&Qos>,
         listener: Option<&Listener>,
     ) -> DdsResult<Self> {
-        Self::from_entities_with(publisher.entity(), topic.entity(), qos, listener)
+        Self::create(
+            publisher.entity(),
+            topic.entity(),
+            qos,
+            listener,
+            vec![publisher.owned().clone(), topic.owned().clone()],
+        )
     }
 
     /// Create from raw handles.
     ///
+    /// # Unchecked
+    ///
     /// Escape hatch for handles obtained outside this crate (FFI interop). The
     /// caller guarantees `topic` really is a topic of type `T` and that both
-    /// handles outlive the returned datawriter; neither is checked. Prefer
-    /// [`DataWriter::new`].
+    /// handles outlive the returned datawriter; neither is checked, and unlike
+    /// [`DataWriter::new`] nothing is held alive on your behalf.
     pub fn from_entities(publisher: dds_entity_t, topic: dds_entity_t) -> DdsResult<Self> {
         Self::from_entities_with(publisher, topic, None, None)
     }
@@ -82,14 +90,23 @@ impl<T: DdsType> DataWriter<T> {
         qos: Option<&Qos>,
         listener: Option<&Listener>,
     ) -> DdsResult<Self> {
+        Self::create(publisher, topic, qos, listener, Vec::new())
+    }
+
+    fn create(
+        publisher: dds_entity_t,
+        topic: dds_entity_t,
+        qos: Option<&Qos>,
+        listener: Option<&Listener>,
+        parents: Vec<Arc<OwnedEntity>>,
+    ) -> DdsResult<Self> {
         unsafe {
             let q = qos.map_or(std::ptr::null(), |q| q.as_ptr());
             let l = listener.map_or(std::ptr::null_mut(), |l| l.as_ptr());
             let handle = dds_create_writer(publisher, topic, q, l);
             check_entity(handle)?;
             Ok(DataWriter {
-                entity: handle,
-                _listener: listener.cloned(),
+                inner: OwnedEntity::new(handle, "DataWriter", listener.cloned(), parents),
                 _marker: PhantomData,
             })
         }
@@ -97,7 +114,7 @@ impl<T: DdsType> DataWriter<T> {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data)))]
     pub fn write(&self, data: &T) -> DdsResult<()> {
-        self.with_native_ptr(data, |ptr| unsafe { check(dds_write(self.entity, ptr)) })
+        self.with_native_ptr(data, |ptr| unsafe { check(dds_write(self.entity(), ptr)) })
     }
 
     /// Write a sample with retry on transient errors.
@@ -128,77 +145,77 @@ impl<T: DdsType> DataWriter<T> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data)))]
     pub fn write_dispose(&self, data: &T) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
-            check(dds_writedispose(self.entity, ptr))
+            check(dds_writedispose(self.entity(), ptr))
         })
     }
 
     pub fn register_instance(&self, data: &T) -> DdsResult<dds_instance_handle_t> {
         self.with_native_ptr(data, |ptr| unsafe {
             let mut handle: dds_instance_handle_t = 0;
-            check(dds_register_instance(self.entity, &mut handle, ptr))?;
+            check(dds_register_instance(self.entity(), &mut handle, ptr))?;
             Ok(handle)
         })
     }
 
     pub fn unregister_instance(&self, data: &T) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
-            check(dds_unregister_instance(self.entity, ptr))
+            check(dds_unregister_instance(self.entity(), ptr))
         })
     }
 
     pub fn unregister_instance_handle(&self, handle: dds_instance_handle_t) -> DdsResult<()> {
-        unsafe { check(dds_unregister_instance_ih(self.entity, handle)) }
+        unsafe { check(dds_unregister_instance_ih(self.entity(), handle)) }
     }
 
     pub fn dispose(&self, data: &T) -> DdsResult<()> {
-        self.with_native_ptr(data, |ptr| unsafe { check(dds_dispose(self.entity, ptr)) })
+        self.with_native_ptr(data, |ptr| unsafe { check(dds_dispose(self.entity(), ptr)) })
     }
 
     pub fn dispose_instance_handle(&self, handle: dds_instance_handle_t) -> DdsResult<()> {
-        unsafe { check(dds_dispose_ih(self.entity, handle)) }
+        unsafe { check(dds_dispose_ih(self.entity(), handle)) }
     }
 
     pub fn lookup_instance(&self, data: &T) -> dds_instance_handle_t {
         self.with_native_ptr(data, |ptr| unsafe {
-            Ok(dds_lookup_instance(self.entity, ptr))
+            Ok(dds_lookup_instance(self.entity(), ptr))
         })
         .unwrap_or(0)
     }
 
     pub fn write_ts(&self, data: &T, timestamp: dds_time_t) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
-            check(dds_write_ts(self.entity, ptr, timestamp))
+            check(dds_write_ts(self.entity(), ptr, timestamp))
         })
     }
 
     pub fn write_dispose_ts(&self, data: &T, timestamp: dds_time_t) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
-            check(dds_writedispose_ts(self.entity, ptr, timestamp))
+            check(dds_writedispose_ts(self.entity(), ptr, timestamp))
         })
     }
 
     pub fn write_flush(&self) -> DdsResult<()> {
-        unsafe { check(dds_write_flush(self.entity)) }
+        unsafe { check(dds_write_flush(self.entity())) }
     }
 
     pub fn wait_for_acks(&self, timeout: dds_duration_t) -> DdsResult<()> {
-        unsafe { check(dds_wait_for_acks(self.entity, timeout)) }
+        unsafe { check(dds_wait_for_acks(self.entity(), timeout)) }
     }
 
     pub fn assert_liveliness(&self) -> DdsResult<()> {
-        unsafe { check(dds_assert_liveliness(self.entity)) }
+        unsafe { check(dds_assert_liveliness(self.entity())) }
     }
 
     /// Atualiza o QoS do writer em runtime (knobs online: TransportPriority,
     /// LatencyBudget, OwnershipStrength — o conjunto mutável avaliado pelo
     /// decisor de QoS, ver `dds-contract::qos::OnlineKnobs`).
     pub fn set_qos(&self, qos: &crate::Qos) -> DdsResult<()> {
-        unsafe { check(dds_set_qos(self.entity, qos.as_ptr())) }
+        unsafe { check(dds_set_qos(self.entity(), qos.as_ptr())) }
     }
 
     pub fn unregister_instance_ts(&self, data: &T, timestamp: dds_time_t) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
-            check(dds_unregister_instance_ts(self.entity, ptr, timestamp))
+            check(dds_unregister_instance_ts(self.entity(), ptr, timestamp))
         })
     }
 
@@ -209,7 +226,7 @@ impl<T: DdsType> DataWriter<T> {
     ) -> DdsResult<()> {
         unsafe {
             check(dds_unregister_instance_ih_ts(
-                self.entity,
+                self.entity(),
                 handle,
                 timestamp,
             ))
@@ -218,7 +235,7 @@ impl<T: DdsType> DataWriter<T> {
 
     pub fn dispose_ts(&self, data: &T, timestamp: dds_time_t) -> DdsResult<()> {
         self.with_native_ptr(data, |ptr| unsafe {
-            check(dds_dispose_ts(self.entity, ptr, timestamp))
+            check(dds_dispose_ts(self.entity(), ptr, timestamp))
         })
     }
 
@@ -227,7 +244,7 @@ impl<T: DdsType> DataWriter<T> {
         handle: dds_instance_handle_t,
         timestamp: dds_time_t,
     ) -> DdsResult<()> {
-        unsafe { check(dds_dispose_ih_ts(self.entity, handle, timestamp)) }
+        unsafe { check(dds_dispose_ih_ts(self.entity(), handle, timestamp)) }
     }
 
     // ── Raw CDR write (Part 1.2) ──
@@ -306,7 +323,7 @@ impl<T: DdsType> DataWriter<T> {
     pub fn request_loan(&self) -> DdsResult<WriteLoan<T>> {
         unsafe {
             let mut sample_ptr: *mut c_void = std::ptr::null_mut();
-            check(dds_request_loan(self.entity, &mut sample_ptr))?;
+            check(dds_request_loan(self.entity(), &mut sample_ptr))?;
             if sample_ptr.is_null() {
                 return Err(crate::DdsError::OutOfResources);
             }
@@ -319,7 +336,7 @@ impl<T: DdsType> DataWriter<T> {
             std::ptr::write_bytes(sample_ptr as *mut u8, 0, std::mem::size_of::<T::Native>());
             Ok(WriteLoan {
                 sample: sample_ptr as *mut T::Native,
-                writer: self.entity,
+                writer: self.entity(),
                 written: false,
                 _marker: PhantomData,
             })
@@ -328,7 +345,7 @@ impl<T: DdsType> DataWriter<T> {
 
     pub fn matched_subscriptions(&self) -> DdsResult<Vec<dds_instance_handle_t>> {
         unsafe {
-            let count = dds_get_matched_subscriptions(self.entity, std::ptr::null_mut(), 0);
+            let count = dds_get_matched_subscriptions(self.entity(), std::ptr::null_mut(), 0);
             if count < 0 {
                 return Err(crate::DdsError::from(count));
             }
@@ -339,7 +356,7 @@ impl<T: DdsType> DataWriter<T> {
 
             let mut handles = vec![0; count];
             let actual =
-                dds_get_matched_subscriptions(self.entity, handles.as_mut_ptr(), handles.len());
+                dds_get_matched_subscriptions(self.entity(), handles.as_mut_ptr(), handles.len());
             if actual < 0 {
                 return Err(crate::DdsError::from(actual));
             }
@@ -352,7 +369,7 @@ impl<T: DdsType> DataWriter<T> {
         let handles = self.matched_subscriptions()?;
         handles
             .into_iter()
-            .map(|handle| MatchedEndpoint::from_subscription(self.entity, handle))
+            .map(|handle| MatchedEndpoint::from_subscription(self.entity(), handle))
             .collect()
     }
 
@@ -361,7 +378,7 @@ impl<T: DdsType> DataWriter<T> {
         &self,
         handle: dds_instance_handle_t,
     ) -> DdsResult<MatchedEndpoint> {
-        MatchedEndpoint::from_subscription(self.entity, handle)
+        MatchedEndpoint::from_subscription(self.entity(), handle)
     }
 
     /// Serialize a sample to CDR bytes without writing.
@@ -413,13 +430,13 @@ impl<T: DdsType> DataWriter<T> {
 
 impl<T: DdsType> DdsEntity for DataWriter<T> {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl<T: DdsType> Drop for DataWriter<T> {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "DataWriter");
+impl<T: DdsType> OwnedHandle for DataWriter<T> {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }
 

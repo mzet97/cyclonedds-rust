@@ -296,8 +296,8 @@ fn test_topic_creation() {
 #[test]
 fn test_keyed_instance_lifecycle() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<KeyValue>("test_keyed_topic")
         .unwrap();
@@ -343,7 +343,7 @@ fn test_keyed_instance_lifecycle() {
 #[test]
 fn test_subscriber_creation() {
     let participant = DomainParticipant::new(0).unwrap();
-    let subscriber = Subscriber::new(participant.entity());
+    let subscriber = Subscriber::new(&participant);
     assert!(
         subscriber.is_ok(),
         "Failed to create subscriber: {:?}",
@@ -354,8 +354,8 @@ fn test_subscriber_creation() {
 #[test]
 fn test_writer_reader_creation() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<HelloWorld>("test_writer_reader")
         .unwrap();
@@ -388,7 +388,7 @@ fn test_qos_builder() {
 #[test]
 fn test_waitset_creation() {
     let participant = DomainParticipant::new(0).unwrap();
-    let waitset = WaitSet::new(participant.entity());
+    let waitset = WaitSet::new(&participant);
     assert!(
         waitset.is_ok(),
         "Failed to create WaitSet: {:?}",
@@ -399,12 +399,12 @@ fn test_waitset_creation() {
 #[test]
 fn test_readcondition_creation() {
     let participant = DomainParticipant::new(0).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant.create_topic::<HelloWorld>("test_rc").unwrap();
     let reader: DataReader<HelloWorld> =
         DataReader::new(&subscriber, &topic).unwrap();
 
-    let cond = ReadCondition::not_read(reader.entity());
+    let cond = ReadCondition::not_read(&reader);
     assert!(
         cond.is_ok(),
         "Failed to create ReadCondition: {:?}",
@@ -415,7 +415,7 @@ fn test_readcondition_creation() {
 #[test]
 fn test_guardcondition() {
     let participant = DomainParticipant::new(0).unwrap();
-    let guard = GuardCondition::new(participant.entity());
+    let guard = GuardCondition::new(&participant);
     assert!(
         guard.is_ok(),
         "Failed to create GuardCondition: {:?}",
@@ -467,8 +467,8 @@ fn test_guardcondition() {
 #[test]
 fn test_pub_sub_e2e() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<HelloWorld>("test_e2e_topic")
         .unwrap();
@@ -505,8 +505,8 @@ fn test_pub_sub_e2e() {
 #[test]
 fn test_derive_keyed_pub_sub() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<SensorReading>("test_derive_sensor")
         .unwrap();
@@ -562,8 +562,8 @@ fn test_derive_keyed_pub_sub() {
 #[test]
 fn test_string_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<StringMessage>("test_string_roundtrip")
         .unwrap();
@@ -593,8 +593,8 @@ fn test_string_roundtrip() {
 #[test]
 fn test_sequence_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<SequenceMessage>("test_sequence_roundtrip")
         .unwrap();
@@ -619,8 +619,8 @@ fn test_sequence_roundtrip() {
 #[test]
 fn test_nested_struct_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<NestedPointMessage>("test_nested_struct_roundtrip")
         .unwrap();
@@ -649,8 +649,8 @@ fn test_nested_struct_roundtrip() {
 #[test]
 fn test_enum_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<EnumMessage>("test_enum_roundtrip")
         .unwrap();
@@ -677,8 +677,8 @@ fn test_enum_roundtrip() {
 #[test]
 fn test_bounded_sequence_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<BoundedSequenceMessage>("test_bounded_sequence_roundtrip")
         .unwrap();
@@ -710,8 +710,8 @@ fn test_bounded_sequence_roundtrip() {
 #[test]
 fn test_sequence_struct_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<SequenceStructMessage>("test_sequence_struct_roundtrip")
         .unwrap();
@@ -752,8 +752,8 @@ fn test_sequence_struct_roundtrip() {
 #[test]
 fn test_array_struct_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<ArrayStructMessage>("test_array_struct_roundtrip")
         .unwrap();
@@ -793,8 +793,8 @@ fn test_array_struct_roundtrip() {
 #[test]
 fn test_bounded_sequence_struct_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<BoundedSequenceStructMessage>("test_bounded_sequence_struct_roundtrip")
         .unwrap();
@@ -837,8 +837,8 @@ fn test_bounded_sequence_struct_roundtrip() {
 #[test]
 fn test_sequence_enum_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<SequenceEnumMessage>("test_sequence_enum_roundtrip")
         .unwrap();
@@ -882,8 +882,8 @@ fn test_sequence_enum_roundtrip() {
 #[test]
 fn test_bounded_sequence_enum_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<BoundedSequenceEnumMessage>("test_bounded_sequence_enum_roundtrip")
         .unwrap();
@@ -919,8 +919,8 @@ fn test_bounded_sequence_enum_roundtrip() {
 #[test]
 fn test_array_string_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<ArrayStringMessage>("test_array_string_roundtrip")
         .unwrap();
@@ -957,8 +957,8 @@ fn test_array_string_roundtrip() {
 #[test]
 fn test_array_enum_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<ArrayEnumMessage>("test_array_enum_roundtrip")
         .unwrap();
@@ -999,8 +999,8 @@ fn test_array_enum_roundtrip() {
 #[test]
 fn test_direct_string_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<DirectStringMessage>("test_direct_string_roundtrip")
         .unwrap();
@@ -1032,8 +1032,8 @@ fn test_direct_string_roundtrip() {
 #[test]
 fn test_direct_vec_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<DirectVecMessage>("test_direct_vec_roundtrip")
         .unwrap();
@@ -1063,8 +1063,8 @@ fn test_direct_vec_roundtrip() {
 #[test]
 fn test_direct_vec_string_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<DirectVecStringMessage>("test_direct_vec_string_roundtrip")
         .unwrap();
@@ -1099,8 +1099,8 @@ fn test_direct_vec_string_roundtrip() {
 #[test]
 fn test_direct_vec_enum_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<DirectVecEnumMessage>("test_direct_vec_enum_roundtrip")
         .unwrap();
@@ -1143,8 +1143,8 @@ fn test_direct_vec_enum_roundtrip() {
 #[test]
 fn test_direct_vec_struct_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<DirectVecStructMessage>("test_direct_vec_struct_roundtrip")
         .unwrap();
@@ -1180,8 +1180,8 @@ fn test_direct_vec_struct_roundtrip() {
 #[test]
 fn test_multi_array_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<MultiArrayMessage>("test_multi_array_roundtrip")
         .unwrap();
@@ -1222,8 +1222,8 @@ fn test_multi_array_roundtrip() {
 #[test]
 fn test_nested_sequences_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<NestedSequencesMessage>("test_nested_sequences_roundtrip")
         .unwrap();
@@ -1271,8 +1271,8 @@ fn test_nested_sequences_roundtrip() {
 #[test]
 fn test_optional_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<OptionalMessage>("test_optional_roundtrip")
         .unwrap();
@@ -1301,8 +1301,8 @@ fn test_optional_roundtrip() {
 #[test]
 fn test_type_info_and_matched_endpoint_discovery() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<DirectStringMessage>("test_type_info_and_matched_endpoint_discovery")
         .unwrap();
@@ -1370,8 +1370,8 @@ fn test_type_info_and_matched_endpoint_discovery() {
 #[test]
 fn test_nested_key_roundtrip() {
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<NestedKeyMessage>("test_nested_key_roundtrip")
         .unwrap();
@@ -3920,8 +3920,8 @@ async fn test_async_read_aiter() {
     use futures_util::StreamExt;
 
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<HelloWorld>("test_async_read_aiter")
         .unwrap();
@@ -3959,8 +3959,8 @@ async fn test_async_take_aiter() {
     use futures_util::StreamExt;
 
     let participant = DomainParticipant::new(0).unwrap();
-    let publisher = Publisher::new(participant.entity()).unwrap();
-    let subscriber = Subscriber::new(participant.entity()).unwrap();
+    let publisher = Publisher::new(&participant).unwrap();
+    let subscriber = Subscriber::new(&participant).unwrap();
     let topic = participant
         .create_topic::<HelloWorld>("test_async_take_aiter")
         .unwrap();

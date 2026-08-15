@@ -1,4 +1,4 @@
-use cyclonedds::{DdsEntity, DdsTypeDerive, DomainParticipant, Publisher, Subscriber};
+use cyclonedds::{DdsTypeDerive, DomainParticipant, Publisher, Subscriber};
 
 #[repr(C)]
 #[derive(Debug, Clone, DdsTypeDerive)]
@@ -12,7 +12,7 @@ fn participant_recreate_allows_rediscovery() {
     let topic1 = participant1
         .create_topic::<ReconnectSample>("ReconnectTest")
         .unwrap();
-    let publisher = Publisher::new(participant1.entity()).unwrap();
+    let publisher = Publisher::new(&participant1).unwrap();
     let _writer: cyclonedds::DataWriter<ReconnectSample> =
         cyclonedds::DataWriter::new(&publisher, &topic1).unwrap();
 
@@ -21,7 +21,7 @@ fn participant_recreate_allows_rediscovery() {
     let topic2 = participant2
         .create_topic::<ReconnectSample>("ReconnectTest")
         .unwrap();
-    let subscriber = Subscriber::new(participant2.entity()).unwrap();
+    let subscriber = Subscriber::new(&participant2).unwrap();
     let reader: cyclonedds::DataReader<ReconnectSample> =
         cyclonedds::DataReader::new(&subscriber, &topic2).unwrap();
 
@@ -40,7 +40,7 @@ fn participant_recreate_allows_rediscovery() {
     let topic3 = participant3
         .create_topic::<ReconnectSample>("ReconnectTest")
         .unwrap();
-    let subscriber3 = Subscriber::new(participant3.entity()).unwrap();
+    let subscriber3 = Subscriber::new(&participant3).unwrap();
     let reader3: cyclonedds::DataReader<ReconnectSample> =
         cyclonedds::DataReader::new(&subscriber3, &topic3).unwrap();
 
@@ -59,7 +59,7 @@ fn cross_domain_isolation_prevents_discovery() {
     let topic0 = participant_domain0
         .create_topic::<ReconnectSample>("CrossDomainTest")
         .unwrap();
-    let publisher = Publisher::new(participant_domain0.entity()).unwrap();
+    let publisher = Publisher::new(&participant_domain0).unwrap();
     let _writer: cyclonedds::DataWriter<ReconnectSample> =
         cyclonedds::DataWriter::new(&publisher, &topic0).unwrap();
 
@@ -68,7 +68,7 @@ fn cross_domain_isolation_prevents_discovery() {
     let topic1 = participant_domain1
         .create_topic::<ReconnectSample>("CrossDomainTest")
         .unwrap();
-    let subscriber = Subscriber::new(participant_domain1.entity()).unwrap();
+    let subscriber = Subscriber::new(&participant_domain1).unwrap();
     let reader: cyclonedds::DataReader<ReconnectSample> =
         cyclonedds::DataReader::new(&subscriber, &topic1).unwrap();
 

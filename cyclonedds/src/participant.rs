@@ -4,13 +4,14 @@ use crate::{
         BUILTIN_TOPIC_DCPSPARTICIPANT, BUILTIN_TOPIC_DCPSPUBLICATION,
         BUILTIN_TOPIC_DCPSSUBSCRIPTION, BUILTIN_TOPIC_DCPSTOPIC,
     },
-    entity::DdsEntity,
+    entity::{DdsEntity, OwnedEntity, OwnedHandle},
     listener::Listener,
     xtypes::{FindScope, SertypeHandle, TopicDescriptor, TypeInfo},
     DataReader, DdsError, DdsResult, DynamicType, DynamicTypeBuilder, History, Publisher, Qos,
     QosBuilder, Reliability, Subscriber, Topic, UntypedTopic,
 };
 use cyclonedds_rust_sys::*;
+use std::sync::Arc;
 
 /// RAII guard for a temporary writer entity.
 struct WriterGuard {
@@ -40,8 +41,7 @@ impl Drop for ReaderGuard {
 /// identified by a domain ID. All other DDS entities (topics, publishers,
 /// subscribers, readers, writers) are created from a participant.
 pub struct DomainParticipant {
-    entity: dds_entity_t,
-    _listener: Option<Listener>,
+    inner: Arc<OwnedEntity>,
 }
 
 impl DomainParticipant {
@@ -100,14 +100,18 @@ impl DomainParticipant {
             );
             crate::error::check_entity(handle)?;
             Ok(DomainParticipant {
-                entity: handle,
-                _listener: listener.cloned(),
+                inner: OwnedEntity::new(
+                    handle,
+                    "DomainParticipant",
+                    listener.cloned(),
+                    Vec::new(),
+                ),
             })
         }
     }
 
     pub fn create_topic<T: crate::DdsType>(&self, name: &str) -> DdsResult<Topic<T>> {
-        Topic::from_entity(self.entity, name)
+        Topic::create(self.entity(), name, None, vec![self.inner.clone()])
     }
 
     pub fn create_topic_with_qos<T: crate::DdsType>(
@@ -115,7 +119,7 @@ impl DomainParticipant {
         name: &str,
         qos: &Qos,
     ) -> DdsResult<Topic<T>> {
-        Topic::with_qos_from_entity(self.entity, name, Some(qos))
+        Topic::create(self.entity(), name, Some(qos), vec![self.inner.clone()])
     }
 
     pub fn create_topic_from_descriptor(
@@ -123,7 +127,7 @@ impl DomainParticipant {
         name: &str,
         descriptor: &TopicDescriptor,
     ) -> DdsResult<UntypedTopic> {
-        UntypedTopic::from_descriptor(self.entity, name, descriptor)
+        UntypedTopic::create(self.entity(), name, descriptor, None, vec![self.inner.clone()])
     }
 
     pub fn create_topic_from_descriptor_with_qos(
@@ -132,7 +136,13 @@ impl DomainParticipant {
         descriptor: &TopicDescriptor,
         qos: &Qos,
     ) -> DdsResult<UntypedTopic> {
-        UntypedTopic::from_descriptor_with_qos(self.entity, name, descriptor, Some(qos))
+        UntypedTopic::create(
+            self.entity(),
+            name,
+            descriptor,
+            Some(qos),
+            vec![self.inner.clone()],
+        )
     }
 
     pub fn create_topic_descriptor(
@@ -141,7 +151,7 @@ impl DomainParticipant {
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<TopicDescriptor> {
-        type_info.create_topic_descriptor(self.entity, scope, timeout)
+        type_info.create_topic_descriptor(self.entity(), scope, timeout)
     }
 
     pub fn create_topic_from_type_info(
@@ -151,7 +161,9 @@ impl DomainParticipant {
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<UntypedTopic> {
-        type_info.create_topic(self.entity, scope, timeout, name)
+        Ok(type_info
+            .create_topic(self.entity(), scope, timeout, name)?
+            .retaining(self.inner.clone()))
     }
 
     pub fn create_topic_from_type_info_with_qos(
@@ -162,7 +174,9 @@ impl DomainParticipant {
         timeout: dds_duration_t,
         qos: &Qos,
     ) -> DdsResult<UntypedTopic> {
-        type_info.create_topic_with_qos(self.entity, scope, timeout, name, qos)
+        Ok(type_info
+            .create_topic_with_qos(self.entity(), scope, timeout, name, qos)?
+            .retaining(self.inner.clone()))
     }
 
     pub fn create_topic_from_sertype(
@@ -170,7 +184,9 @@ impl DomainParticipant {
         name: &str,
         sertype: &SertypeHandle,
     ) -> DdsResult<UntypedTopic> {
-        sertype.create_topic(self.entity, name, None)
+        Ok(sertype
+            .create_topic(self.entity(), name, None)?
+            .retaining(self.inner.clone()))
     }
 
     pub fn create_topic_from_sertype_with_qos(
@@ -179,7 +195,9 @@ impl DomainParticipant {
         sertype: &SertypeHandle,
         qos: &Qos,
     ) -> DdsResult<UntypedTopic> {
-        sertype.create_topic(self.entity, name, Some(qos))
+        Ok(sertype
+            .create_topic(self.entity(), name, Some(qos))?
+            .retaining(self.inner.clone()))
     }
 
     pub fn find_topic(
@@ -194,7 +212,7 @@ impl DomainParticipant {
         let handle = unsafe {
             dds_find_topic(
                 scope.as_raw(),
-                self.entity,
+                self.entity(),
                 name.as_ptr(),
                 type_info.map_or(std::ptr::null(), TypeInfo::as_ptr),
                 timeout,
@@ -203,11 +221,12 @@ impl DomainParticipant {
         if handle == 0 {
             return Ok(None);
         }
-        crate::error::check_entity(handle).map(|entity| Some(UntypedTopic::from_entity(entity)))
+        crate::error::check_entity(handle)
+            .map(|entity| Some(UntypedTopic::adopt(entity, vec![self.inner.clone()])))
     }
 
     pub fn create_dynamic_type(&self, builder: DynamicTypeBuilder) -> DdsResult<DynamicType> {
-        DynamicType::create(self.entity, builder)
+        DynamicType::create(self.entity(), builder)
     }
 
     // ── Dynamic data I/O convenience methods (Part 4.3) ──
@@ -230,9 +249,9 @@ impl DomainParticipant {
     ) -> DdsResult<()> {
         let descriptor = dynamic_type.register_topic_descriptor(self, FindScope::Global, 0)?;
 
-        let topic = descriptor.create_topic(self.entity, topic_name)?;
+        let topic = descriptor.create_topic(self.entity(), topic_name)?;
 
-        let publisher = Publisher::new(self.entity)?;
+        let publisher = Publisher::new(self)?;
         let qos = Qos::builder()
             .reliability(Reliability::Reliable, 0)
             .build()?;
@@ -298,9 +317,9 @@ impl DomainParticipant {
         let schema = dynamic_type.schema().clone();
         let descriptor = dynamic_type.register_topic_descriptor(self, FindScope::Global, 0)?;
 
-        let topic = descriptor.create_topic(self.entity, topic_name)?;
+        let topic = descriptor.create_topic(self.entity(), topic_name)?;
 
-        let subscriber = Subscriber::new(self.entity)?;
+        let subscriber = Subscriber::new(self)?;
         let qos = Qos::builder()
             .reliability(Reliability::Reliable, 0)
             .history(History::KeepAll)
@@ -365,59 +384,59 @@ impl DomainParticipant {
     pub fn create_builtin_participant_reader(
         &self,
     ) -> DdsResult<DataReader<BuiltinParticipantSample>> {
-        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSPARTICIPANT)
+        DataReader::from_entities(self.entity(), BUILTIN_TOPIC_DCPSPARTICIPANT)
     }
 
     pub fn create_builtin_participant_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinParticipantSample>> {
-        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSPARTICIPANT, Some(qos), None)
+        DataReader::from_entities_with(self.entity(), BUILTIN_TOPIC_DCPSPARTICIPANT, Some(qos), None)
     }
 
     pub fn create_builtin_topic_reader(&self) -> DdsResult<DataReader<BuiltinTopicSample>> {
-        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSTOPIC)
+        DataReader::from_entities(self.entity(), BUILTIN_TOPIC_DCPSTOPIC)
     }
 
     pub fn create_builtin_topic_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinTopicSample>> {
-        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSTOPIC, Some(qos), None)
+        DataReader::from_entities_with(self.entity(), BUILTIN_TOPIC_DCPSTOPIC, Some(qos), None)
     }
 
     pub fn create_builtin_publication_reader(
         &self,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSPUBLICATION)
+        DataReader::from_entities(self.entity(), BUILTIN_TOPIC_DCPSPUBLICATION)
     }
 
     pub fn create_builtin_publication_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSPUBLICATION, Some(qos), None)
+        DataReader::from_entities_with(self.entity(), BUILTIN_TOPIC_DCPSPUBLICATION, Some(qos), None)
     }
 
     pub fn create_builtin_subscription_reader(
         &self,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::from_entities(self.entity, BUILTIN_TOPIC_DCPSSUBSCRIPTION)
+        DataReader::from_entities(self.entity(), BUILTIN_TOPIC_DCPSSUBSCRIPTION)
     }
 
     pub fn create_builtin_subscription_reader_with_qos(
         &self,
         qos: &Qos,
     ) -> DdsResult<DataReader<BuiltinEndpointSample>> {
-        DataReader::from_entities_with(self.entity, BUILTIN_TOPIC_DCPSSUBSCRIPTION, Some(qos), None)
+        DataReader::from_entities_with(self.entity(), BUILTIN_TOPIC_DCPSSUBSCRIPTION, Some(qos), None)
     }
 
     pub fn create_publisher(&self) -> DdsResult<Publisher> {
-        Publisher::new(self.entity)
+        Publisher::new(self)
     }
 
     pub fn create_subscriber(&self) -> DdsResult<Subscriber> {
-        Subscriber::new(self.entity)
+        Subscriber::new(self)
     }
 
     // -----------------------------------------------------------------------
@@ -430,7 +449,7 @@ impl DomainParticipant {
     /// Pass `deaf = false` to restore normal operation immediately
     /// (`duration` is ignored in that case).
     pub fn set_deaf(&self, deaf: bool, duration: dds_duration_t) -> DdsResult<()> {
-        unsafe { crate::error::check(dds_domain_set_deafmute(self.entity, deaf, false, duration)) }
+        unsafe { crate::error::check(dds_domain_set_deafmute(self.entity(), deaf, false, duration)) }
     }
 
     /// Set the participant to *mute* mode: it will not send any outgoing
@@ -439,12 +458,12 @@ impl DomainParticipant {
     /// Pass `mute = false` to restore normal operation immediately
     /// (`duration` is ignored in that case).
     pub fn set_mute(&self, mute: bool, duration: dds_duration_t) -> DdsResult<()> {
-        unsafe { crate::error::check(dds_domain_set_deafmute(self.entity, false, mute, duration)) }
+        unsafe { crate::error::check(dds_domain_set_deafmute(self.entity(), false, mute, duration)) }
     }
 
     /// Set both *deaf* and *mute* on the participant simultaneously.
     pub fn set_deaf_mute(&self, deaf: bool, mute: bool, duration: dds_duration_t) -> DdsResult<()> {
-        unsafe { crate::error::check(dds_domain_set_deafmute(self.entity, deaf, mute, duration)) }
+        unsafe { crate::error::check(dds_domain_set_deafmute(self.entity(), deaf, mute, duration)) }
     }
 
     // -----------------------------------------------------------------------
@@ -515,13 +534,13 @@ impl DomainParticipant {
 
 impl DdsEntity for DomainParticipant {
     fn entity(&self) -> dds_entity_t {
-        self.entity
+        self.inner.handle()
     }
 }
 
-impl Drop for DomainParticipant {
-    fn drop(&mut self) {
-        crate::entity::delete_entity(self.entity, "DomainParticipant");
+impl OwnedHandle for DomainParticipant {
+    fn owned(&self) -> &Arc<OwnedEntity> {
+        &self.inner
     }
 }
 
@@ -540,6 +559,10 @@ mod tests {
 
         assert_eq!(listener.reference_count(), 2);
         drop(listener);
-        assert_eq!(participant._listener.as_ref().unwrap().reference_count(), 1);
+        assert_eq!(
+            participant.inner.listener().unwrap().reference_count(),
+            1,
+            "the participant must still hold the listener after the caller drops it"
+        );
     }
 }

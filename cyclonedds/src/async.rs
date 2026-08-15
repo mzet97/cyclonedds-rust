@@ -1,3 +1,4 @@
+use crate::entity::OwnedHandle;
 use crate::{DataReader, DdsEntity, DdsResult, DdsType, WaitSet};
 use cyclonedds_rust_sys::*;
 
@@ -124,11 +125,15 @@ impl<T: DdsType> DataReader<T> {
         timeout_ns: i64,
     ) -> impl futures_core::Stream<Item = DdsResult<Vec<T>>> + '_ {
         let entity = self.entity();
+        // The waitset holds the reader (and through it the subscriber, topic
+        // and participant) alive for as long as the stream does, so a wait can
+        // never be left sitting on an entity someone else deleted.
+        let owner = self.owned().clone();
         async_stream::try_stream! {
             // Non-blocking lookup; no reason to hop threads for it.
             let participant = unsafe { dds_get_participant(entity) };
 
-            let waitset = WaitSet::new(participant)?;
+            let waitset = WaitSet::for_parents(participant, vec![owner])?;
             waitset.attach(entity, 0)?;
 
             loop {
