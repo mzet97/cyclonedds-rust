@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`CdrDeserializer` followed length prefixes out of arbitrary bytes.** Both
+  `deserialize` and `deserialize_key` are safe functions taking an arbitrary
+  `&[u8]`, and both handed it straight to `dds_istream_init` +
+  `dds_stream_read_sample`. That violates a precondition the C states outright:
+  "The buffer must contain well-formed CDR data in native endianness. Use
+  `dds_stream_normalize` to verify well-formedness" (`dds/cdr/dds_cdrstream.h`).
+  Without that step the reader trusts every length prefix it finds.
+
+  Reproduced immediately, and not by reading: 87 bytes from a seeded PRNG, fed
+  to a type with a `String` and a `Vec`, took the process down with
+  `STATUS_ACCESS_VIOLATION` on the very first iteration. A POD type survives —
+  which is why nothing caught it, since the only CDR test types were POD. Both
+  entry points now normalize first and reject what does not validate with
+  `BadParameter`. A truncation test asserts that every proper prefix of a valid
+  sample is refused, and a round-trip test asserts the validation did not simply
+  start refusing everything.
+
+  Reachable from the network for anyone deserializing what `read_cdr`/`take_cdr`
+  hands back, which is the entire purpose of those methods — the third of the
+  three README features that turned out to have no test behind them, after
+  `serde` and the union derive.
+
 - **Two DDS return codes were mapped to the wrong error, one of them onto a
   retry loop.** `dds/ddsrt/retcode.h:32-45` says `-2` is `UNSUPPORTED` and `-12`
   is `ILLEGAL_OPERATION`; `From<i32> for DdsError` read them as `OutOfMemory` and
@@ -95,6 +117,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   assertion. The `Native` translation is now applied recursively, via a new
   `DdsNativeValue` trait (see below), and `tests/native_layout_recursive.rs` covers all
   five shapes.
+
+### Infrastructure
+
+- **`fuzz/` could not be built at all**, let alone run. The crate was neither a
+  workspace member nor in `workspace.exclude`, and had no `[workspace]` table of
+  its own, so every cargo command in that directory failed with "current package
+  believes it's in a workspace when it's not" — `cargo fuzz run` included. Adding
+  the table makes it build; it had survived the 3.0 API breaks otherwise.
+
+  Running it still needs libFuzzer, which rules out `x86_64-pc-windows-msvc`. The
+  same property is therefore also asserted in
+  `cyclonedds-test-suite/tests/cdr_deserialize_corpus.rs` with a seeded PRNG:
+  weaker at finding inputs than coverage-guided fuzzing, stronger at *staying*
+  run, since it needs nothing beyond the MSRV and executes on every CI platform.
+  That is what found the defect above.
+
+- **The build does not use `vendor/cyclonedds`.** `cyclonedds-rust-sys`'s source
+  resolution prefers the `cyclonedds-src` crate over the vendor directory
+  (`build.rs:241-248`), and the two are different releases: `cyclonedds-src`
+  carries **11.0.0**, `vendor/cyclonedds` carries **11.0.1**. The difference is
+  observable — `dds_stream_normalize` returns `bool` in 11.0.0 and
+  `enum dds_stream_normalize_result` in 11.0.1 — so the tree that gets read when
+  someone "goes to the C source" is not the tree that gets linked. Recorded, not
+  yet resolved: reconciling them is the owner's call, since it means either
+  bumping `cyclonedds-src` (which is a published crate) or dropping `vendor/`.
+  The ops fixtures in `tests/ops_vs_idlc.rs` were generated with idlc **11.0.1**
+  from `vendor/` and verified against the linked 11.0.0 library by round-trip;
+  the encoding is unchanged across the patch release.
 
 ### Changed (hardening, not fixes)
 

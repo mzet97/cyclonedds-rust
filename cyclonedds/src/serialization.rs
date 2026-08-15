@@ -242,12 +242,61 @@ pub struct CdrDeserializer<T: DdsType> {
 }
 
 impl<T: DdsType> CdrDeserializer<T> {
+    /// Validate `data` against `T`'s descriptor, returning a normalized copy.
+    ///
+    /// `dds_istream_init`'s contract is explicit that the buffer "must contain
+    /// well-formed CDR data in native endianness. Use `dds_stream_normalize` to
+    /// verify well-formedness" (`dds/cdr/dds_cdrstream.h`). `deserialize` and
+    /// `deserialize_key` skipped that step and handed caller-supplied bytes
+    /// straight to `dds_stream_read_sample`, which trusts every length prefix it
+    /// reads. They are safe functions taking an arbitrary `&[u8]`, so any caller
+    /// could reach it — including anyone feeding them the bytes that
+    /// `read_cdr`/`take_cdr` returns, which come off the network.
+    ///
+    /// Normalization byte-swaps in place, so it needs its own mutable copy;
+    /// `bswap` is false because this pair's contract is native endianness, which
+    /// is what `CdrSerializer` emits.
+    fn normalized(
+        data: &[u8],
+        encoding: CdrEncoding,
+        desc: &CdrStreamDesc,
+        just_key: bool,
+    ) -> DdsResult<Vec<u8>> {
+        let mut buf = data.to_vec();
+        let mut actual_size: u32 = 0;
+        let ok = unsafe {
+            dds_stream_normalize(
+                buf.as_mut_ptr() as *mut c_void,
+                buf.len() as u32,
+                false,
+                encoding.as_xcdr_version(),
+                desc.as_ptr(),
+                just_key,
+                &mut actual_size,
+            )
+        };
+        if !ok {
+            return Err(DdsError::BadParameter(
+                "malformed CDR data for this type".into(),
+            ));
+        }
+        // `actual_size <= size`; anything past it is not part of the sample.
+        buf.truncate(actual_size as usize);
+        Ok(buf)
+    }
+
     /// Deserialize a sample from CDR bytes using the given encoding.
+    ///
+    /// The input is validated against `T`'s descriptor before it is read; bytes
+    /// that do not describe a well-formed sample of `T` are rejected with
+    /// [`DdsError::BadParameter`] rather than followed.
     ///
     /// Allocates a zero-initialized buffer of the type's size, reads the CDR
     /// stream into it, then uses `clone_out` to produce an owned value.
     pub fn deserialize(data: &[u8], encoding: CdrEncoding) -> DdsResult<T> {
         let desc = CdrStreamDesc::new::<T>()?;
+        let data = Self::normalized(data, encoding, &desc, false)?;
+        let data = data.as_slice();
 
         unsafe {
             let mut is: dds_istream_t = std::mem::zeroed();
@@ -292,8 +341,13 @@ impl<T: DdsType> CdrDeserializer<T> {
     }
 
     /// Deserialize only the key portion from CDR bytes.
+    ///
+    /// Validated the same way as [`CdrDeserializer::deserialize`], against the
+    /// key subset of the descriptor.
     pub fn deserialize_key(data: &[u8], encoding: CdrEncoding) -> DdsResult<T> {
         let desc = CdrStreamDesc::new::<T>()?;
+        let data = Self::normalized(data, encoding, &desc, true)?;
+        let data = data.as_slice();
 
         unsafe {
             let mut is: dds_istream_t = std::mem::zeroed();

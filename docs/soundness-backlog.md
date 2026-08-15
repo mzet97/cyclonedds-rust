@@ -2,12 +2,22 @@
 
 Everything still open, with the fix for each item. Nothing curated out.
 
-Baseline: `main @ HEAD` · version `3.0.0-alpha.1` · CI 6/6 green ·
-316 tests on each of linux/windows/macos, 17 more under the ASan job.
+Baseline: `main @ HEAD` · version `3.0.0-alpha.1` · 356 tests on each of
+linux/windows/macos, 25 under the ASan job (now blocking).
 
 `v2.0.4` is tagged at `f2ef9e6` and **not** published.
 
-Estimated ~4 days remaining. The API breaks are done; what is left is verification and debt.
+The API breaks are done. B+, B++, A3, A5 and D2 are closed; what is left is
+release work, measurement, and two things that need the maintainer.
+
+## Read this before trusting any C citation in this file
+
+`cyclonedds-rust-sys` builds **`cyclonedds-src` (CycloneDDS 11.0.0)**, not
+`vendor/cyclonedds` (**11.0.1**) — `build.rs:241-248` prefers the crate over the
+vendor directory. The two differ observably (`dds_stream_normalize` returns
+`bool` in 11.0.0 and an enum in 11.0.1), so a line number read out of `vendor/`
+does not necessarily describe the library that is linked. Reconciling them is
+F3 below.
 
 ---
 
@@ -16,19 +26,38 @@ Estimated ~4 days remaining. The API breaks are done; what is left is verificati
 A1 was the root and is closed; A2 and A7 went with it and A3 is half closed. What remains
 here is small.
 
-### A3 — WaitSet::wait_async is not cancellable · Low · ~0.5d · half closed
+### ~~A3 — WaitSet::wait_async is not cancellable~~ · closed
 
-The safety half went with A1: the stream's `WaitSet` now holds an `Arc` of the reader, so
-a `spawn_blocking` wait can no longer sit on an entity someone else deleted.
+Closed, but **the entry above it was wrong** and is corrected rather than repeated. It
+said dropping the future "leaves the thread waiting until the waitset triggers or the
+timeout expires". That did not reproduce: deleting a waitset runs
+`dds_waitset_interrupt`, which broadcasts the wait condition, and the wait loop rechecks
+`dds_handle_is_closed` — so the wait returned as soon as the stream dropped its waitset.
+Measured at 0.35s for a stream with a 30-second timeout.
 
-What remains is cancellation itself. `spawn_blocking` tasks cannot be cancelled, so
-dropping the future still leaves the thread waiting until the waitset triggers or the
-timeout expires. It is now merely wasteful rather than dangerous.
+What was actually open was the handle race: the blocking task captured only the raw
+`dds_entity_t`. It now holds an `Arc`. Doing *only* that created the hang the entry had
+predicted — holding the `Arc` prevents the deletion that was doing the interrupting, and
+the same measurement went to 29.7s. So `dds_waitset_set_trigger` was needed after all,
+just not for the stated reason: streams attach their waitset to itself and trigger it on
+drop. `tests/async_wait_cancellation.rs` measures both halves through runtime shutdown.
 
-**Fix.** Expose `dds_waitset_set_trigger` and call it when the stream is dropped, so the
-wait wakes immediately instead of hanging on to a thread.
+### ~~A5 — Remaining panics~~ · closed, as hardening
 
-### A5 — Remaining panics · Low/Medium · ~0.5d · downgraded
+`dynamic_type.rs`'s seven panic sites now return `DdsResult`. **No failing test was
+written and none was possible:** every one is unreachable through the public API —
+`DynamicTypeBuilder::new` is private, each constructor whose kind needs a sub-type takes
+it as an argument, and the setters take values rather than `Option`s. Recorded as
+hardening, not as a fix. `every_public_constructor_builds_without_panicking` pins the
+unreachability claim.
+
+Writing that test found a real defect it was not looking for: `DDS_RETCODE_UNSUPPORTED`
+(`-2`) was mapped to `DdsError::OutOfMemory`, for which `is_transient()` answers `true`,
+so every permanently unsupported operation looked worth retrying. `-12` and `-13` were
+also wrong. Fixed with `tests/error_retcode_mapping.rs`.
+
+<details>
+<summary>Original A5 entry, kept for the reasoning about the other sites</summary>
 
 A4 (fallible `clone_out`) landed in `62b1afd` and closed the union-discriminator panic,
 which was the remotely reachable one. What A5 listed alongside it did **not** ride along,
@@ -48,6 +77,15 @@ that oversends, or record that the C side enforces it and leave the `expect`.
 
 **Do not** repeat the original framing. It said "reachable via `clone_out`" for three sites
 whose failure branch cannot be taken.
+
+</details>
+
+Still genuinely open from that table: `DdsBoundedSequence::clone_from_raw` panics when the
+native sample's length exceeds the bound, and that length comes off the wire. Argued, not
+demonstrated — CycloneDDS enforces the bound during deserialization via the `BSQ` ops, and
+`CdrDeserializer` now normalizes before reading, which closes the path this crate controls.
+Either demonstrate reachability with a peer that oversends, or record that the C enforces
+it and leave the `expect`.
 
 ### A6 — ABI probe · Medium · mostly closed in `16d1e4a` · ~0.5d left
 
