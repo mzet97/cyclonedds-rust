@@ -12,6 +12,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two DDS return codes were mapped to the wrong error, one of them onto a
+  retry loop.** `dds/ddsrt/retcode.h:32-45` says `-2` is `UNSUPPORTED` and `-12`
+  is `ILLEGAL_OPERATION`; `From<i32> for DdsError` read them as `OutOfMemory` and
+  `Unsupported("unsupported")`, and `-13` (`NOT_ALLOWED_BY_SECURITY`) fell
+  through to a bare `ReturnCode`. `is_transient()` answers `true` for
+  `OutOfMemory`, so **every permanently unsupported operation looked worth
+  retrying**. Reproduced end to end: `DynamicTypeBuilder::map(..).build()` — which
+  cannot ever succeed, because CycloneDDS 11.0.1 returns `UNSUPPORTED` for
+  `DDS_DYNAMIC_MAP` (`dds_dynamic_type.c:237`) — returned `OutOfMemory` with
+  `is_transient() == true`.
+
+  `DdsError::OutOfMemory` is now produced only by this crate (a `len × size`
+  overflow in the sequence constructors) and `raw_code()` no longer claims `-2`
+  for it. CycloneDDS has no out-of-memory retcode: `ddsrt_malloc` aborts rather
+  than returning null, which is the same fact that makes the null checks around
+  `dds_alloc` dead code.
+
+- **`WaitSet::wait_async` ran on a handle it did not keep alive.** The
+  `spawn_blocking` task captured only the raw `dds_entity_t`, so between the
+  waitset's `dds_delete` and the task's `dds_entity_pin` the handle could be
+  redrawn for another entity — the window measured for A1, argued rather than
+  demonstrated. It now holds an `Arc` of the waitset.
+
+  Doing only that introduced a real hang, which is why it is worth writing down:
+  deleting a waitset is what used to interrupt an in-flight wait
+  (`dds_waitset_interrupt`, `dds_waitset.c:92`, wired in at `:137`), and holding
+  the `Arc` prevents the deletion. A stream dropped mid-wait on a 30-second
+  timeout then held a runtime thread for **29.7 seconds**. Sample streams now
+  attach their waitset to itself and set its trigger on drop, which is the
+  mechanism CycloneDDS documents for exactly this, so the wait returns at once
+  and the entity is released. `tests/async_wait_cancellation.rs` measures it
+  through runtime shutdown.
+
+  **The backlog's description of A3 was wrong and is corrected rather than
+  repeated.** It said dropping the future "leaves the thread waiting until the
+  waitset triggers or the timeout expires". That did not reproduce: before this
+  change the waitset *was* deleted with the stream, and the C interrupted the
+  wait in well under a second.
+
 - **The member declared after a composite one was never serialized.** For a
   `sequence<Struct>`, `sequence<Struct, N>` or `Struct[N]` member, the derive emitted the
   element's sub-ops *inline*, immediately after the instruction, and wrote a constant jump
@@ -56,6 +95,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   assertion. The `Native` translation is now applied recursively, via a new
   `DdsNativeValue` trait (see below), and `tests/native_layout_recursive.rs` covers all
   five shapes.
+
+### Changed (hardening, not fixes)
+
+- `DynamicTypeBuilder::to_schema` returns `DdsResult` instead of `expect`ing on a
+  missing sub-type in six places and `panic!`ing in a seventh. **No failing test
+  could be written for any of them and none is claimed:** those states are not
+  reachable through the public API — `DynamicTypeBuilder::new` is private, every
+  constructor whose kind needs a sub-type takes it as an argument, and the
+  setters take values rather than `Option`s, so a sub-type can be replaced but
+  never cleared. `DynamicType::create` already returned `DdsResult`, so this
+  costs nothing and means a future constructor that forgets one reports it
+  instead of unwinding on the caller's thread.
+  `every_public_constructor_builds_without_panicking` pins the unreachability
+  claim so it fails here rather than in a user's process.
+
+- `DynamicTypeBuilder::map`/`bounded_map` now document that they cannot succeed
+  against CycloneDDS 11 (see the retcode entry above). The constructors are kept
+  so the API tracks the XTypes kinds.
 
 ### Added
 

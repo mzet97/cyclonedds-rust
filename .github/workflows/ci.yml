@@ -61,13 +61,19 @@ jobs:
   # exist because exactly that shipped more than once. AddressSanitizer turns
   # silent corruption into a hard failure, and it needs nightly + a Linux target.
   #
-  # Kept non-blocking for now (`continue-on-error`) because the C library is not
-  # instrumented, so leaks reported inside CycloneDDS itself are out of our
-  # control; `detect_leaks=0` suppresses the noisiest class. Promote this to a
-  # required check once the signal is proven stable.
+  # Blocking as of the B+/B++ work. It was kept non-blocking on the argument that
+  # the C library is not instrumented and its own leaks are out of our control;
+  # `detect_leaks=0` already suppresses that class, and the signal turned out to
+  # be clean: the last ten CI runs each report `success` for *this step* (not
+  # just the job, which `continue-on-error` made report success either way), and
+  # the most recent log has 17 tests passing across six binaries with no
+  # `ERROR: AddressSanitizer` line. The only panics in it are the two
+  # `listener_panic_barrier` tests asserting that a panic is contained.
+  #
+  # If instrumented-C noise does start appearing, narrow it with an ASAN
+  # suppressions file rather than going back to ignoring the result.
   sanitizer:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -88,4 +94,6 @@ jobs:
             --test cdr_roundtrip --test loan_heap_fields \
             --test instance_string_key --test listener_panic_barrier \
             --test async_reader_lifetime --test ops_scanner_alignment \
+            --test nested_composite_seq --test native_layout_recursive \
+            --test ops_vs_idlc \
             -- --test-threads=1

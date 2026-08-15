@@ -75,10 +75,18 @@ impl core::error::Error for DdsError {}
 
 impl From<i32> for DdsError {
     fn from(code: i32) -> Self {
+        // The table is `dds/ddsrt/retcode.h:32-45`. Two entries used to be off by
+        // meaning rather than by value: `-2` is UNSUPPORTED, not out of memory,
+        // and `-12` is ILLEGAL_OPERATION, not unsupported. Both mattered —
+        // `is_transient()` answers `true` for `OutOfMemory`, so every
+        // permanently unsupported operation looked worth retrying. CycloneDDS
+        // has no out-of-memory retcode at all: `ddsrt_malloc` aborts rather than
+        // returning null, which is also why the null checks around `dds_alloc`
+        // are dead code.
         match code {
             0 => DdsError::Other("unexpected success-to-error conversion".into()),
             -1 => DdsError::ReturnCode(code),
-            -2 => DdsError::OutOfMemory,
+            -2 => DdsError::Unsupported("feature unsupported".into()),
             -3 => DdsError::BadParameter("bad parameter".into()),
             -4 => DdsError::PreconditionNotMet("precondition not met".into()),
             -5 => DdsError::OutOfResources,
@@ -88,7 +96,8 @@ impl From<i32> for DdsError {
             -9 => DdsError::AlreadyDeleted,
             -10 => DdsError::Timeout,
             -11 => DdsError::Other("no data".into()),
-            -12 => DdsError::Unsupported("unsupported".into()),
+            -12 => DdsError::Other("illegal operation".into()),
+            -13 => DdsError::Other("not allowed by security".into()),
             _ => DdsError::ReturnCode(code),
         }
     }
@@ -100,13 +109,16 @@ impl DdsError {
     pub fn raw_code(&self) -> Option<i32> {
         match self {
             DdsError::ReturnCode(code) | DdsError::InvalidEntity(code) => Some(*code),
-            DdsError::OutOfMemory => Some(-2),
             DdsError::BadParameter(_) => Some(-3),
             DdsError::PreconditionNotMet(_) => Some(-4),
             DdsError::OutOfResources => Some(-5),
             DdsError::AlreadyDeleted => Some(-9),
             DdsError::Timeout => Some(-10),
-            DdsError::Unsupported(_) | DdsError::Other(_) => None,
+            // `OutOfMemory` is raised by this crate, not by CycloneDDS — the
+            // sequence constructors return it on a `len × size` overflow. It has
+            // no retcode: -2 belongs to UNSUPPORTED. `Unsupported` covers several
+            // codes (-2, -7, -8), so it has no single one either.
+            DdsError::OutOfMemory | DdsError::Unsupported(_) | DdsError::Other(_) => None,
         }
     }
 

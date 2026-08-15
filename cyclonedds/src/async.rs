@@ -5,6 +5,33 @@ use cyclonedds_rust_sys::*;
 /// Default batch size for the stream methods that do not take one explicitly.
 const DEFAULT_BATCH: usize = 256;
 
+/// Cookie the reader is attached to a stream's waitset under.
+const READER_COOKIE: i64 = 0;
+/// Cookie the waitset is attached to *itself* under, to wake its own wait.
+const INTERRUPT_COOKIE: i64 = 1;
+
+/// A stream's waitset, which wakes any in-flight wait when the stream is dropped.
+///
+/// The blocking task holds an `Arc` of the waitset (see
+/// [`WaitSet::wait_async`]), which is what keeps the wait off a recycled handle
+/// — but it also means the waitset is no longer deleted when the stream is
+/// dropped, and deletion was what used to interrupt the wait. Without this guard
+/// the blocking task then sits for the full timeout: measured at 29.7s for a
+/// 30s-timeout stream in `tests/async_wait_cancellation.rs`.
+///
+/// `Drop::drop` runs before the field is dropped, so the sequence is: trigger,
+/// the blocking task's `dds_waitset_wait` returns and releases its `Arc`, then
+/// the waitset is deleted once the last reference goes.
+struct StreamWaitSet(WaitSet);
+
+impl Drop for StreamWaitSet {
+    fn drop(&mut self) {
+        // Nothing to do if it fails: the waitset is already gone, which wakes
+        // the wait by itself.
+        let _ = self.0.set_trigger(true);
+    }
+}
+
 /// Drain up to `max_samples` from a reader's history cache.
 ///
 /// `dds_read` / `dds_take` do **not** block: they walk the reader history cache
@@ -78,23 +105,40 @@ impl WaitSet {
     /// Unlike `dds_read`/`dds_take`, `dds_waitset_wait` genuinely blocks, so it
     /// stays on `spawn_blocking`.
     ///
-    /// # Known limitation
+    /// # Cancellation
     ///
-    /// `spawn_blocking` tasks are not cancellable. If the future awaiting this
-    /// call is dropped while the wait is in flight, the blocking task keeps
-    /// running until the waitset triggers or the timeout expires — and if the
-    /// `WaitSet` is dropped in the meantime, that wait is left on a deleted
-    /// entity. Prefer the `*_timeout` stream variants over the infinite-timeout
-    /// ones so the task is guaranteed to wind down. Closing this properly needs
-    /// the waitset to be owned by something the blocking task can hold
-    /// (`Arc`), which is an API change.
+    /// `spawn_blocking` tasks are not cancellable: dropping the future that
+    /// awaits this detaches the blocking task, it does not stop it. That is
+    /// bounded rather than open-ended, though, and the reason is on the C side.
+    /// Deleting a waitset runs `dds_waitset_interrupt`
+    /// (`vendor/cyclonedds/.../dds_waitset.c:92`, wired in at `:137`), which
+    /// broadcasts the wait condition, and the wait loop rechecks
+    /// `dds_handle_is_closed` — so an in-flight `dds_waitset_wait` returns as
+    /// soon as its waitset goes away, without waiting out the timeout.
+    /// `tests/async_wait_cancellation.rs` measures this through runtime
+    /// shutdown: dropping a stream that is mid-wait on a 30-second timeout
+    /// releases the runtime thread in well under a second.
+    ///
+    /// What that leaves is a handle race, not a hang. The task used to capture
+    /// only the raw `dds_entity_t`, so between the waitset's `dds_delete` and
+    /// the task's `dds_entity_pin` the handle could in principle be redrawn for
+    /// a different entity — the same window measured for A1: `dds_handle_create`
+    /// draws from ~2.1e9 values, so this is rare rather than impossible, and it
+    /// is argued, not demonstrated. The task now holds an `Arc` of the waitset,
+    /// which closes it by construction: the entity cannot be deleted while the
+    /// wait is running.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub async fn wait_async(&self, timeout_ns: i64) -> DdsResult<Vec<i64>> {
-        let entity = self.entity();
+        // Cloned, not borrowed: the task can outlive this future.
+        let owned = self.owned().clone();
         tokio::task::spawn_blocking(move || {
             let max_results: usize = 64;
             let mut xs: Vec<dds_attach_t> = vec![0; max_results];
-            let n = unsafe { dds_waitset_wait(entity, xs.as_mut_ptr(), max_results, timeout_ns) };
+            let n = unsafe {
+                dds_waitset_wait(owned.handle(), xs.as_mut_ptr(), max_results, timeout_ns)
+            };
+            // Keep the waitset alive across the call, not merely up to it.
+            drop(owned);
             if n < 0 {
                 return Err(crate::DdsError::from(n));
             }
@@ -134,10 +178,23 @@ impl<T: DdsType> DataReader<T> {
             let participant = unsafe { dds_get_participant(entity) };
 
             let waitset = WaitSet::for_parents(participant, vec![owner])?;
-            waitset.attach(entity, 0)?;
+            waitset.attach(entity, READER_COOKIE)?;
+            // Observe ourselves, so `StreamWaitSet`'s drop can wake a wait that
+            // is still in flight. This is the mechanism CycloneDDS documents for
+            // it: a waitset is "triggered when trigger value was set to true by
+            // the application ... can be used to wake up a waitset for different
+            // reasons (f.i. termination)".
+            waitset.attach(waitset.entity(), INTERRUPT_COOKIE)?;
+            let waitset = StreamWaitSet(waitset);
 
             loop {
-                let triggered = waitset.wait_async(timeout_ns).await?;
+                let triggered = waitset.0.wait_async(timeout_ns).await?;
+                if triggered.contains(&INTERRUPT_COOKIE) {
+                    // Only the drop guard sets this, and the guard runs when the
+                    // generator is already being torn down; returning is tidiness,
+                    // not control flow anyone observes.
+                    break;
+                }
                 if triggered.is_empty() {
                     // Timeout with no data — yield an empty batch so the caller
                     // can still make progress / apply back-pressure.

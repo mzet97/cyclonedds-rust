@@ -111,3 +111,79 @@ fn builder_add_union_case_creates_union() {
         _ => panic!("expected union schema"),
     }
 }
+
+/// Every public constructor produces a schema, so `to_schema`'s error arms are
+/// unreachable from outside the crate.
+///
+/// `to_schema` used to `expect`/`panic!` on a missing sub-type. It now returns
+/// `DdsResult`, but that is hardening rather than a fix and this test is what
+/// says so: no caller can reach those arms. `DynamicTypeBuilder::new` is
+/// private, each constructor whose kind needs a sub-type takes it as an
+/// argument, and the setters take values rather than `Option`s — so a sub-type
+/// can be replaced but never cleared. If a future constructor breaks that, this
+/// fails here rather than unwinding in a user's thread.
+#[test]
+fn every_public_constructor_builds_without_panicking() {
+    let participant = DomainParticipant::new(0).unwrap();
+    let i32_spec = || DynamicTypeSpec::primitive(DynamicPrimitiveKind::Int32);
+
+    let builders: Vec<(&str, DynamicTypeBuilder)> = vec![
+        ("structure", DynamicTypeBuilder::structure("S")),
+        ("enumeration", DynamicTypeBuilder::enumeration("E")),
+        ("bitmask", DynamicTypeBuilder::bitmask("B")),
+        ("alias", DynamicTypeBuilder::alias("A", i32_spec())),
+        ("string8", DynamicTypeBuilder::string8(None)),
+        ("bounded_string8", DynamicTypeBuilder::bounded_string8(32)),
+        ("unbounded_string8", DynamicTypeBuilder::unbounded_string8()),
+        (
+            "sequence",
+            DynamicTypeBuilder::sequence("Sq", i32_spec(), None),
+        ),
+        (
+            "bounded_sequence",
+            DynamicTypeBuilder::bounded_sequence("BSq", i32_spec(), 4),
+        ),
+        (
+            "unbounded_sequence",
+            DynamicTypeBuilder::unbounded_sequence("USq", i32_spec()),
+        ),
+        (
+            "array",
+            DynamicTypeBuilder::array("Ar", i32_spec(), vec![3]),
+        ),
+        ("union", DynamicTypeBuilder::union("U", i32_spec())),
+    ];
+
+    for (what, builder) in builders {
+        let built = builder.build(&participant);
+        assert!(
+            built.is_ok(),
+            "DynamicTypeBuilder::{what} failed to build: {:?}",
+            built.err()
+        );
+    }
+
+    // `map`/`bounded_map` are excluded above because they cannot succeed:
+    // CycloneDDS 11.0.1 returns DDS_RETCODE_UNSUPPORTED for DDS_DYNAMIC_MAP
+    // (`dds_dynamic_type.c:237`). They still reach `to_schema` without panicking,
+    // which is what this test is about; the error is asserted in
+    // `error_retcode_mapping.rs`.
+    for (what, builder) in [
+        (
+            "map",
+            DynamicTypeBuilder::map("M", i32_spec(), i32_spec(), None),
+        ),
+        (
+            "bounded_map",
+            DynamicTypeBuilder::bounded_map("BM", i32_spec(), i32_spec(), 8),
+        ),
+    ] {
+        let err = builder
+            .build(&participant)
+            .expect_err("CycloneDDS 11 does not implement dynamic maps");
+        assert!(
+            matches!(err, cyclonedds::DdsError::Unsupported(_)),
+            "DynamicTypeBuilder::{what} should report Unsupported, got {err:?}"
+        );
+    }
+}

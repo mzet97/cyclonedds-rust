@@ -262,6 +262,18 @@ impl DynamicTypeBuilder {
             .discriminator_type(discriminator_type)
     }
 
+    /// Build a dynamic map type.
+    ///
+    /// # Not supported by CycloneDDS
+    ///
+    /// [`build`](DynamicTypeBuilder::build) always fails with
+    /// [`DdsError::Unsupported`]: CycloneDDS 11.0.1 returns
+    /// `DDS_RETCODE_UNSUPPORTED` for `DDS_DYNAMIC_MAP`
+    /// (`vendor/cyclonedds/.../dds_dynamic_type.c:237`, alongside
+    /// `DDS_DYNAMIC_BITSET`). The constructor is kept so the API tracks the
+    /// XTypes kinds and starts working if the C side implements it; until then
+    /// there is nothing to call it for. Until `From<i32>` was corrected this
+    /// surfaced as `OutOfMemory`, which `is_transient()` reports as retryable.
     pub fn map(
         name: impl Into<String>,
         key_element_type: DynamicTypeSpec,
@@ -414,8 +426,29 @@ impl DynamicTypeBuilder {
         self
     }
 
-    fn to_schema(&self) -> DynamicTypeSchema {
-        match self.kind {
+    /// The schema this builder describes.
+    ///
+    /// Every arm below used to `expect`/`panic!` on a missing sub-type. Those
+    /// states are **not reachable through the public API** and no failing test
+    /// could be written for them: [`DynamicTypeBuilder::new`] is private, every
+    /// public constructor whose kind needs a sub-type takes it as an argument
+    /// (`array`, `sequence`, `alias`, `union`, `map`), and the setters take a
+    /// value rather than an `Option`, so a sub-type can be replaced but never
+    /// cleared. The final arm was likewise unreachable: the arms cover every
+    /// kind a public constructor can produce.
+    ///
+    /// This is hardening, not a fix — recorded as such rather than written up as
+    /// a defect. `DynamicType::create` already returns `DdsResult`, so returning
+    /// one here costs nothing and means a future constructor that forgets to set
+    /// a sub-type reports it instead of unwinding on the caller's thread.
+    fn to_schema(&self) -> DdsResult<DynamicTypeSchema> {
+        let missing = |what: &str| {
+            DdsError::BadParameter(format!(
+                "dynamic type builder for {:?} is missing its {what}",
+                self.name.as_deref().unwrap_or("<unnamed>")
+            ))
+        };
+        Ok(match self.kind {
             x if x == dds_dynamic_type_kind_DDS_DYNAMIC_STRUCTURE => DynamicTypeSchema::Struct {
                 name: self.name.clone().unwrap_or_default(),
                 base: self.base_type.as_ref().map(|b| Box::new(b.schema_clone())),
@@ -439,7 +472,7 @@ impl DynamicTypeBuilder {
                 target: Box::new(
                     self.base_type
                         .as_ref()
-                        .expect("alias requires base type")
+                        .ok_or_else(|| missing("base type"))?
                         .schema_clone(),
                 ),
             },
@@ -449,7 +482,7 @@ impl DynamicTypeBuilder {
                 element: Box::new(
                     self.element_type
                         .as_ref()
-                        .expect("array requires element type")
+                        .ok_or_else(|| missing("element type"))?
                         .schema_clone(),
                 ),
             },
@@ -459,7 +492,7 @@ impl DynamicTypeBuilder {
                 element: Box::new(
                     self.element_type
                         .as_ref()
-                        .expect("sequence requires element type")
+                        .ok_or_else(|| missing("element type"))?
                         .schema_clone(),
                 ),
             },
@@ -471,7 +504,7 @@ impl DynamicTypeBuilder {
                 discriminator: Box::new(
                     self.discriminator_type
                         .as_ref()
-                        .expect("union requires discriminator type")
+                        .ok_or_else(|| missing("discriminator type"))?
                         .schema_clone(),
                 ),
                 cases: Vec::new(),
@@ -484,18 +517,18 @@ impl DynamicTypeBuilder {
                 key: Box::new(
                     self.key_element_type
                         .as_ref()
-                        .expect("map requires key type")
+                        .ok_or_else(|| missing("key type"))?
                         .schema_clone(),
                 ),
                 value: Box::new(
                     self.element_type
                         .as_ref()
-                        .expect("map requires value type")
+                        .ok_or_else(|| missing("value type"))?
                         .schema_clone(),
                 ),
             },
-            _ => panic!("unsupported dynamic builder kind for schema"),
-        }
+            _ => return Err(missing("a supported kind")),
+        })
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entity)))]
@@ -632,7 +665,7 @@ pub struct DynamicType {
 
 impl DynamicType {
     pub fn create(entity: dds_entity_t, builder: DynamicTypeBuilder) -> DdsResult<Self> {
-        let schema = builder.to_schema();
+        let schema = builder.to_schema()?;
         let DynamicTypeBuilder {
             kind,
             name,
