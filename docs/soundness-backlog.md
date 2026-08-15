@@ -1,10 +1,13 @@
 # Soundness backlog
 
-Everything left open after 2.0.4, with the fix for each item. Nothing curated out.
+Everything still open, with the fix for each item. Nothing curated out.
 
-Baseline: `main @ a9cdd0b` · 304 tests · CI 6/6 green · verified on `+1.85.0` (MSRV).
+Baseline: `main @ 16d1e4a` · version `3.0.0-alpha.1` · CI 6/6 green ·
+316 tests on each of linux/windows/macos, 17 more under the ASan job.
 
-Estimated total ~11 days, of which ~4.5 are the two API breaks that make up 3.0.0.
+`v2.0.4` is tagged at `f2ef9e6` and **not** published.
+
+Estimated ~7 days remaining, of which ~3 are the one API break that closes A1–A3 and A7.
 
 ---
 
@@ -12,7 +15,7 @@ Estimated total ~11 days, of which ~4.5 are the two API breaks that make up 3.0.
 
 A1 is the root: A2, A3 and A7 only close once it does.
 
-### A1 — Drop order with unowned parents · High · breaks API · ~2d
+### A1 — Drop order with unowned parents · High · breaks API · ~3d
 
 Struct fields drop in declaration order. In `struct App { dp, sub, reader }` the participant
 dies first, CycloneDDS deletes its children recursively, and the later `Drop`s call
@@ -20,18 +23,24 @@ dies first, CycloneDDS deletes its children recursively, and the later `Drop`s c
 recycled in between, where it destroys the wrong entity — silently and
 non-deterministically.
 
+Unchanged by 3.0.0-alpha.1. The typed constructors closed *type* confusion, not *lifetime*:
+each entity still stores a bare `dds_entity_t` and keeps nothing of its parent alive.
+`entity::delete_entity` (`cyclonedds/src/entity.rs:58`) now checks the return code across
+all 14 `Drop`s, but checking only turns a silent failure into a logged one — it cannot tell
+"parent already deleted me" apart from "this handle now belongs to someone else", which is
+precisely the dangerous case.
+
 **Fix.** Each entity owns its parent: `Arc<ParticipantInner>` in `Publisher`/`Subscriber`/
 `Topic`, `Arc<SubscriberInner>` in `DataReader`, and so on. The parent's `Drop` only runs
-once the last child is gone, which makes ordering irrelevant by construction. Today
-`entity::delete_entity` merely *logs* the failure.
+once the last child is gone, which makes ordering irrelevant by construction.
 
 **Verification.** Test with a struct in hostile field order, under ASan.
 
 ### A2 — DataReader can outlive its Topic · High · breaks API · depends on A1
 
-The typed constructors closed type confusion, but the `&Topic<T>` reference only has to live
-for the call — the returned reader does not retain it.
-`DataReader::new(&sub, &Topic::new(&dp,"x")?)` still leaves the reader on a dead topic.
+The `&Topic<T>` reference only has to live for the call — the returned reader does not
+retain it. `DataReader::new(&sub, &Topic::new(&dp,"x")?)` still leaves the reader on a dead
+topic. The 3.0.0-alpha.1 CHANGELOG entry says so explicitly.
 
 **Fix.** Falls out of A1: the reader holds an `Arc` of the topic. Cheaper alternative if A1
 is deferred: a lifetime parameter (`DataReader<'a, T>`) — works, but is viral across the
@@ -47,41 +56,40 @@ deleted entity. Documented on the method, not closed.
 wait. Complement: expose `dds_waitset_set_trigger` to wake the wait on drop, making
 cancellation effective rather than merely safe.
 
-### A4 — clone_out is infallible · High · breaks API · ~1d
+### A5 — Remaining panics · Low/Medium · ~0.5d · downgraded
 
-The generated `clone_out` for a union without `#[dds_default]` panics on an unknown
-discriminator, and the discriminator comes off the wire. The `catch_unwind` barrier stops
-the process abort, but a peer built from a different IDL revision still makes
-`reader.take()` panic on the user's thread.
+A4 (fallible `clone_out`) landed in `62b1afd` and closed the union-discriminator panic,
+which was the remotely reachable one. What A5 listed alongside it did **not** ride along,
+and on re-reading, most of it is weaker than the original entry claimed:
 
-**Fix.** `unsafe fn clone_out(ptr) -> DdsResult<Self>`. Ripple: the trait, the derive (3
-templates), and every call site — `reader.rs`, `sample.rs`, `async.rs`, `serialization.rs`,
-`content_filtered_topic.rs`. An undecodable sample becomes a discarded error instead of a
-downed call.
+| Site | Original claim | What holds today |
+|---|---|---|
+| `sequence.rs:85` `DdsSequence::clone_from_raw` | reachable via `clone_out` | `from_slice` only fails on `dds_alloc` returning null or a `len × size` overflow. `ddsrt_malloc` aborts on OOM, so the null branch is dead. **Effectively unreachable.** |
+| `string.rs:48` `Default` | reachable | same `dds_alloc` argument. **Effectively unreachable.** |
+| `string.rs:58` `Clone` | reachable | `dds_string_dup` → `ddsrt_malloc`. **Effectively unreachable.** |
+| `sequence.rs:224` `DdsBoundedSequence::clone_from_raw` | not listed | `from_slice` returns `BadParameter` when `len > N`, and `len` comes from the native sample. This is the one with a live argument — **argued, not demonstrated**: CycloneDDS enforces the bound during deserialization via the `BSQ` ops, so it may not be reachable in practice. |
+| `dynamic_type.rs` (7 sites) | API misuse on the user's thread | unchanged, outside any trampoline. Still the honest ones to convert. |
 
-**Verification.** Test with a union discriminator outside the declared range.
+**Fix.** Make `dynamic_type.rs`'s builder return `DdsResult` — an API misuse should be
+`Err`, not a panic. For the bounded sequence, either demonstrate reachability with a peer
+that oversends, or record that the C side enforces it and leave the `expect`.
 
-### A5 — 13 panics on reachable paths · Medium · couples to A4 · ~0.5d
+**Do not** repeat the original framing. It said "reachable via `clone_out`" for three sites
+whose failure branch cannot be taken.
 
-In `dynamic_type.rs`, `dynamic_value.rs`, `sequence.rs` and `string.rs`. The
-`dynamic_type.rs` ones sit in `to_schema`, on the user's thread, outside any trampoline —
-checked. But `sequence.rs:83` (`expect` in `clone_from_raw`), `string.rs:47` (`Default` with
-`expect`) and `string.rs:57` (`assert!` in `Clone`) **are** reachable via `clone_out`.
+### A6 — ABI probe · Medium · mostly closed in `16d1e4a` · ~0.5d left
 
-**Fix.** The three reachable ones ride along with A4 as propagated errors. The
-`dynamic_type.rs` ones become `DdsResult` on the builder — an API misuse should be `Err`,
-not a panic.
+Done: all 11 `dds_*_status_t` structs that `entity.rs` reads by value, plus `dds_guid_t`,
+are measured by the probe and asserted in `sys/src/lib.rs`. Verified by deliberately
+corrupting a probe constant — the build fails naming the type.
 
-### A6 — ABI probe covers little · Medium · ~0.5d
+Still open: the `SerdataHeader`/`SerdataOps` structs this crate hand-declares. Reaching
+`ddsi_serdata.h` from the probe pulls in a chain of internal ddsi headers
+(`dds/cdr/dds_cdrstream.h` onward) the probe's include set does not resolve. They remain
+pinned only by the vendored header they were read from — and they are exactly what the
+2.0.4 vtable fix depended on.
 
-Checks `dds_sample_info` plus 6 scalar typedefs. Does not cover the ~11 status structs read
-by value in `entity.rs:107-155`, nor `dds_guid_t`, nor the `SerdataHeader`/`SerdataOps`
-structs hand-declared in `-sys` — precisely the ones that replaced magic offsets and that a
-new CycloneDDS release could invalidate.
-
-**Fix.** Extend `ABI_PROBE_C` with `sizeof`/`offsetof` for those types and add the matching
-`const assert`s in `sys/src/lib.rs`. Mechanical. Regenerate the `abi/<triple>.rs` snapshots —
-which, incidentally, do not exist for any target yet (see D8).
+Also still open: the `abi/<triple>.rs` snapshots, which exist for no target (D8).
 
 ### A7 — Publisher / Subscriber / WaitSet still take raw handles · Low · absorbed by A1
 
@@ -90,7 +98,7 @@ constructors does not apply. They do still accept a temporary's handle.
 
 **Fix.** Free with A1. Standalone it is a signature change to `&DomainParticipant` plus call
 site migration — the same pattern already applied to `Topic`/`DataReader`/`DataWriter`
-(~2h).
+(~2h). See F2.
 
 ### A8 — DdsEntity::entity() is public · Low · decision, not code
 
@@ -101,78 +109,84 @@ The review suggested `pub(crate)`. Not done: it is required for FFI interop and 
 `#[doc(hidden)]` — or do nothing and record the decision. Recommend the latter: closing this
 pushes FFI users into `unsafe` for no real gain.
 
+### Closed since the last revision of this document
+
+- **A4 — fallible `clone_out`** · `62b1afd`. `DdsType::clone_out` returns `DdsResult<Self>`.
+  Writing its first test uncovered a second defect: `DdsUnionDerive` interpolated a
+  macro-time flag into a runtime `if`, so the union derive had never compiled for any
+  non-String case — an advertised README feature with zero coverage.
+- **A6 (status structs)** · `16d1e4a`, above.
+- **D1 — the `Qos` Send/Sync justification** · `16d1e4a`. It claimed the type is
+  "immutable after construction"; `set_property` exists. The impl is sound for a different
+  reason (every mutation takes `&mut self`).
+
 ---
 
-## B. Audit status — 6,710 lines
+## B. Audit — complete
 
-Ordered by risk (`unsafe` density × exposed surface), not size. Two modules are done and
-produced two real defects, both fixed with before/after proof; the rest have had grep only.
-Not claiming the unread ones are correct — claiming they were not read.
+All nine modules have been read. Six defects, all with before/after proof except where
+noted. Recording what each module produced, because "not audited" and "audited, clean" are
+very different states to hand over.
 
-**Done — `xtypes.rs` (1,078).** Two defects, both public API:
-`TopicDescriptor` implemented a `Clone` that copied the raw pointer with no refcount
-alongside a `Drop` that freed it — double free, reproduced as `STATUS_HEAP_CORRUPTION`.
-`adr_step` was a second hand-maintained instruction-width table, missing `ENU`/`ARR`/`UNI`/
-`EXT`, so `parse_type` walked out of phase and dropped members from its result. Also swept
-the whole crate for the `Drop`+shallow-`Clone` pattern: 7 types have both, `TopicDescriptor`
-was the only broken one. Verified correct: `OwnedTypeId`'s `dup`/`fini`/`free` pairing (the
-default allocator is `ddsrt_*`, so `dds_free` matches), `MatchedEndpoint::type_info`
-ownership (the header says the callee allocates), `TypeIdRef`'s lifetime binding, and all
-four `from_raw_parts` (null and zero guarded).
+| Module | Lines | Outcome |
+|---|---:|---|
+| `qos.rs` | 1,631 | Clean beyond the `data_representation` leak fixed earlier. All 9 allocating getters re-checked against the C. |
+| `xtypes.rs` | 1,170 | **2 defects.** `TopicDescriptor` double-free on `Clone` (`c191bee`); `adr_step` dropped members in `parse_type` (`0a3db00`). |
+| `dynamic_value.rs` | 1,186 | Nothing found. |
+| `dynamic_type.rs` | 1,071 | 7 panic sites, see A5. No memory defect. |
+| `type_discovery.rs` | 976 | **3 defects** (`a2bfb2c`): three more copies of the bad width table; `write_value_to_native` naming fields by word position; native buffer leaked on an early return. |
+| `request_reply.rs` | 265 | Nothing found. |
+| `security.rs` | 205 | Nothing found. |
+| `participant_pool.rs` | 184 | Nothing found. 8 `lock().unwrap()` remain — poisoning propagates a panic, which is the standard trade-off, not a defect. |
+| `serde_sample.rs` | 138 | **1 defect** (`9881b38`): `Native = Self` handed a Rust `Vec` to C as a `dds_sequence_t`. Reproduced as `STATUS_STACK_BUFFER_OVERRUN`. |
 
-**Done — `qos.rs` (1,624).** One defect, already fixed earlier: `data_representation`
-leaked its array when a peer sent an unknown representation id, because `?` returned before
-`dds_free`. All 9 allocating getters re-checked against the C: the early return on
-`n == 0` never leaks, since `dds_qget_*` sets the out-pointer to NULL in that case, and the
-`dds_alloc`/`dds_free` + `dds_string_dup`/`dds_string_free` pairings are right.
-`Clone for Qos` not checking `dds_create_qos()` for null is harmless: `ddsrt_malloc` aborts
-on OOM, so it cannot return NULL.
+> The five "nothing found" rows come from the working session, not from a commit — unlike
+> `qos.rs` and `xtypes.rs`, whose results were written up in `174e908`. If you want that
+> level of record for them too, it has to be written; do not assume it exists.
 
-### Still unread
+### B+ — ops() bytecode beyond the scanner · High · ~1d · open
 
-| Module | Why it matters | Lines |
-|---|---|---:|
-| `dynamic_value.rs` | Builds and reads dynamic values through pointers; not a line read. | 1,186 |
-| `dynamic_type.rs` | Only the `expect`s. The rest of the builder and type registration unseen. | 1,071 |
-| `type_discovery.rs` | Converts CDR ↔ dynamic data over raw buffers; not a line read. | 986 |
-| `request_reply.rs` | Correlation IDs and timeouts over pub/sub; not a line read. | 265 |
-| `security.rs` | X.509 certificates and hot-reload. Security surface, zero audit. | 205 |
-| `participant_pool.rs` | `lock().unwrap()` throughout; poisoning propagates panics. | 184 |
-| `serde_sample.rs` | `postcard` wrapper; lowest risk, still never read. | 111 |
-
-### B+ — ops() bytecode beyond the scanner · High · ~1d
-
-The scanner is gone, but the rest of the generation was **not** audited: `OP_KOF` key
-patching, union `JEQ4` entries, and `TYPE_EXT` offsets nested more than one level deep. It
-is the least verifiable part of the project and an error here corrupts serialization for any
-type.
+The derive's scanner is gone and the five copies of the width table are down to one, but
+the rest of the generation was **not** audited: `OP_KOF` key patching, union `JEQ4` entries,
+and `TYPE_EXT` offsets nested more than one level deep. It is the least verifiable part of
+the project and an error here corrupts serialization for any type.
 
 **Fix.** Differential test against the C `idlc`: compile the same IDL through both paths and
 compare the ops arrays word by word. The only way to verify this without relying on human
-reading.
+reading — and the width-table episode is the argument for why reading is not enough.
 
-### B++ — Vec\<Composite\> with nested heap fields · Medium · ~0.5d
+### B++ — Vec\<Composite\> with nested heap fields · Medium · ~0.5d · open
 
-Gap the code itself admits at `writer.rs:271-277`: the derive uses the inner composite type
-directly as the `DdsSequence` element instead of `<Inner as DdsType>::Native`. Correct only
-while `Inner` has no `String`/`Vec` of its own.
+Gap the code itself admits at `cyclonedds/src/writer.rs:296-306`: the derive uses the inner
+composite type directly as the `DdsSequence` element instead of `<Inner as DdsType>::Native`.
+Correct only while `Inner` has no `String`/`Vec` of its own.
 
 **Fix.** Apply the `Native` translation recursively in the derive. Test:
 `struct Outer { items: Vec<Inner> }` with `Inner { name: String }`, under ASan.
+
+### B+++ — SerdeSample::type_name() is the same for every T · Medium · open
+
+`type_name()` used `concat!("SerdeSample<", stringify!(T), ">")`, which expands to the
+literal `"T"` — so every `SerdeSample<X>` announced the same DDS type name and unrelated
+payload types matched each other on the wire. `9881b38` changed the string to plain
+`"SerdeSample"`, which is honest about being type-agnostic but does not fix the matching.
+
+Left open deliberately rather than guessed at. A correct fix needs a name **stable across
+peers and across compilations**; `std::any::type_name` is neither (no stability guarantee,
+and it differs by crate path). Candidates: a hash of the `postcard` schema, or an explicit
+name supplied by the user at construction.
 
 ---
 
 ## C. Release on hold
 
-2.0.4 is committed with CI 6/6 green three commits back. The further `main` advances with
-breaking changes on top, the more expensive extracting that release becomes.
-
 | Item | State | Action |
 |---|---|---|
-| tag `v2.0.4` | not created | `git tag -a v2.0.4` on commit `5c3e515`, **not** on current HEAD |
-| publish crates.io | not done, 9 crates | order: `-src` → `-sys` → `-derive` → `cyclonedds` → `-build` → `-idlc` → `-cli` → `cargo-` → `-wasm`. **Irreversible** — needs explicit approval |
-| `cyclonedds-src` | at 1.0.1, not bumped | check whether the submodule moved since 1.0.1; bump if so |
-| `[Unreleased]` | accumulating breaking changes | becomes 3.0.0 once phase 5 lands |
+| tag `v2.0.4` | **created**, at `f2ef9e6` | done |
+| publish 2.0.4 to crates.io | not done, 9 crates | build from the **tag**, not `main` (which is 3.0.0-alpha.1). Order: `-src` → `-sys` → `-derive` → `cyclonedds` → `-build` → `-idlc` → `-cli` → `cargo-cyclonedds` → `-wasm`. **Irreversible** — needs explicit approval |
+| `cyclonedds-src` | 1.0.1 | check whether the submodule moved since 1.0.1; bump if so |
+| `cyclonedds-rust-sys` | 1.1.1 on `main` | the A6 probe changed `sys/src/lib.rs`; needs a bump before the 3.0.0 publish |
+| `[Unreleased]` | 3.0.0-alpha.1, three breaking changes | becomes 3.0.0 once A1 lands |
 
 ---
 
@@ -182,11 +196,11 @@ None of this is soundness. All of it is cheap and reduces recurring friction.
 
 | # | What | Action |
 |---|---|---|
-| D1 | `Qos` safety comment says "immutable after construction" — false, `set_property` exists | rewrite: the real argument is `&mut self` |
-| D2 | ASan job ran once, is `continue-on-error`, nobody read the output | read the log; promote to blocking if stable |
+| ~~D1~~ | ~~`Qos` safety comment~~ | done in `16d1e4a` |
+| D2 | ASan job is still `continue-on-error` (`.github/workflows/ci.yml:70`); its output has never been read | read the log; promote to blocking if stable |
 | D3 | Trivy: CHANGELOG 2.0.2 records that CVE-by-CVE suppression is unsustainable | purge Perl/gzip from the final stage or move to distroless |
 | D4 | `._ROADMAP_v5.md` deletion uncommitted, predates this work | commit or restore — owner's call |
-| D5 | 8 files in `docs/` never checked against the current API: `qos-reference`, `security-guide`, `benchmarks`, `fuzzing`, `faq`, `async-patterns`, `security-production`, `architecture` | same sweep already done on the other six |
+| D5 | 8 files in `docs/` never checked against the current API: `qos-reference`, `security-guide`, `benchmarks`, `fuzzing`, `faq`, `async-patterns`, `security-production`, `architecture`. Now overdue twice: the typed-constructor break **and** fallible `clone_out` both changed example code | same sweep already done on the other six — but see F1 first |
 | D6 | `cyclonedds-bench` never run; dropping `spawn_blocking` should have cut latency and it was not measured | run before/after and record |
 | D7 | `fuzz/` never executed | run the existing targets; consider a new one for `clone_out` |
 | D8 | `abi/<triple>.rs` snapshots exist for no target — cross-compilation fails by design | generate for the supported targets |
@@ -200,9 +214,9 @@ Two observed behaviours with no explanation. Recorded so they do not become folk
 ### E1 — SIGSEGV in tests/qos.rs under coverage · Medium
 
 Happened once, on `a1be1ca9`, under `cargo llvm-cov`. Did not reproduce across 15 isolated
-runs, the 304-test local suite, or the two following CI commits. The test exercises
-`qos.data_representation()` — exactly what was changed — but the crash came before any test
-reported.
+runs, the local suite, or any CI commit since — the Code Coverage job has been green on
+every commit through `16d1e4a`. The test exercises `qos.data_representation()` — exactly
+what was changed — but the crash came before any test reported.
 
 **Action.** Do not treat as resolved. If it returns, run `tests/qos.rs` under ASan in
 isolation and inspect `dds_qget_data_representation`. A `slice` stays alive (though unused)
@@ -223,14 +237,15 @@ only if development moves to stable.
 
 ## F. Needs the maintainer
 
-### F1 — The READMEs you updated · High
+### F1 — The READMEs you updated · High · still blocking
 
-They do not appear in this repository — `git status` clean, last commit is mine. And the
-root README and 5 files in `docs/` had their examples rewritten for the typed-constructor
-API break. If your version lives elsewhere there is a real conflict to reconcile.
+They do not appear in this repository. The root README and 5 files in `docs/` had their
+examples rewritten for the typed-constructor break, and `clone_out` returning
+`DdsResult<Self>` has since invalidated more example code. If your version lives elsewhere
+the conflict is now larger than it was.
 
 **Need to know.** Where they are. If they were in another `Z:\tese` project there is no
-conflict. If they were here, say so before documentation is touched again.
+conflict. If they were here, say so before documentation is touched again. D5 waits on this.
 
 ### F2 — Typed Publisher / Subscriber / WaitSet? · Low
 
@@ -244,19 +259,23 @@ disappears — it absorbs all three.
 
 Each phase ends verifiable and committable.
 
-1. **Close 2.0.4** — tag and publish. `C` · ~1h · *needs explicit approval before publish*
-2. **Audit before redesigning** — read B in risk order; differential `ops()` test. Comes
-   first because it may change what the redesign has to cover. `B, B+, B++` · ~3d
-3. **Fallible clone_out** — independent of A1 and cheaper. Closes A4 and the three reachable
-   panics of A5 at once. `A4, A5` · ~1.5d · breaks API
-4. **Ownership: owned parents** — the central redesign. `Arc` parents close A1, A2, A3 and
-   A7 together; attempting any in isolation is rework. `A1, A2, A3, A7` · ~3d · breaks API
-5. **ABI probe and snapshots** — extend the probe and generate cross-compile snapshots in one
-   pass; same file, same reasoning. `A6, D8` · ~1d
+1. **Ownership: owned parents** — the central redesign, and the last real soundness item.
+   `Arc` parents close A1, A2, A3 and A7 together; attempting any in isolation is rework.
+   `A1, A2, A3, A7` · ~3d · breaks API
+2. **ops() differential test** — the largest unverified surface left, and the one where
+   reading has already proven insufficient. `B+` · ~1d
+3. **Nested composites and the remaining panics** — `B++` and A5's `dynamic_type.rs`
+   builder. `B++, A5` · ~1d
+4. **SerdeSample type naming** — needs a design decision on what a stable name is, not just
+   code. `B+++` · ~0.5d
+5. **ABI snapshots** — the `SerdataHeader`/`SerdataOps` probe gap and the cross-compile
+   snapshots. `A6, D8` · ~1d
 6. **Release 3.0.0** — consolidate `[Unreleased]`, write the 2.x → 3.0 migration guide,
-   decide A8, tag and publish. `C, A8` · ~0.5d
-7. **Debt and measurement** — D1 through D7. Blocks nothing, but D2 and D3 cut recurring
-   friction and D6 measures a gain that is currently only a claim. `D1–D7` · ~1.5d
+   bump `-sys`, decide A8, tag and publish. `C, A8` · ~0.5d
+7. **Debt and measurement** — D2 through D8. Blocks nothing, but D2 and D3 cut recurring
+   friction and D6 measures a gain that is currently only a claim. `D2–D8` · ~1.5d
 
-**E1 and F1 sit outside the sequence.** E1 is watchfulness — act only if it recurs. F1 blocks
-any further documentation work and depends entirely on the maintainer.
+**Publishing 2.0.4 (C) is orthogonal** and can happen at any point — it builds from the tag,
+not from `main`. **E1 and F1 sit outside the sequence:** E1 is watchfulness, act only if it
+recurs; F1 blocks D5 and any further documentation work, and depends entirely on the
+maintainer.
