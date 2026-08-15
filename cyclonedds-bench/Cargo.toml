@@ -9,8 +9,17 @@ publish = false
 cyclonedds = { path = "../cyclonedds" }
 cyclonedds-derive = { path = "../cyclonedds-derive" }
 
+[features]
+# Enables the take/async arm of the async_read bench.
+async = ["cyclonedds/async", "dep:tokio"]
+
 [dev-dependencies]
 criterion = { workspace = true, features = ["html_reports"] }
+
+[dependencies.tokio]
+version = "1"
+optional = true
+features = ["rt", "time"]
 
 [[bench]]
 name = "latency"
@@ -26,4 +35,14 @@ harness = false
 
 [[bench]]
 name = "ipc_comparison"
+harness = false
+
+# `benches/config_comparison.rs` existed without this entry, so cargo never
+# compiled it — the same shape as the fuzz crate that could not be built.
+[[bench]]
+name = "config_comparison"
+harness = false
+
+[[bench]]
+name = "async_read"
 harness = false

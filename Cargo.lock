@@ -540,6 +540,7 @@ dependencies = [
  "criterion",
  "cyclonedds",
  "cyclonedds-derive",
+ "tokio",
 ]
 
 [[package]]

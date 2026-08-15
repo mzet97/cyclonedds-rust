@@ -120,6 +120,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Infrastructure
 
+- **Nothing measured the async read path**, so 2.0.4's claim that dropping
+  `spawn_blocking` cut latency was not merely unmeasured — it was unmeasurable.
+  `latency`, `throughput`, `cdr` and `config_comparison` are synchronous;
+  `ipc_comparison` mentions async only in a comment. `benches/async_read.rs`
+  measures `take` against `take_async` on identical work, and reintroducing the
+  old wrapper long enough to take a reading gives the number the entry wanted:
+
+  | | `take/sync` | `take/async` |
+  |---|---|---|
+  | with `spawn_blocking` (pre-2.0.4) | 814 ns | **18.38 µs** |
+  | inline (current) | 831 ns | **1.016 µs** |
+
+  ~18×, about 17.4 µs per call, with the synchronous arm as an unmoving control.
+  One machine, one runtime flavour — a baseline to catch regressions against,
+  not a headline. For reference the existing `latency` bench, run for the first
+  time, reports 1.43 / 1.62 / 3.86 µs at 64 B / 1 KiB / 16 KiB.
+
+  `benches/config_comparison.rs` also had no `[[bench]]` entry, so cargo had
+  never compiled it — the same shape as the fuzz crate below. It compiles.
+
 - **`fuzz/` could not be built at all**, let alone run. The crate was neither a
   workspace member nor in `workspace.exclude`, and had no `[workspace]` table of
   its own, so every cargo command in that directory failed with "current package
