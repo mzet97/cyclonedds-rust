@@ -136,6 +136,42 @@ const _: () = {
         core::mem::size_of::<dds_subscription_matched_status_t>() == PROBE_SUBSCRIPTION_MATCHED_SIZE,
         "ABI mismatch: size_of dds_subscription_matched_status_t"
     );
+
+    // `SerdataHeader` and `SerdataOps` below are hand-written: `ddsi_serdata.h`
+    // is an internal ddsi header and bindgen is not pointed at it, so nothing
+    // but these assertions ties them to the C. They are also the structs the
+    // 2.0.4 vtable fix turned on -- the version before it hand-computed byte
+    // offsets into the vtable, read one of them as a `u8`, transmuted that
+    // 0..=255 value into a function pointer and called it. A layout change
+    // upstream is now a build failure naming the field.
+    assert!(
+        core::mem::offset_of!(SerdataHeader, ops) == PROBE_SERDATA_OFF_OPS,
+        "ABI mismatch: offset of ddsi_serdata.ops"
+    );
+    assert!(
+        core::mem::offset_of!(SerdataHeader, hash) == PROBE_SERDATA_OFF_HASH,
+        "ABI mismatch: offset of ddsi_serdata.hash"
+    );
+    assert!(
+        core::mem::offset_of!(SerdataHeader, refc) == PROBE_SERDATA_OFF_REFC,
+        "ABI mismatch: offset of ddsi_serdata.refc"
+    );
+
+    // Only the three vtable slots this crate actually calls are checked. Their
+    // *positions* are what matter: every entry is a function pointer of uniform
+    // size, so a slot inserted anywhere above `free` shifts the ones below it.
+    assert!(
+        core::mem::offset_of!(SerdataOps, get_size) == PROBE_SERDATA_OPS_OFF_GET_SIZE,
+        "ABI mismatch: offset of ddsi_serdata_ops.get_size"
+    );
+    assert!(
+        core::mem::offset_of!(SerdataOps, to_ser) == PROBE_SERDATA_OPS_OFF_TO_SER,
+        "ABI mismatch: offset of ddsi_serdata_ops.to_ser"
+    );
+    assert!(
+        core::mem::offset_of!(SerdataOps, free) == PROBE_SERDATA_OPS_OFF_FREE,
+        "ABI mismatch: offset of ddsi_serdata_ops.free"
+    );
 };
 
 pub type ddsrt_hh_hash_fn =

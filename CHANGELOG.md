@@ -191,6 +191,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Infrastructure
 
+- **The ABI probe now covers the two structs this crate hand-declares.**
+  `SerdataHeader` and `SerdataOps` mirror `struct ddsi_serdata` and its vtable, which live
+  in an internal ddsi header bindgen is not pointed at — so until now nothing but a careful
+  reading tied them to the C. They are also precisely what the 2.0.4 vtable fix turned on:
+  the version before it hand-computed byte offsets into that vtable, read one of them as a
+  `u8`, transmuted the resulting 0..=255 value into a function pointer and called it.
+  Reaching `ddsi_serdata.h` needed two more include directories; the probe now measures
+  `ops`/`hash`/`refc` and the three vtable slots this crate calls, and `sys/src/lib.rs`
+  asserts them. Verified by deleting one vtable slot from the Rust declaration: the build
+  fails naming `ddsi_serdata_ops.to_ser`.
+
+- **First `abi/<triple>.rs` snapshot**, for `x86_64-pc-windows-msvc`. These exist so a
+  *cross*-compile has measured constants rather than guessed ones, and they cannot be
+  written by hand or produced from another host — the probe answers by running. The other
+  two CI targets are not committed for exactly that reason; instead
+  `scripts/capture-abi-snapshot.sh` produces one for whatever host it runs on, and each CI
+  job uploads its freshly probed constants as an artifact so they can be committed from a
+  CI run. The same step diffs against a committed snapshot when one exists, so an upstream
+  ABI change fails CI on the platform where it happened.
+
+
 - **Nothing measured the async read path**, so 2.0.4's claim that dropping
   `spawn_blocking` cut latency was not merely unmeasured — it was unmeasurable.
   `latency`, `throughput`, `cdr` and `config_comparison` are synchronous;

@@ -88,19 +88,36 @@ demonstrated — CycloneDDS enforces the bound during deserialization via the `B
 Either demonstrate reachability with a peer that oversends, or record that the C enforces
 it and leave the `expect`.
 
-### A6 — ABI probe · Medium · mostly closed in `16d1e4a` · ~0.5d left
+### ~~A6 — ABI probe~~ · closed
 
-Done: all 11 `dds_*_status_t` structs that `entity.rs` reads by value, plus `dds_guid_t`,
-are measured by the probe and asserted in `sys/src/lib.rs`. Verified by deliberately
-corrupting a probe constant — the build fails naming the type.
+All 11 `dds_*_status_t` structs plus `dds_guid_t` were measured in `16d1e4a`. The gap it
+left — the `SerdataHeader`/`SerdataOps` structs this crate hand-declares — is closed now
+too. `ddsi_serdata.h` is an internal ddsi header bindgen is not pointed at, and reaching it
+needed two more include dirs (`src/core/ddsi/include`, `src/core/cdr/include`); with those
+the probe measures `ddsi_serdata`'s `ops`/`hash`/`refc` offsets and the three
+`ddsi_serdata_ops` vtable slots this crate calls.
 
-Still open: the `SerdataHeader`/`SerdataOps` structs this crate hand-declares. Reaching
-`ddsi_serdata.h` from the probe pulls in a chain of internal ddsi headers
-(`dds/cdr/dds_cdrstream.h` onward) the probe's include set does not resolve. They remain
-pinned only by the vendored header they were read from — and they are exactly what the
-2.0.4 vtable fix depended on.
+They are exactly what the 2.0.4 vtable fix turned on: the version before it hand-computed
+byte offsets into that vtable, read one as a `u8`, transmuted the 0..=255 value into a
+function pointer and called it. Verified the assertions bite by deleting one vtable slot
+from the Rust declaration — the build fails naming `ddsi_serdata_ops.to_ser`.
 
-Also still open: the `abi/<triple>.rs` snapshots, which exist for no target (D8).
+### ~~D8 — abi/<triple>.rs snapshots~~ · partly closed, and honestly so
+
+`cyclonedds-rust-sys/abi/x86_64-pc-windows-msvc.rs` exists. The other two CI targets do
+not, and **cannot be produced from here**: the probe is a C program that answers by
+running, so a linux snapshot requires a linux host. That is the property that makes the
+snapshots worth anything.
+
+What is in place instead of hand-typing them: `scripts/capture-abi-snapshot.sh` writes the
+snapshot for whatever host it runs on, and each CI job now uploads its freshly probed
+constants as an artifact — so `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin` can be
+committed from a CI run. The same step diffs against a committed snapshot when one exists,
+which turns these from dead files into a drift check: an ABI change upstream fails CI on
+the platform where it happened.
+
+Note that cross-compilation is the only thing the snapshots serve. Every CI job builds
+natively, so none of them exercises the snapshot path today.
 
 ### ~~A8 — DdsEntity::entity() is public~~ · decided: stays public
 
@@ -272,7 +289,7 @@ None of this is soundness. All of it is cheap and reduces recurring friction.
 | ~~D5~~ | ~~8 files in `docs/` never checked against the current API~~ | swept, and **the premise did not hold**: none of the eight contains a single stale constructor, `clone_out` call or `SerdeSample` reference. The three API breaks changed no example in them, because they contain almost no example code — `architecture.md`'s three mentions are Mermaid diagram labels with the arguments elided. One did need fixing, for a different reason: `fuzzing.md` documented a `cargo fuzz run` workflow that could never have worked (see D7) |
 | ~~D6~~ | ~~`cyclonedds-bench` never run~~ | done, and the premise did not hold: **no benchmark exercised the async path at all** — `latency`, `throughput`, `cdr` and `config_comparison` are synchronous and `ipc_comparison` mentions async only in a comment, so the claim was not merely unmeasured but unmeasurable. `benches/config_comparison.rs` was also missing its `[[bench]]` entry and had never compiled. Added `benches/async_read.rs`; reintroducing `spawn_blocking` temporarily gives `take/async` **18.38 µs** against **1.016 µs** inline, with `take/sync` at ~820 ns as the control — ~18x, about 17.4 µs per call. `latency` for reference: 1.43 / 1.62 / 3.86 µs at 64b / 1kb / 16kb |
 | ~~D7~~ | ~~`fuzz/` never executed~~ | done — and it could not have been: the crate was neither a workspace member nor excluded and had no `[workspace]` table, so every cargo command in it failed before compiling. Fixed. Running libFuzzer still needs a non-Windows host, so the property is also asserted deterministically in `tests/cdr_deserialize_corpus.rs`, which found a live memory-safety defect in `CdrDeserializer` (see the CHANGELOG) |
-| D8 | `abi/<triple>.rs` snapshots exist for no target — cross-compilation fails by design | generate for the supported targets |
+| ~~D8~~ | ~~`abi/<triple>.rs` snapshots exist for no target~~ | Windows committed; linux/macOS need a native host and are now obtainable as CI artifacts. See A6/D8 above |
 
 ---
 
@@ -392,8 +409,9 @@ Each phase ends verifiable and committable. Phases 1, 2 and 6 are done.
    had ever been published. Only `TYPE_EXT` beyond one level is left unexamined.
 4. **SerdeSample type naming** — needs a design decision on what a stable name is, not just
    code. `B+++` · ~0.5d
-5. **ABI snapshots** — the `SerdataHeader`/`SerdataOps` probe gap and the cross-compile
-   snapshots. `A6, D8` · ~1d
+5. ~~**ABI snapshots**~~ — done. The probe reaches `ddsi_serdata.h` now, and the Windows
+   snapshot is committed; linux/macOS come from a CI artifact, since they cannot be
+   produced anywhere but on those hosts.
 6. **Release 3.0.0** — consolidate `[Unreleased]`, write the 2.x → 3.0 migration guide,
    bump `-sys`, decide A8 and F3, tag and publish. `C, A8, F3` · ~0.5d
 7. ~~**Debt and measurement**~~ — D2, D6 and D7 done; D3 (Trivy) and D8 (snapshots) open,

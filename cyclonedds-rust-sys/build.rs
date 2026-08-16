@@ -447,6 +447,7 @@ fn run(command: &mut Command, description: &str) {
 /// Fonte C do probe. Emite `pub const` Rust com os layouts medidos.
 const ABI_PROBE_C: &str = r#"
 #include <dds/dds.h>
+#include <dds/ddsi/ddsi_serdata.h>
 #include <stddef.h>
 #include <stdio.h>
 int main(void) {
@@ -464,6 +465,20 @@ int main(void) {
     printf("pub const PROBE_DDS_INSTANCE_HANDLE_T_SIZE: usize = %zu;\n", sizeof(dds_instance_handle_t));
     printf("pub const PROBE_DDS_ATTACH_T_SIZE: usize = %zu;\n", sizeof(dds_attach_t));
     printf("pub const PROBE_DDS_GUID_T_SIZE: usize = %zu;\n", sizeof(dds_guid_t));
+
+    /* `struct ddsi_serdata` and its vtable are hand-declared in src/lib.rs
+       (SerdataHeader / SerdataOps) because they live in an internal ddsi header
+       bindgen is not pointed at. They are exactly what the 2.0.4 vtable fix
+       depended on: the version before it hand-computed byte offsets into the
+       vtable, read one as a `u8`, transmuted that 0..=255 value into a function
+       pointer and called it. Measuring them makes an upstream layout change a
+       build failure instead of a jump into an unmapped page. */
+    printf("pub const PROBE_SERDATA_OFF_OPS: usize = %zu;\n", offsetof(struct ddsi_serdata, ops));
+    printf("pub const PROBE_SERDATA_OFF_HASH: usize = %zu;\n", offsetof(struct ddsi_serdata, hash));
+    printf("pub const PROBE_SERDATA_OFF_REFC: usize = %zu;\n", offsetof(struct ddsi_serdata, refc));
+    printf("pub const PROBE_SERDATA_OPS_OFF_GET_SIZE: usize = %zu;\n", offsetof(struct ddsi_serdata_ops, get_size));
+    printf("pub const PROBE_SERDATA_OPS_OFF_TO_SER: usize = %zu;\n", offsetof(struct ddsi_serdata_ops, to_ser));
+    printf("pub const PROBE_SERDATA_OPS_OFF_FREE: usize = %zu;\n", offsetof(struct ddsi_serdata_ops, free));
 
     /* Status structs read by value in cyclonedds/src/entity.rs::status(): each is
        zero-initialised on the Rust side and filled in by dds_get_*_status, so a
@@ -531,6 +546,11 @@ fn run_abi_probe(probe_ctx: Option<&(PathBuf, PathBuf)>, out_dir: &Path) {
     let candidates = [
         cyclonedds_src.join("src/core/ddsc/include"),
         cyclonedds_src.join("src/ddsrt/include"),
+        // ddsi_serdata.h plus the sertype/keyhash/cdr headers it pulls in.
+        // Without these the serdata layout could only be pinned by reading the
+        // header, which is how it was pinned until now.
+        cyclonedds_src.join("src/core/ddsi/include"),
+        cyclonedds_src.join("src/core/cdr/include"),
         cyclonedds_build.join("src/core/include"),
         cyclonedds_build.join("src/ddsrt/include"),
         cyclonedds_build.join("src/core/ddsc/include"),

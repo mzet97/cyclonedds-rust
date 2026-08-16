@@ -24,6 +24,37 @@ jobs:
         run: cargo build --workspace --features async --locked
       - name: Test
         run: cargo test --workspace --features async --locked -- --test-threads=1 --skip cross_process_pub_sub_reliable --skip cross_process_pub_sub_best_effort
+      # The ABI probe measures struct layouts by *running* a C program, so a
+      # cross-compile has nothing to go on and build.rs demands a snapshot taken
+      # natively (FFI-ABI-008). Only x86_64-pc-windows-msvc is committed, because
+      # it is the only target the author could build on. This publishes each
+      # platform's freshly probed constants so the missing snapshots can be
+      # committed from a CI run rather than hand-typed, and flags a drift when a
+      # snapshot already exists.
+      - name: ABI snapshot
+        shell: bash
+        run: |
+          triple="$(rustc -vV | awk '/^host:/ {print $2}')"
+          probe="$(find target -name abi_probe.rs -path '*cyclonedds-rust-sys*' | head -1)"
+          if [ -z "$probe" ]; then echo "abi_probe.rs not produced"; exit 1; fi
+          mkdir -p abi-artifacts && cp "$probe" "abi-artifacts/$triple.rs"
+          committed="cyclonedds-rust-sys/abi/$triple.rs"
+          if [ -f "$committed" ]; then
+            # The committed file carries a provenance header the probe does not.
+            if ! diff <(grep -v '^//' "$committed") "$probe"; then
+              echo "::error::committed ABI snapshot for $triple differs from the probe"
+              exit 1
+            fi
+            echo "ABI snapshot for $triple matches."
+          else
+            echo "::notice::no committed snapshot for $triple; see the artifact"
+          fi
+      - name: Upload ABI snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: abi-${{ runner.os }}
+          path: abi-artifacts/
+
 
   windows:
     runs-on: windows-latest
@@ -39,6 +70,37 @@ jobs:
         run: cargo build --workspace --features async --locked
       - name: Test
         run: cargo test --workspace --features async --locked -- --test-threads=1 --skip cross_process_pub_sub_reliable --skip cross_process_pub_sub_best_effort
+      # The ABI probe measures struct layouts by *running* a C program, so a
+      # cross-compile has nothing to go on and build.rs demands a snapshot taken
+      # natively (FFI-ABI-008). Only x86_64-pc-windows-msvc is committed, because
+      # it is the only target the author could build on. This publishes each
+      # platform's freshly probed constants so the missing snapshots can be
+      # committed from a CI run rather than hand-typed, and flags a drift when a
+      # snapshot already exists.
+      - name: ABI snapshot
+        shell: bash
+        run: |
+          triple="$(rustc -vV | awk '/^host:/ {print $2}')"
+          probe="$(find target -name abi_probe.rs -path '*cyclonedds-rust-sys*' | head -1)"
+          if [ -z "$probe" ]; then echo "abi_probe.rs not produced"; exit 1; fi
+          mkdir -p abi-artifacts && cp "$probe" "abi-artifacts/$triple.rs"
+          committed="cyclonedds-rust-sys/abi/$triple.rs"
+          if [ -f "$committed" ]; then
+            # The committed file carries a provenance header the probe does not.
+            if ! diff <(grep -v '^//' "$committed") "$probe"; then
+              echo "::error::committed ABI snapshot for $triple differs from the probe"
+              exit 1
+            fi
+            echo "ABI snapshot for $triple matches."
+          else
+            echo "::notice::no committed snapshot for $triple; see the artifact"
+          fi
+      - name: Upload ABI snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: abi-${{ runner.os }}
+          path: abi-artifacts/
+
 
   macos:
     runs-on: macos-latest
@@ -54,6 +116,37 @@ jobs:
         run: cargo build --workspace --features async --locked
       - name: Test
         run: cargo test --workspace --features async --locked -- --test-threads=1 --skip cross_process_pub_sub_reliable --skip cross_process_pub_sub_best_effort
+      # The ABI probe measures struct layouts by *running* a C program, so a
+      # cross-compile has nothing to go on and build.rs demands a snapshot taken
+      # natively (FFI-ABI-008). Only x86_64-pc-windows-msvc is committed, because
+      # it is the only target the author could build on. This publishes each
+      # platform's freshly probed constants so the missing snapshots can be
+      # committed from a CI run rather than hand-typed, and flags a drift when a
+      # snapshot already exists.
+      - name: ABI snapshot
+        shell: bash
+        run: |
+          triple="$(rustc -vV | awk '/^host:/ {print $2}')"
+          probe="$(find target -name abi_probe.rs -path '*cyclonedds-rust-sys*' | head -1)"
+          if [ -z "$probe" ]; then echo "abi_probe.rs not produced"; exit 1; fi
+          mkdir -p abi-artifacts && cp "$probe" "abi-artifacts/$triple.rs"
+          committed="cyclonedds-rust-sys/abi/$triple.rs"
+          if [ -f "$committed" ]; then
+            # The committed file carries a provenance header the probe does not.
+            if ! diff <(grep -v '^//' "$committed") "$probe"; then
+              echo "::error::committed ABI snapshot for $triple differs from the probe"
+              exit 1
+            fi
+            echo "ABI snapshot for $triple matches."
+          else
+            echo "::notice::no committed snapshot for $triple; see the artifact"
+          fi
+      - name: Upload ABI snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: abi-${{ runner.os }}
+          path: abi-artifacts/
+
 
   # This crate is a safe wrapper over a C library: the interesting failure mode
   # is memory corruption that a normal test run happily reports as "ok". The
