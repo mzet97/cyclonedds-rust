@@ -17,8 +17,8 @@ This guide helps developers familiar with `cyclonedds-python` transition to `cyc
 | Python | Rust |
 |--------|------|
 | `DomainParticipant(domain_id)` | `DomainParticipant::new(domain_id)?` |
-| `Publisher(participant)` | `Publisher::new(participant.entity())?` |
-| `Subscriber(participant)` | `Subscriber::new(participant.entity())?` |
+| `Publisher(participant)` | `Publisher::new(&participant)?` |
+| `Subscriber(participant)` | `Subscriber::new(&participant)?` |
 | `Topic(participant, "Name", T)` | `Topic::<T>::new(&participant, "Name")?` |
 | `DataWriter(publisher, topic)` | `DataWriter::new(&publisher, &topic)?` |
 | `DataReader(subscriber, topic)` | `DataReader::<T>::new(&subscriber, &topic)?` |

@@ -153,6 +153,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DdsNativeValue` trait (see below), and `tests/native_layout_recursive.rs` covers all
   five shapes.
 
+### Changed
+
+- **BREAKING**: `SerdeSample<T>` now requires `T: SerdeTypeName`, a new trait carrying
+  `const TYPE_NAME`. `type_name()` used to return the same literal for every payload —
+  `stringify!(T)` in a generic impl expands to `"T"`, not to the substituted type — so
+  every `SerdeSample<X>` announced the same DDS type name, unrelated payloads matched each
+  other on the wire, and each decoded the other's postcard bytes as its own.
+
+  The name is supplied rather than inferred, via `serde_type_name!(MyType, "acme::MyType")`.
+  A hash of the `postcard` schema was the alternative, and was rejected: that API is
+  explicitly experimental and it would put a `Schema` derive bound on every payload.
+  `std::any::type_name` fails outright — crate paths leak in and it has no stability
+  guarantee across compilations. A DDS type name is a wire contract between peers; deriving
+  it from Rust internals is the wrong shape of answer whichever internal is chosen. The
+  bound makes a payload without a name a compile error instead of one more type that
+  matches everything.
+
+- The release container's final stage is `gcr.io/distroless/cc-debian12:nonroot` instead of
+  `debian:bookworm-slim`. `.trivyignore` had grown seven entries chasing CVEs in Perl, gzip
+  and bsdutils — none of them reachable, since the artifact is a single Rust binary that
+  invokes neither — and four different ones came and went in that group in two days. The
+  packages are gone with the base image, and the ignore list with them. `libssl3` went too:
+  the CLI has no OpenSSL dependency unless the `security` feature is enabled. **Not built
+  locally** — no Docker on the machine this was written on; the release workflow builds and
+  scans the image, so a mistake fails the release rather than shipping.
+
+- `DdsEntity::entity()` stays public, now documented as an escape hatch with the two rules
+  that matter: the handle is valid only while the wrapper is, and `dds_delete` on it is the
+  wrapper's job. A review had proposed `pub(crate)`; that would force FFI callers into
+  `unsafe` transmutes to recover a number the wrapper already holds, and the raw
+  `from_entity`/`from_entities` constructors depend on it.
+
+- `cyclonedds-rust-sys`'s build script now prints which CycloneDDS source and version it
+  compiled, and warns when `vendor/cyclonedds` is a different release from the one being
+  linked. See the note below; the mismatch itself is left for the maintainer to close.
+
 ### Infrastructure
 
 - **Nothing measured the async read path**, so 2.0.4's claim that dropping

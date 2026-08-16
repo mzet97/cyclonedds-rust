@@ -30,7 +30,7 @@ struct HelloWorld {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dp = DomainParticipant::new(0)?;
-    let publisher = Publisher::new(dp.entity())?;
+    let publisher = Publisher::new(&dp)?;
     let topic = Topic::<HelloWorld>::new(dp.entity(), "Hello")?;
     let writer = DataWriter::new(publisher.entity(), topic.entity())?;
     writer.write(&HelloWorld { id: 1, message: "hello".into() })?;

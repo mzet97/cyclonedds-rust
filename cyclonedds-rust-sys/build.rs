@@ -17,6 +17,7 @@ fn main() {
     // we still generate bindings from prebuilt file (for code-checking purposes).
     let mut probe_ctx: Option<(PathBuf, PathBuf)> = None;
     let lib_found = if let Ok(cyclonedds_src) = try_resolve_cyclonedds_source(workspace_root) {
+        report_cyclonedds_source(&cyclonedds_src, workspace_root);
         let cyclonedds_build = resolve_cyclonedds_build_dir(&cyclonedds_src, &out_dir);
         probe_ctx = Some((cyclonedds_src.clone(), cyclonedds_build.clone()));
 
@@ -223,6 +224,51 @@ fn strip_static_assertions_from_str(content: &str) -> String {
     }
 
     result
+}
+
+/// `project(CycloneDDS VERSION x.y.z ...)` out of a source tree's CMakeLists.
+fn cyclonedds_version(source_dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(source_dir.join("CMakeLists.txt")).ok()?;
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("project(CycloneDDS"))?;
+    let rest = line.split("VERSION").nth(1)?;
+    Some(rest.split_whitespace().next()?.to_string())
+}
+
+/// Say which CycloneDDS is being compiled, and complain if the vendored
+/// submodule is a different release from it.
+///
+/// `cyclonedds-src` wins over `vendor/cyclonedds` (see the resolution order
+/// below) because it is the copy that ships to crates.io and is present in every
+/// clone, submodule or not. That is the right precedence, but it means the tree
+/// a developer reads when they "go to the C source" is not necessarily the tree
+/// that gets linked — and the two were 11.0.0 and 11.0.1, differing in ways that
+/// are visible in the API (`dds_stream_normalize` returns `bool` in one and an
+/// enum in the other).
+///
+/// Rather than pin them together here — aligning them means either republishing
+/// `cyclonedds-src` or moving the submodule backwards, both of which are the
+/// maintainer's call — the mismatch is reported on every build so it cannot be
+/// discovered the hard way a second time.
+fn report_cyclonedds_source(source_dir: &Path, workspace_root: &Path) {
+    let used = cyclonedds_version(source_dir);
+    println!(
+        "cargo:warning=CycloneDDS source: {} (version {})",
+        source_dir.display(),
+        used.as_deref().unwrap_or("unknown")
+    );
+
+    let vendor = workspace_root.join("vendor/cyclonedds");
+    if vendor.exists() && vendor != source_dir {
+        if let (Some(used), Some(vendored)) = (used, cyclonedds_version(&vendor)) {
+            if used != vendored {
+                println!(
+                    "cargo:warning=vendor/cyclonedds is {vendored} but the build uses {used} from cyclonedds-src; line numbers read out of vendor/ may not describe the linked library (see F3 in docs/soundness-backlog.md)"
+                );
+            }
+        }
+    }
 }
 
 fn try_resolve_cyclonedds_source(workspace_root: &Path) -> Result<PathBuf, String> {

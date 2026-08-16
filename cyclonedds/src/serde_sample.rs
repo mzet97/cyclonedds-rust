@@ -32,6 +32,52 @@
 use crate::{write_arena::WriteArena, DdsResult, DdsType};
 use std::ffi::c_void;
 
+/// The DDS type name announced for `SerdeSample<T>`.
+///
+/// A DDS type name is part of the contract between peers: two participants match
+/// a topic on it, so it has to be the same string in every process that talks
+/// about the same `T`, including processes built from a different revision of the
+/// code by a different compiler.
+///
+/// That rules out deriving it from Rust internals. `stringify!(T)` in a generic
+/// impl expands to the literal `"T"`, which is what shipped: every
+/// `SerdeSample<X>` announced the same name, so unrelated payload types matched
+/// each other on the wire and each decoded the other's bytes as its own.
+/// `std::any::type_name` is no better — it carries crate paths and has no
+/// stability guarantee across compilations.
+///
+/// So the name is supplied, not inferred. Use [`serde_type_name!`] for the
+/// common case:
+///
+/// ```
+/// use cyclonedds::{serde_type_name, SerdeSample};
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct Telemetry { id: u32 }
+///
+/// serde_type_name!(Telemetry, "acme::Telemetry");
+/// ```
+///
+/// Choose the name the way you would choose it in IDL — scoped, and versioned if
+/// the shape of `T` may change — because that is exactly what it is.
+pub trait SerdeTypeName {
+    /// The name peers will match on. Must be unique per payload type.
+    const TYPE_NAME: &'static str;
+}
+
+/// Give a type the DDS type name its [`SerdeSample`] will announce.
+///
+/// See [`SerdeTypeName`] for why this cannot be inferred.
+#[macro_export]
+macro_rules! serde_type_name {
+    ($t:ty, $name:expr) => {
+        impl $crate::SerdeTypeName for $t {
+            const TYPE_NAME: &'static str = $name;
+        }
+    };
+}
+
 /// A DDS sample that wraps any serde-compatible type.
 ///
 /// `SerdeSample<T>` stores the serialized payload internally and
@@ -95,20 +141,17 @@ pub struct SerdeSampleNative {
     payload: crate::DdsSequence<u8>,
 }
 
-impl<T: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + 'static> DdsType
-    for SerdeSample<T>
+impl<T> DdsType for SerdeSample<T>
+where
+    T: serde::Serialize + for<'de> serde::Deserialize<'de> + SerdeTypeName + Send + 'static,
 {
     type Native = SerdeSampleNative;
 
     fn type_name() -> &'static str {
-        // NOTE: this is the same string for every `T`. `stringify!(T)` expands
-        // to the literal "T", not the substituted type, so `SerdeSample<A>` and
-        // `SerdeSample<B>` announce the same DDS type name and will match each
-        // other on the wire. Fixing it needs a name that is stable across peers
-        // and across compilations — `std::any::type_name` is neither — so it is
-        // left as-is and recorded in docs/soundness-backlog.md rather than
-        // guessed at here.
-        "SerdeSample"
+        // Supplied by the payload type; see `SerdeTypeName` for why it cannot be
+        // inferred. The bound means a payload without a name is a compile error
+        // rather than one more type that matches everything.
+        T::TYPE_NAME
     }
 
     fn ops() -> Vec<u32> {

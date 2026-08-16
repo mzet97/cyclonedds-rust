@@ -49,7 +49,7 @@ use cyclonedds::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
-    let publisher = Publisher::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
     let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldTopic")?;
     let writer = DataWriter::new(&publisher, &topic)?;
     let mut msg = HelloWorld { id: 0, message: [0u8; 256] };
@@ -71,7 +71,7 @@ use cyclonedds::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let topic = Topic::<HelloWorld>::new(&participant, "HelloWorldTopic")?;
     let reader = DataReader::<HelloWorld>::new(&subscriber, &topic)?;
     loop {

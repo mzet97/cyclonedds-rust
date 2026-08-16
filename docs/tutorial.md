@@ -47,12 +47,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let participant = DomainParticipant::new(0)?;
 
     // --- Publisher side ---
-    let publisher = Publisher::new(participant.entity())?;
+    let publisher = Publisher::new(&participant)?;
     let topic_pub = Topic::<HelloWorld>::new(&participant, "HelloWorld")?;
     let writer = DataWriter::new(&publisher, &topic_pub)?;
 
     // --- Subscriber side ---
-    let subscriber = Subscriber::new(participant.entity())?;
+    let subscriber = Subscriber::new(&participant)?;
     let topic_sub = Topic::<HelloWorld>::new(&participant, "HelloWorld")?;
     let reader = DataReader::new(&subscriber, &topic_sub)?;
 

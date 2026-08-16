@@ -146,7 +146,7 @@ pub use security::SecurityConfig;
 #[cfg(feature = "std")]
 pub use sequence::{DdsBoundedSequence, DdsSequence, DdsSequenceElement};
 #[cfg(all(feature = "serde", feature = "std"))]
-pub use serde_sample::SerdeSample;
+pub use serde_sample::{SerdeSample, SerdeTypeName};
 #[cfg(feature = "std")]
 pub use serialization::{CdrDeserializer, CdrEncoding, CdrSample, CdrSerializer};
 #[cfg(feature = "std")]

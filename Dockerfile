@@ -40,23 +40,39 @@ COPY . .
 RUN cargo build --release --bin cyclonedds-cli -p cyclonedds-cli
 
 # Stage 2: Minimal runtime image
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    tini \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 1001 cyclonedds \
-    && useradd --uid 1001 --gid cyclonedds --shell /bin/bash --create-home cyclonedds
+#
+# Distroless, not debian-slim. `.trivyignore` records why: v2.0.1 and v2.0.2 both
+# tried to chase CVEs one at a time in the base image's Perl and gzip packages,
+# and four different ones appeared and disappeared in that same group of packages
+# over two days. None of them is reachable — the published artifact is a single
+# Rust binary that never invokes Perl or gzip — so the durable fix the file
+# proposes is to stop shipping them at all. This is that fix.
+#
+# `cc-debian12` carries glibc, libgcc and libstdc++ (a Rust gnu-target binary
+# needs libgcc_s) plus ca-certificates, and nothing else: no shell, no package
+# manager, no Perl, no gzip, no bsdutils. `libssl3` is gone with them —
+# cyclonedds-cli has no OpenSSL dependency unless the `security` feature is
+# enabled, which the released binary does not enable.
+#
+# Two consequences of having no shell:
+#   * HEALTHCHECK must be exec form; there is no `sh -c` to run `|| exit 1`.
+#     A non-zero exit from the command is already an unhealthy result.
+#   * tini is gone. The CLI installs its own SIGINT/SIGTERM handler (`ctrlc`)
+#     and is a single process with no children to reap; use `docker run --init`
+#     if a reaper is wanted anyway.
+#
+# NOT BUILT LOCALLY: written without Docker available. The release workflow
+# builds and Trivy-scans this image before publishing, so a mistake here fails
+# the release rather than shipping — but verify with a real build before tagging.
+FROM gcr.io/distroless/cc-debian12:nonroot
 
 COPY --from=builder /usr/src/cyclonedds-rust/target/release/cyclonedds-cli /usr/local/bin/cyclonedds-cli
 
-USER cyclonedds
-WORKDIR /home/cyclonedds
+# `nonroot` is uid/gid 65532, provided by the base image.
+USER nonroot
+WORKDIR /home/nonroot
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD cyclonedds-cli health __healthcheck || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["cyclonedds-cli", "health", "__healthcheck"]
 
-ENTRYPOINT ["tini", "--"]
-CMD ["cyclonedds-cli", "--help"]
+ENTRYPOINT ["cyclonedds-cli"]
+CMD ["--help"]

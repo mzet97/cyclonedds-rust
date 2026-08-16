@@ -2,6 +2,24 @@
 
 This project uses [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) for automated fuzz testing of CDR deserialization.
 
+> **The target below had never run.** Until it was fixed, `fuzz/` was neither a
+> workspace member nor listed in `workspace.exclude`, and had no `[workspace]`
+> table of its own — so every cargo command inside it, `cargo fuzz run`
+> included, failed with *"current package believes it's in a workspace when it's
+> not"* before compiling anything. Everything on this page was aspirational.
+>
+> It builds and runs now. The first thing it was pointed at found a live
+> memory-safety defect: `CdrDeserializer` handed caller-supplied bytes straight to
+> `dds_stream_read_sample` without the `dds_stream_normalize` step the C requires,
+> and 87 bytes of pseudo-random input took the process down.
+>
+> Because `cargo-fuzz` needs libFuzzer, and therefore rules out
+> `x86_64-pc-windows-msvc`, the same property is *also* asserted deterministically
+> in `cyclonedds-test-suite/tests/cdr_deserialize_corpus.rs` with a seeded PRNG.
+> That version is weaker at finding inputs and stronger at staying run: it needs
+> no toolchain beyond the MSRV and executes on every CI platform. Run both when
+> you can; run the second one always.
+
 ## Prerequisites
 
 `cargo-fuzz` requires:
@@ -96,7 +114,9 @@ cp valid_sample.cdr fuzz/corpus/cdr_deserialize/
 
 ## Adding new fuzz targets
 
-1. Create `fuzz/fuzz_targets/my_target.rs`
+1. Create `fuzz/fuzz_targets/my_target.rs`. Do not add `fuzz/` to the root
+   `workspace.members` — it is deliberately a workspace of its own, which is what
+   `cargo-fuzz` expects and what the missing `[workspace]` table used to break.
 2. Add the target to `fuzz/Cargo.toml`
 3. Run with `cargo fuzz run my_target`
 

@@ -33,7 +33,7 @@ Publishes typed samples. Create one from a Publisher and a Topic.
 ```rust
 use cyclonedds::{Publisher, DataWriter};
 
-let publisher = Publisher::new(participant.entity())?;
+let publisher = Publisher::new(&participant)?;
 let writer: DataWriter<MyData> = DataWriter::new(&publisher, &topic)?;
 
 writer.write(&sample)?;                  // publish
@@ -59,7 +59,7 @@ Receives typed samples. Create one from a Subscriber and a Topic.
 ```rust
 use cyclonedds::{Subscriber, DataReader};
 
-let subscriber = Subscriber::new(participant.entity())?;
+let subscriber = Subscriber::new(&participant)?;
 let reader: DataReader<MyData> = DataReader::new(&subscriber, &topic)?;
 
 let samples: Vec<MyData> = reader.take()?;  // removes from cache
@@ -148,9 +148,9 @@ A WaitSet blocks until one or more attached conditions trigger.
 ```rust
 use cyclonedds::{WaitSet, ReadCondition, GuardCondition};
 
-let waitset = WaitSet::new(participant.entity())?;
-let cond = ReadCondition::not_read(reader.entity())?;
-let guard = GuardCondition::new(participant.entity())?;
+let waitset = WaitSet::new(&participant)?;
+let cond = ReadCondition::not_read(&reader)?;
+let guard = GuardCondition::new(&participant)?;
 
 waitset.attach(cond.entity(), 1)?;
 waitset.attach(guard.entity(), 2)?;
@@ -174,7 +174,7 @@ Filter samples with a Rust closure:
 ```rust
 use cyclonedds::QueryCondition;
 
-let qc = QueryCondition::with_filter(reader.entity(), 0, |sample_ptr| {
+let qc = QueryCondition::with_filter(&reader, 0, |sample_ptr| {
     // Return true to include the sample
     true
 })?;

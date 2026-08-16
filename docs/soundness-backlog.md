@@ -102,14 +102,14 @@ pinned only by the vendored header they were read from — and they are exactly 
 
 Also still open: the `abi/<triple>.rs` snapshots, which exist for no target (D8).
 
-### A8 — DdsEntity::entity() is public · Low · decision, not code
+### ~~A8 — DdsEntity::entity() is public~~ · decided: stays public
 
-The review suggested `pub(crate)`. Not done: it is required for FFI interop and the
-`from_entities` constructors depend on it.
-
-**Fix.** Keep it public, document it as an escape hatch and mark the raw constructors
-`#[doc(hidden)]` — or do nothing and record the decision. Recommend the latter: closing this
-pushes FFI users into `unsafe` for no real gain.
+Kept public and documented as an escape hatch, which was the recommendation.
+Closing it would push FFI users — passing an entity to a CycloneDDS API this crate does
+not wrap, or adopting one made elsewhere — into `unsafe` transmutes to recover a number
+the wrapper already holds, and the raw `from_entity`/`from_entities` constructors depend
+on it. The doc comment now states the two rules that matter: the handle is valid only
+while the wrapper is, and `dds_delete` on it is the wrapper's job.
 
 ### Closed since the last revision of this document
 
@@ -223,19 +223,29 @@ Four of the five reproduced as `STATUS_ACCESS_VIOLATION` before the fix and one 
 assertion, verified by stashing the fix and running each by name. The `Native` translation
 is now recursive, via a new `DdsNativeValue` trait. `tests/native_layout_recursive.rs`.
 
-### B+++ — SerdeSample::type_name() is the same for every T · Medium · open
+### ~~B+++ — SerdeSample::type_name() is the same for every T~~ · decided: named explicitly
 
-`type_name()` used `concat!("SerdeSample<", stringify!(T), ">")`, which expands to the
-literal `"T"` — so every `SerdeSample<X>` announced the same DDS type name and unrelated
-payload types matched each other on the wire. `9881b38` changed the string to plain
-`"SerdeSample"`, which is honest about being type-agnostic but does not fix the matching.
+`type_name()` used `concat!("SerdeSample<", stringify!(T), ">")`, which in a generic impl
+expands to the literal `"T"` — so every `SerdeSample<X>` announced the same DDS type name,
+unrelated payloads matched each other on the wire, and each decoded the other's postcard
+bytes as its own. `9881b38` made the string honestly type-agnostic without fixing the
+matching.
 
-Left open deliberately rather than guessed at. A correct fix needs a name **stable across
-peers and across compilations**; `std::any::type_name` is neither (no stability guarantee,
-and it differs by crate path). Candidates: a hash of the `postcard` schema, or an explicit
-name supplied by the user at construction.
+**Decision: the name is supplied, not inferred.** A new `SerdeTypeName` trait carries
+`const TYPE_NAME`, and `impl DdsType for SerdeSample<T>` requires it; `serde_type_name!`
+is the one-liner for the common case.
 
----
+Why not the alternatives. A hash of the `postcard` schema would be structural and
+automatic, but `postcard`'s schema API is explicitly experimental and it would put a
+`Schema` derive bound on every payload. `std::any::type_name` fails both requirements —
+crate paths leak in and it carries no stability guarantee across compilations. And a DDS
+type name is a *wire contract* between peers, the thing they match a topic on; inferring
+it from Rust internals is the wrong shape of solution regardless of which internal is
+used. The cost is a breaking change for `serde` users, which is the correct trade against
+an API where every payload silently matches every other.
+
+The bound makes a payload without a name a compile error rather than one more type that
+matches everything.
 
 ## C. Release on hold
 
@@ -257,9 +267,9 @@ None of this is soundness. All of it is cheap and reduces recurring friction.
 |---|---|---|
 | ~~D1~~ | ~~`Qos` safety comment~~ | done in `16d1e4a` |
 | ~~D2~~ | ~~ASan job non-blocking~~ | done. The evidence had to come from the *step*, not the job: `continue-on-error` made the job report `success` either way, so ten green job conclusions meant nothing. Per-step conclusions are `success` on each of the last ten runs and the log shows no `ERROR: AddressSanitizer`. Now blocking, with the three new suites added |
-| D3 | Trivy: CHANGELOG 2.0.2 records that CVE-by-CVE suppression is unsustainable | purge Perl/gzip from the final stage or move to distroless |
-| D4 | `._ROADMAP_v5.md` deletion uncommitted, predates this work | commit or restore — owner's call |
-| D5 | 8 files in `docs/` never checked against the current API: `qos-reference`, `security-guide`, `benchmarks`, `fuzzing`, `faq`, `async-patterns`, `security-production`, `architecture`. Now overdue three times: the typed-constructor break, fallible `clone_out`, and owned parents all changed example code | same sweep already done on the other six — but see F1 first |
+| ~~D3~~ | ~~Trivy CVE-by-CVE suppression~~ | done: final stage is now `gcr.io/distroless/cc-debian12:nonroot`. Perl, gzip, bsdutils, the shell and the package manager are gone with the base image, and all seven `.trivyignore` entries with them — the file is now empty of CVEs. `libssl3` went too; the CLI has no OpenSSL dependency unless the `security` feature is on. **Not built locally** (no Docker on the machine this was written on); the release workflow builds and scans the image, so a mistake fails the release rather than shipping |
+| ~~D4~~ | ~~`._ROADMAP_v5.md` deletion uncommitted~~ | committed. It is an AppleDouble resource fork (`._` prefix), a macOS filesystem artefact, not content |
+| ~~D5~~ | ~~8 files in `docs/` never checked against the current API~~ | swept, and **the premise did not hold**: none of the eight contains a single stale constructor, `clone_out` call or `SerdeSample` reference. The three API breaks changed no example in them, because they contain almost no example code — `architecture.md`'s three mentions are Mermaid diagram labels with the arguments elided. One did need fixing, for a different reason: `fuzzing.md` documented a `cargo fuzz run` workflow that could never have worked (see D7) |
 | ~~D6~~ | ~~`cyclonedds-bench` never run~~ | done, and the premise did not hold: **no benchmark exercised the async path at all** — `latency`, `throughput`, `cdr` and `config_comparison` are synchronous and `ipc_comparison` mentions async only in a comment, so the claim was not merely unmeasured but unmeasurable. `benches/config_comparison.rs` was also missing its `[[bench]]` entry and had never compiled. Added `benches/async_read.rs`; reintroducing `spawn_blocking` temporarily gives `take/async` **18.38 µs** against **1.016 µs** inline, with `take/sync` at ~820 ns as the control — ~18x, about 17.4 µs per call. `latency` for reference: 1.43 / 1.62 / 3.86 µs at 64b / 1kb / 16kb |
 | ~~D7~~ | ~~`fuzz/` never executed~~ | done — and it could not have been: the crate was neither a workspace member nor excluded and had no `[workspace]` table, so every cargo command in it failed before compiling. Fixed. Running libFuzzer still needs a non-Windows host, so the property is also asserted deterministically in `tests/cdr_deserialize_corpus.rs`, which found a live memory-safety defect in `CdrDeserializer` (see the CHANGELOG) |
 | D8 | `abi/<triple>.rs` snapshots exist for no target — cross-compilation fails by design | generate for the supported targets |
@@ -318,21 +328,25 @@ only if development moves to stable.
 
 ## F. Needs the maintainer
 
-### F1 — The READMEs you updated · High · still blocking
+### ~~F1 — The READMEs you updated~~ · resolved by proceeding
 
-They do not appear in this repository. The root README and 5 files in `docs/` had their
-examples rewritten for the typed-constructor break, and `clone_out` returning
-`DdsResult<Self>` has since invalidated more example code. If your version lives elsewhere
-the conflict is now larger than it was.
+They never appeared. Asked twice across the session and explicitly delegated back, so the
+working assumption is that they are not in this repository — if they were in another
+`Z:	ese` project, there is no conflict to resolve.
 
-**Need to know.** Where they are. If they were in another `Z:\tese` project there is no
-conflict. If they were here, say so before documentation is touched again. D5 waits on this.
+Acted accordingly: the pending example fixes in the root README, `cyclonedds/README.md`
+and five files under `docs/` — all of them the mechanical `Publisher::new(dp.entity())` →
+`Publisher::new(&dp)` change forced by the owned-parents break — are committed rather than
+left dangling in the working tree, and D5's sweep went ahead.
+
+**If a different version does exist**, these are ordinary text changes in git history and
+reconciling them is a diff, not a rescue.
 
 ### ~~F2 — Typed Publisher / Subscriber / WaitSet?~~ · answered by A1
 
 They take `&DomainParticipant` now. A1 absorbed the question, as expected.
 
-### F3 — Two CycloneDDS copies, two versions · High · new
+### F3 — Two CycloneDDS copies, two versions · decided: made visible, not silently aligned
 
 `cyclonedds-rust-sys` resolves its source as: `CYCLONEDDS_SRC`, then the
 `cyclonedds-src` crate, then `vendor/cyclonedds` (`build.rs:228-256`). The crate
@@ -347,11 +361,22 @@ source" claim in this backlog and in the commit history was made against
 turned on the difference — the ops encoding is identical across the patch
 release, verified by round-trip — but the next one might.
 
-**Need a decision.** Either bump `cyclonedds-src` to 11.0.1 (it is a *published*
-crate, so that is a release of its own), or delete `vendor/` and read the crate,
-or make the build prefer `vendor/` when it exists. Recommend the first: the
-vendored tree is what everyone reads, and having it be the stale one is the
-trap.
+**Decided.** None of the three options was taken, because each is worse than it
+looks. `vendor/cyclonedds` is a *submodule*; `cyclonedds-src` is 1505 checked-in
+files. Preferring `vendor/` would make the build depend on whether someone cloned
+with `--recursive` — non-reproducible, and it would break crates.io users
+outright. Deleting `vendor/` loses a newer reference for no gain. Bumping
+`cyclonedds-src` to 11.0.1 is the *right* end state but it is a publish, which is
+the owner's call and not something to slip into a soundness pass.
+
+So the current precedence stays — it is correct — and the trap is closed a
+different way: `cyclonedds-rust-sys`'s build script now prints which source and
+version it compiled, and warns explicitly when the submodule is a different
+release from the one being linked. The mismatch can no longer be discovered the
+hard way.
+
+**Still open for the owner:** aligning the two, by bumping `cyclonedds-src` to
+11.0.1 as part of a release. Until then the warning is the safeguard.
 
 ---
 

@@ -30,6 +30,32 @@ struct Telemetry {
     readings: Vec<f64>,
 }
 
+serde_type_name!(Telemetry, "cyclonedds_test::Telemetry");
+
+/// A second payload, to check the two do not answer to the same name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Command {
+    op: u8,
+}
+
+serde_type_name!(Command, "cyclonedds_test::Command");
+
+/// The defect this trait exists for.
+///
+/// `type_name()` used to be the literal `"SerdeSample"` for every payload —
+/// `stringify!(T)` in a generic impl expands to `"T"`, not to the substituted
+/// type — so two unrelated payloads matched each other on the wire and each
+/// decoded the other's postcard bytes as its own.
+#[test]
+fn distinct_payloads_announce_distinct_type_names() {
+    let telemetry = <SerdeSample<Telemetry> as DdsType>::type_name();
+    let command = <SerdeSample<Command> as DdsType>::type_name();
+
+    assert_ne!(telemetry, command);
+    assert_eq!(telemetry, "cyclonedds_test::Telemetry");
+    assert_eq!(command, "cyclonedds_test::Command");
+}
+
 fn sample() -> Telemetry {
     Telemetry {
         id: 4242,

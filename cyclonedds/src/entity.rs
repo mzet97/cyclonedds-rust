@@ -161,6 +161,26 @@ impl Drop for OwnedEntity {
 }
 
 pub trait DdsEntity {
+    /// The raw CycloneDDS handle behind this wrapper.
+    ///
+    /// **Deliberately public**, and the decision is recorded rather than
+    /// revisited: a review proposed making it `pub(crate)`, on the grounds that
+    /// a raw handle is an invitation to misuse it. It stays public because the
+    /// alternative is worse. Interoperating with C — passing an entity to a
+    /// CycloneDDS API this crate does not wrap, or adopting one created
+    /// elsewhere — is a supported use, and closing this would force every such
+    /// caller into `unsafe` transmutes to recover a number the wrapper already
+    /// has. The raw `from_entity`/`from_entities` constructors depend on it too.
+    ///
+    /// What the handle does *not* carry is ownership. Every wrapper holds an
+    /// `Arc<OwnedEntity>` that keeps its ancestors alive; the `dds_entity_t`
+    /// returned here is a plain integer with none of that. Two rules follow:
+    ///
+    /// * It is valid only while the wrapper it came from is alive. Storing it
+    ///   past that point is the pre-3.0 defect this crate spent a release
+    ///   fixing — CycloneDDS deletes an entity's whole subtree, and handles are
+    ///   redrawn, so a stale one usually errors and occasionally does worse.
+    /// * Do not call `dds_delete` on it. The wrapper's `Drop` will.
     fn entity(&self) -> dds_entity_t;
 
     fn get_parent(&self) -> DdsResult<dds_entity_t> {
