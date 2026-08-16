@@ -183,11 +183,32 @@ to `m_ops` where this crate builds one in `Topic::new` from `keys()`, and it sha
 sub-ops block between members of the same element type where the derive emits one each.
 Both are valid encodings.
 
-**Not covered.** Union `JEQ4` entries were in the original scope and are still unverified —
-`derive_union_impl` builds them with its own arithmetic, which this test does not reach.
-`TYPE_EXT` nesting was verified to one level. `nested_sequence_info` (sequence of
-sequence, `SUBTYPE_SEQ`) has the same inline shape the four composite cases had and was
-**not** examined; it is the most likely place for a fourth instance of defect 1.
+**Second pass** extended the same harness to nested sequences and unions, and found two
+more:
+
+4. **Nested sequences took the element subtype from the outer container.**
+   `DDS_OP_TYPE_*` names the container and `DDS_OP_SUBTYPE_*` the element; the derive read
+   both off the outer one. idlc emits `TYPE_SEQ|SUBTYPE_BSQ` for
+   `sequence<sequence<long,4>>` and `TYPE_BSQ|SUBTYPE_SEQ` for `sequence<sequence<long>,8>`;
+   the derive had both backwards. Two of four combinations — and the one every existing
+   test used, `sequence<sequence<T>>`, is the one that coincides.
+
+   The inline layout suspected here turned out to be **correct**: unlike the composite
+   cases, the jump word's high half counts the whole block, so the next member does follow
+   it. Suspicion recorded, then disproved by the test.
+
+5. **Unions had never crossed the wire, and `ops()` was wrong four ways at once.** The only
+   union coverage drove `clone_out` against a hand-built buffer. The first test that
+   actually published one hung the process. The discriminant typecode was in the primary
+   type field (so `TYPE_UNI | TYPE_4BY` read as 0x0B, not a union); `alen` was written as 0;
+   the `JEQ4` labels carried neither the member type nor its offset; and their jump targets
+   were computed at two words per label while four were emitted. Rewritten to the format
+   `dds_opcodes.h` documents. 64-bit discriminants are now a compile error — CycloneDDS
+   admits only `{1BY,2BY,4BY,BLN}` there.
+
+**Still not covered.** `TYPE_EXT` nesting is verified to one level only. Union cases whose
+member is a composite remain unimplemented (now a clear compile error rather than an
+`unreachable!()`).
 
 ### ~~B++ — Vec\<Composite\> with nested heap fields~~ · closed · `683ae33`
 
@@ -261,6 +282,28 @@ isolation and inspect `dds_qget_data_representation`. A `slice` stays alive (tho
 past the `dds_free` in that function — a dangling reference, technically UB, and suspect
 number one.
 
+### E3 — participant creation fails on domains 149-165, 200-201, 229 · Low · environmental
+
+`DomainParticipant::new` returns `DDS_RETCODE_ERROR` for a contiguous block of domain ids
+on this Windows machine, which fails 17 `test_dynamic_*` tests in
+`cyclonedds/tests/integration_test.rs` — they are the ones that pick ids in that range.
+Domain 0 (39 tests) and 139/141/146/169-174 are unaffected.
+
+**Not a regression.** Verified by running the same suite from a worktree at `456ef1a`, the
+commit before this work started: identical 17 failures. It also passed earlier the same
+day, so something on the host changed underneath it.
+
+The failure is inside `dds_create_participant`, at the socket layer, and reproduces in
+0.00s with a single test in isolation. A probe over `0..=240` shows the same block plus
+233-240, and for those CycloneDDS explains itself: *"resulting port number (67400) is out
+of range"* — `7400 + 250 * domain` exceeds 65535 past domain 232. The 149-165 block
+computes to 44650-48650, which is in range and had no listener when checked
+(`Get-NetUDPEndpoint`), so that part is still unexplained.
+
+**Action.** Do not treat the 17 failures as a code defect. Worth pinning the test domains
+to a range known to work, or having them fall back when creation fails, so a host quirk
+stops looking like a regression. CI has never shown this.
+
 ### E2 — async-stream will not expand on local stable · Low
 
 `async_stream::stream! { yield 1; }` fails in a two-line crate on rustc 1.95 and works on
@@ -317,14 +360,11 @@ trap.
 Each phase ends verifiable and committable. Phases 1, 2 and 6 are done.
 
 1. ~~**ops() differential test**~~ — done, `683ae33`. Found three defects, two of them
-   silent data loss. See B+ for what it did *not* reach: union `JEQ4`, `TYPE_EXT` beyond
-   one level, and `nested_sequence_info`.
+   silent data loss.
 2. ~~**Nested composites and the remaining panics**~~ — done, `683ae33` and `955bdbc`.
-3. **Union `JEQ4` and nested sequences** — the rest of B+, now that the harness exists.
-   `derive_union_impl` builds its jump table with its own arithmetic and no test compares
-   it to idlc; `nested_sequence_info` still emits sub-ops inline, which is the shape that
-   was wrong in all four composite cases. Add the IDL to `ops_reference.idl` and extend
-   `ops_vs_idlc.rs`. `B+` · ~0.5d
+3. ~~**Union `JEQ4` and nested sequences**~~ — done. Two more defects: the nested-sequence
+   element subtype, and a union `ops()` wrong in four independent ways that meant no union
+   had ever been published. Only `TYPE_EXT` beyond one level is left unexamined.
 4. **SerdeSample type naming** — needs a design decision on what a stable name is, not just
    code. `B+++` · ~0.5d
 5. **ABI snapshots** — the `SerdataHeader`/`SerdataOps` probe gap and the cross-compile

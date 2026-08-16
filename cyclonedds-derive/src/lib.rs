@@ -1110,6 +1110,29 @@ fn discriminant_info(ty: &Type) -> Option<(TokenStream2, u32)> {
     }
 }
 
+/// The discriminator's typecode for a `TYPE_UNI` header.
+///
+/// `dds_opcodes.h` spells the header as `[ADR, UNI, d, z] [offset] [alen]
+/// [next-insn, cases]`: `d` is the discriminant type and it sits in the
+/// **subtype** field, beside `TYPE_UNI` in the primary one. Emitting it as
+/// another primary type OR'd `TYPE_UNI` (0x09) with `TYPE_4BY` (0x02) into an
+/// opcode reading 0x0B, which is not a union at all.
+///
+/// The same paragraph restricts `d` to `{1BY, 2BY, 4BY, BLN}` — a 64-bit
+/// discriminator has no encoding, so it is rejected rather than emitted wrong.
+fn discriminant_subtype(ty: &Type) -> Option<TokenStream2> {
+    let s = type_to_string(ty);
+    match s.as_str() {
+        "bool" | "u8" => Some(quote! { cyclonedds::SUBTYPE_1BY }),
+        "i8" => Some(quote! { cyclonedds::SUBTYPE_1BY | cyclonedds::OP_FLAG_SGN }),
+        "u16" => Some(quote! { cyclonedds::SUBTYPE_2BY }),
+        "i16" => Some(quote! { cyclonedds::SUBTYPE_2BY | cyclonedds::OP_FLAG_SGN }),
+        "u32" => Some(quote! { cyclonedds::SUBTYPE_4BY }),
+        "i32" => Some(quote! { cyclonedds::SUBTYPE_4BY | cyclonedds::OP_FLAG_SGN }),
+        _ => None,
+    }
+}
+
 /// Return the primitive typecode for a union case member type, or None if it
 /// is a composite (struct implementing DdsType) or String.
 fn case_member_typecode(ty: &Type) -> Option<TokenStream2> {
@@ -1165,7 +1188,7 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         })?
         .parse_args()?;
 
-    let (disc_typecode, _disc_size) = discriminant_info(&disc_ty).ok_or_else(|| {
+    let (_disc_typecode, _disc_size) = discriminant_info(&disc_ty).ok_or_else(|| {
         syn::Error::new_spanned(
             &disc_ty,
             "unsupported discriminant type; expected bool, u8, i8, u16, i16, u32, i32, u64, or i64",
@@ -1289,49 +1312,12 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     //   - the clone_out logic
     //   - the write_to_native logic
 
-    let header_words: u32 = 4;
-    let jeq4_words_per_case: u32 = 2;
-    let jeq4_total: u32 = jeq4_words_per_case * (n_cases as u32);
-    let after_jeq4 = header_words + jeq4_total;
-
-    // Compute case ops sizes and collect their generated code
-    let mut case_ops_parts: Vec<TokenStream2> = Vec::new();
-
-    for (_val, _ident, field_ty, _is_default) in cases.iter() {
-        let is_string = is_direct_string(field_ty);
-
-        if is_string {
-            // String case: ops = ADR|TYPE_STR, offset
-            case_ops_parts.push(quote! {
-                __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_STR);
-                __ops.push(0u32); // offset patched at runtime
-            });
-        } else if let Some(typecode) = case_member_typecode(field_ty) {
-            // Primitive case: ops = ADR|typecode, offset
-            case_ops_parts.push(quote! {
-                __ops.push(cyclonedds::OP_ADR | #typecode);
-                __ops.push(0u32); // offset patched at runtime
-            });
-        } else {
-            // Composite case: not supported in this first version
-            unreachable!();
-        }
-    }
-
-    // Compute jump targets
-    // After the JEQ4 entries, the layout is:
-    //   [default case ops]    if has_default
-    //   [case 0 ops]
-    //   [case 1 ops]
-    //   ...
-    //   RTS
-
-    // Generate variant idents for clone_out / write_to_native
     let variant_idents: Vec<&syn::Ident> = cases.iter().map(|(_, ident, _, _)| ident).collect();
     let case_values: Vec<i64> = cases.iter().map(|(v, _, _, _)| *v).collect();
 
-    // For the default sentinel, we pick a value that's not any of the explicit case values.
-    // We just use the max case value + 1 (or 0 if no cases).
+    // The value `clone_out` reports for a sample that took the default arm: any
+    // value outside the declared set, so round-tripping it cannot be mistaken
+    // for a declared case.
     let default_sentinel = if has_default {
         let max_case = case_values
             .iter()
@@ -1345,22 +1331,9 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         quote! { 0u32 }
     };
 
-    // For the JEQ4 entries, compute jump offsets
-    // The ops after JEQ4 entries:
-    //   default_ops (if has_default, 2 or 3 words)
-    //   case_0_ops (2 or 3 words)
-    //   case_1_ops (2 or 3 words)
-    //   ...
-    //   RTS
-    //
-    // case i starts at: after_jeq4 + default_size + sum(previous case sizes)
-    // default starts at: after_jeq4
-
-    // Since composite cases have variable-size ops, we compute offsets at runtime.
-    // For this first version, we restrict to primitive + String only (fixed 2-word ops per case).
-    // This simplifies offset calculation significantly.
-
-    // Verify no composite types for this first version
+    // Composite case members are still unsupported: a case whose member is a
+    // struct needs its own sub-ops block, which the JEQ4 label format reaches
+    // through a `[JEQ4, e | STU, i]` variant this derive does not emit yet.
     let has_composite = cases
         .iter()
         .any(|(_, _, ty, _)| !is_direct_string(ty) && case_member_typecode(ty).is_none());
@@ -1368,72 +1341,9 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     if has_composite {
         return Err(syn::Error::new_spanned(
             &input.ident,
-            "DdsUnion first version only supports primitive and String case members; \
-             composite (struct) members will be added in a follow-up",
+            "DdsUnion supports primitive and String case members; composite (struct)              members are not implemented",
         ));
     }
-
-    // All cases are 2 words each (primitive or string).
-    // After JEQ4 entries:
-    //   [default ops: 2 words]   if has_default
-    //   [case 0 ops: 2 words]
-    //   [case 1 ops: 2 words]
-    //   ...
-    //   RTS
-
-    let case_ops_size = 2u32; // each case is 2 words for primitive/string
-
-    // Default starts at after_jeq4
-    // Case i starts at after_jeq4 + (if has_default { case_ops_size } else { 0 }) + i * case_ops_size
-    let default_start = after_jeq4;
-
-    // Build the ordered list of ops after JEQ4:
-    // First default (if any), then non-default cases in order
-    let mut ordered_case_indices: Vec<usize> = Vec::new();
-
-    // Default case ops first
-    if let Some(di) = default_variant_idx {
-        ordered_case_indices.push(di);
-    }
-    // Then all non-default cases
-    for (i, (_, _, _, is_default)) in cases.iter().enumerate() {
-        if !is_default {
-            ordered_case_indices.push(i);
-        }
-    }
-
-    let ordered_case_ops: Vec<TokenStream2> = ordered_case_indices
-        .iter()
-        .map(|&idx| case_ops_parts[idx].clone())
-        .collect();
-
-    // Now recompute the JEQ4 entries with correct indices.
-    // For non-default case at original index `i`, its position in ordered_case_indices
-    // determines its jump target.
-    let mut case_jump_targets: Vec<u32> = vec![0; n_cases];
-    for (ordered_pos, &orig_idx) in ordered_case_indices.iter().enumerate() {
-        let target = default_start + (ordered_pos as u32) * case_ops_size;
-        case_jump_targets[orig_idx] = target;
-    }
-
-    let jeq4_entries_fixed: Vec<TokenStream2> = cases
-        .iter()
-        .enumerate()
-        .map(|(i, (_val, _, _, is_default))| {
-            if *is_default {
-                quote! {}
-            } else {
-                let val = *_val as u32;
-                let target = case_jump_targets[i];
-                quote! {
-                    __ops.push(cyclonedds::OP_JEQ4);
-                    __ops.push(#val);
-                    __ops.push(0u32);
-                    __ops.push(#target);
-                }
-            }
-        })
-        .collect();
 
     // Generate the clone_out native reading: read discriminator, then read the correct union arm
     let clone_out_arms: Vec<TokenStream2> = cases.iter().enumerate().map(|(i, (_, _, _, is_default))| {
@@ -1499,12 +1409,69 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         .collect();
 
     let n_cases_literal = n_cases as u32;
-    let union_header_word3 = if has_default {
-        let default_target = default_start;
-        quote! { (#n_cases_literal << 16) | #default_target }
+
+    // `[ADR, UNI, d, z] [offset] [alen] [next-insn, cases]`. `alen` is the number
+    // of case labels, and the last word packs the distance to the next member
+    // instruction (the whole block: 4 header words + 4 per label) in its high
+    // half and the distance to the first label (always 4) in its low half.
+    //
+    // What was here before packed `(n_cases << 16) | default_target`, which is
+    // neither field: `alen` was written as 0 and the high half held the case
+    // count. Together with the JEQ4 rewrite below this is why a union had never
+    // survived a round trip.
+    let union_block_len = 4u32 + 4u32 * (n_cases as u32);
+    let union_header_word3 = quote! { (#union_block_len << 16) + 4u32 };
+
+    // The discriminator's type belongs in the subtype field; `disc_typecode`
+    // returned a primary typecode and got OR'd into `TYPE_UNI`.
+    let disc_subtype = discriminant_subtype(&disc_ty).ok_or_else(|| {
+        syn::Error::new_spanned(
+            &disc_ty,
+            "unsupported discriminant type for a DDS union; CycloneDDS encodes the              discriminant in the subtype field, which admits only bool, u8, i8, u16,              i16, u32 and i32 (see dds_opcodes.h: \"d = discriminant type of              {1BY,2BY,4BY,BLN}\")",
+        )
+    })?;
+    let union_default_flag = if has_default {
+        quote! { | cyclonedds::OP_FLAG_DEF }
     } else {
-        quote! { (#n_cases_literal << 16) }
+        quote! {}
     };
+
+    // Case labels in JEQ4 format: `[JEQ4, e | nBY, 0] [disc] [offset] 0`. Four
+    // words, the member's type in the opcode and the member's offset in the
+    // third word. The previous emitter wrote `[JEQ4] [disc] [0] [jump]` — no
+    // member type, so the interpreter could not tell how to read the case, and
+    // no offset, so it had nowhere to read it from. The jump it wrote instead
+    // was computed as if each label were two words while four were emitted, so
+    // it pointed four words short of its own case ops.
+    //
+    // Non-default labels keep declaration order; the default goes last with a
+    // zero label value, which is what OP_FLAG_DEF on the header selects.
+    let mut jeq4_order: Vec<usize> = (0..n_cases).filter(|i| !cases[*i].3).collect();
+    if let Some(di) = default_variant_idx {
+        jeq4_order.push(di);
+    }
+    let jeq4_entries: Vec<TokenStream2> = jeq4_order
+        .iter()
+        .map(|&i| {
+            let (val, _, field_ty, is_default) = &cases[i];
+            let label = if *is_default { 0u32 } else { *val as u32 };
+            let member_type = if is_direct_string(field_ty) {
+                quote! { cyclonedds::TYPE_STR }
+            } else {
+                let tc = case_member_typecode(field_ty).expect("checked above");
+                // The label carries the bare typecode: idlc emits
+                // `JEQ4 | DDS_OP_TYPE_8BY` for a `double`, with no FP flag.
+                quote! { ((#tc) & cyclonedds::DDS_OP_TYPE_MASK_CONST) }
+            };
+            quote! {
+                __ops.push(cyclonedds::OP_JEQ4 | #member_type);
+                __ops.push(#label);
+                // Every arm of the value union starts where the union does.
+                __ops.push(::std::mem::offset_of!(#native_name, __value) as u32);
+                __ops.push(0u32);
+            }
+        })
+        .collect();
 
     let expanded = quote! {
         #[repr(C)]
@@ -1534,16 +1501,19 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
             fn ops() -> ::std::vec::Vec<u32> {
                 let mut __ops = ::std::vec::Vec::new();
-                // ADR | TYPE_UNI header
-                __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_UNI | #disc_typecode);
+                // [ADR, UNI, d, z] [offset] [alen] [next-insn, cases]
+                __ops.push(
+                    cyclonedds::OP_ADR
+                        | cyclonedds::OP_FLAG_MU
+                        | cyclonedds::TYPE_UNI
+                        | #disc_subtype
+                        #union_default_flag
+                );
                 __ops.push(::std::mem::offset_of!(#native_name, __disc) as u32);
-                __ops.push(0u32); // disc offset (relative to start of union), 0 since disc is first
+                __ops.push(#n_cases_literal);
                 __ops.push(#union_header_word3);
-                // JEQ4 entries
-                #(#jeq4_entries_fixed)*
-                // Ordered case ops (default first if present, then others)
-                #(#ordered_case_ops)*
-                // RTS
+                // alen case labels, in JEQ4 format
+                #(#jeq4_entries)*
                 __ops.push(cyclonedds::OP_RTS);
                 __ops
             }
@@ -2234,7 +2204,13 @@ fn nested_sequence_info(
         return Ok(None);
     };
 
-    let (outer_type, outer_subtype, inner_ty, outer_bound) = if last.ident == "DdsSequence" {
+    // `DDS_OP_TYPE_*` describes the container and `DDS_OP_SUBTYPE_*` describes the
+    // **element**. Both used to be taken from the outer container here, which is
+    // only right when the two kinds happen to match: idlc emits
+    // `TYPE_SEQ|SUBTYPE_BSQ` for `sequence<sequence<long,4>>` and
+    // `TYPE_BSQ|SUBTYPE_SEQ` for `sequence<sequence<long>,8>`, and the derive got
+    // both of those backwards. The subtype is now chosen per element branch below.
+    let (outer_type, inner_ty, outer_bound) = if last.ident == "DdsSequence" {
         let PathArguments::AngleBracketed(args) = &last.arguments else {
             return Ok(None);
         };
@@ -2245,12 +2221,7 @@ fn nested_sequence_info(
         let GenericArgument::Type(inner_ty) = arg else {
             return Ok(None);
         };
-        (
-            quote! { cyclonedds::TYPE_SEQ },
-            quote! { cyclonedds::SUBTYPE_SEQ },
-            inner_ty.clone(),
-            None,
-        )
+        (quote! { cyclonedds::TYPE_SEQ }, inner_ty.clone(), None)
     } else if last.ident == "DdsBoundedSequence" {
         let PathArguments::AngleBracketed(args) = &last.arguments else {
             return Ok(None);
@@ -2267,7 +2238,6 @@ fn nested_sequence_info(
         };
         (
             quote! { cyclonedds::TYPE_BSQ },
-            quote! { cyclonedds::SUBTYPE_BSQ },
             inner_ty.clone(),
             Some(quote! { (#bound_expr) as u32 }),
         )
@@ -2276,6 +2246,7 @@ fn nested_sequence_info(
     };
 
     if let Some(inner_typecode) = sequence_typecode(&inner_ty)? {
+        let outer_subtype = quote! { cyclonedds::SUBTYPE_SEQ };
         let (block, len) = if let Some(ref bound_expr) = outer_bound {
             (
                 quote! {
@@ -2308,6 +2279,7 @@ fn nested_sequence_info(
     }
 
     if let Some((inner_typecode, inner_bound)) = bounded_sequence_typecode(&inner_ty)? {
+        let outer_subtype = quote! { cyclonedds::SUBTYPE_BSQ };
         let (block, len) = if let Some(ref bound_expr) = outer_bound {
             (
                 quote! {

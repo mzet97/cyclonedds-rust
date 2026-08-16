@@ -355,3 +355,119 @@ fn two_composite_sequences_round_trip() {
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0], sent);
 }
+
+// ── nested sequences ────────────────────────────────────────────────────────
+//
+// A sequence whose element is itself a sequence. The element sub-ops are emitted
+// inline here rather than after the terminating RTS, and unlike the composite
+// cases that is self-consistent: the jump word's high half counts the whole
+// block, so the next member follows it. What is *not* right is the subtype.
+//
+// In CycloneDDS's encoding `DDS_OP_TYPE_*` describes the container and
+// `DDS_OP_SUBTYPE_*` describes the **element**. The derive took both from the
+// outer container, which only coincides when the two kinds match.
+
+/// ```idl
+/// struct SeqSeq { long h; sequence<sequence<long> > s; long tail; };
+/// ```
+/// idlc: `ADR|SEQ|SUBTYPE_SEQ, off, sizeof(dds_sequence_long), (7u<<16u)+4u`
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, DdsTypeDerive)]
+struct SeqSeq {
+    h: i32,
+    s: DdsSequence<DdsSequence<i32>>,
+    tail: i32,
+}
+
+/// ```idl
+/// struct SeqBSeq { long h; sequence<sequence<long, 4> > s; long tail; };
+/// ```
+/// idlc: `ADR|SEQ|SUBTYPE_BSQ, off, sizeof(dds_sequence_long), (8u<<16u)+4u`
+/// — outer unbounded, element bounded, so `TYPE_SEQ` with `SUBTYPE_BSQ`.
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, DdsTypeDerive)]
+struct SeqBSeq {
+    h: i32,
+    s: DdsSequence<DdsBoundedSequence<i32, 4>>,
+    tail: i32,
+}
+
+/// ```idl
+/// struct BSeqSeq { long h; sequence<sequence<long>, 8> s; long tail; };
+/// ```
+/// idlc: `ADR|BSQ|SUBTYPE_SEQ, off, 8u, sizeof(dds_sequence_long), (8u<<16u)+5u`
+/// — outer bounded, element unbounded: the mirror image of `SeqBSeq`.
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, DdsTypeDerive)]
+struct BSeqSeq {
+    h: i32,
+    s: DdsBoundedSequence<DdsSequence<i32>, 8>,
+    tail: i32,
+}
+
+const ADR_SEQ_I32: u32 = OP_ADR | TYPE_SEQ | SUBTYPE_4BY | OP_FLAG_SGN;
+const ADR_BSQ_I32: u32 = OP_ADR | TYPE_BSQ | SUBTYPE_4BY | OP_FLAG_SGN;
+
+#[test]
+fn ops_sequence_of_sequence_match_idlc() {
+    type N = <SeqSeq as DdsType>::Native;
+    let expected = vec![
+        ADR_I32,
+        std::mem::offset_of!(N, h) as u32,
+        OP_ADR | TYPE_SEQ | SUBTYPE_SEQ,
+        std::mem::offset_of!(N, s) as u32,
+        std::mem::size_of::<DdsSequence<i32>>() as u32,
+        (7u32 << 16) + 4u32,
+        ADR_SEQ_I32,
+        0u32,
+        OP_RTS,
+        ADR_I32,
+        std::mem::offset_of!(N, tail) as u32,
+        OP_RTS,
+    ];
+    assert_eq!(SeqSeq::ops(), expected);
+}
+
+#[test]
+fn ops_sequence_of_bounded_sequence_match_idlc() {
+    type N = <SeqBSeq as DdsType>::Native;
+    let expected = vec![
+        ADR_I32,
+        std::mem::offset_of!(N, h) as u32,
+        // outer is unbounded, element is bounded
+        OP_ADR | TYPE_SEQ | SUBTYPE_BSQ,
+        std::mem::offset_of!(N, s) as u32,
+        std::mem::size_of::<DdsBoundedSequence<i32, 4>>() as u32,
+        (8u32 << 16) + 4u32,
+        ADR_BSQ_I32,
+        0u32,
+        4u32,
+        OP_RTS,
+        ADR_I32,
+        std::mem::offset_of!(N, tail) as u32,
+        OP_RTS,
+    ];
+    assert_eq!(SeqBSeq::ops(), expected);
+}
+
+#[test]
+fn ops_bounded_sequence_of_sequence_match_idlc() {
+    type N = <BSeqSeq as DdsType>::Native;
+    let expected = vec![
+        ADR_I32,
+        std::mem::offset_of!(N, h) as u32,
+        // outer is bounded, element is unbounded
+        OP_ADR | TYPE_BSQ | SUBTYPE_SEQ,
+        std::mem::offset_of!(N, s) as u32,
+        8u32,
+        std::mem::size_of::<DdsSequence<i32>>() as u32,
+        (8u32 << 16) + 5u32,
+        ADR_SEQ_I32,
+        0u32,
+        OP_RTS,
+        ADR_I32,
+        std::mem::offset_of!(N, tail) as u32,
+        OP_RTS,
+    ];
+    assert_eq!(BSeqSeq::ops(), expected);
+}

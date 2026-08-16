@@ -12,6 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `#[derive(DdsUnionDerive)]` type had never survived a round trip, and its
+  `ops()` was wrong in four independent ways.** The only union coverage drove
+  `clone_out` against a buffer the test built by hand; nothing had ever handed a
+  union to CycloneDDS. The first test that did hung the process indefinitely —
+  the reader walking a malformed ops array — and that is what the four defects
+  add up to:
+
+  1. The discriminant's typecode was emitted in the **primary type** field, so it
+     was OR'd into `TYPE_UNI` (0x09 | 0x02 = 0x0B) and the opcode no longer named
+     a union at all. `dds_opcodes.h` puts it in the subtype field:
+     `[ADR, UNI, d, z] [offset] [alen] [next-insn, cases]`.
+  2. `alen` — the case count — was written as `0`, and the case count was packed
+     into the high half of the last header word instead of the distance to the
+     next member instruction.
+  3. Case labels were emitted as `[JEQ4] [value] [0] [jump]`: no member type in
+     the opcode, so the reader could not know how to decode the case, and no
+     member offset, so it had nowhere to read it from. The correct form is
+     `[JEQ4, type] [value] [offset] [0]`.
+  4. Those jump targets were computed as if each label were two words while four
+     were emitted, so every one pointed four words short of its own case ops.
+
+  The header now carries `OP_FLAG_DEF` when a `#[dds_default]` variant exists and
+  the default is emitted as the last label with value 0, matching idlc. A 64-bit
+  discriminant is now rejected at compile time instead of emitted wrong:
+  CycloneDDS admits only `{1BY, 2BY, 4BY, BLN}` there. `tests/union_wire.rs`
+  round-trips both arms.
+
+- **Nested sequences took the element subtype from the outer container.**
+  `DDS_OP_TYPE_*` names the container and `DDS_OP_SUBTYPE_*` names the element;
+  the derive read both off the outer one, which only coincides when the two kinds
+  match. idlc emits `TYPE_SEQ|SUBTYPE_BSQ` for `sequence<sequence<long,4>>` and
+  `TYPE_BSQ|SUBTYPE_SEQ` for `sequence<sequence<long>,8>`; the derive had both
+  backwards. Two of the four container/element combinations were affected —
+  `sequence<sequence<T>>`, the one every test used, was not.
+
 - **`CdrDeserializer` followed length prefixes out of arbitrary bytes.** Both
   `deserialize` and `deserialize_key` are safe functions taking an arbitrary
   `&[u8]`, and both handed it straight to `dds_istream_init` +

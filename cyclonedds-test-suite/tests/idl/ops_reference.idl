@@ -80,4 +80,25 @@ module ops_reference {
     sequence<Inner> items;
   };
 
+  // Nested sequences. DDS_OP_TYPE_* names the container and DDS_OP_SUBTYPE_*
+  // the *element*, so the two disagree whenever the outer and inner kinds do:
+  // SeqBSeq is TYPE_SEQ|SUBTYPE_BSQ and BSeqSeq is TYPE_BSQ|SUBTYPE_SEQ.
+  struct SeqSeq  { long h; sequence<sequence<long> > s;    long tail; };
+  struct SeqBSeq { long h; sequence<sequence<long, 4> > s; long tail; };
+  struct BSeqSeq { long h; sequence<sequence<long>, 8> s;  long tail; };
+
+  // Unions. The header is [ADR, UNI, d, z] [offset] [alen] [next-insn, cases],
+  // with the discriminant type `d` in the subtype field and `z` = OP_FLAG_DEF.
+  // Each case label is four words: [JEQ4, type] [value] [offset] [0].
+  union MyUnion switch (long) {
+    case 1: long a;
+    case 2: double b;
+    default: long c;
+  };
+
+  union NoDefault switch (long) {
+    case 1: long a;
+    case 2: long b;
+  };
+
 };

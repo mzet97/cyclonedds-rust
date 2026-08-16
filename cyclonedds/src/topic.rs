@@ -180,6 +180,11 @@ pub const OP_FLAG_FP: u32 = DDS_OP_FLAG_FP;
 pub const OP_FLAG_SGN: u32 = 1u32 << 2;
 pub const OP_FLAG_EXT: u32 = DDS_OP_FLAG_EXT;
 pub const OP_FLAG_MU: u32 = DDS_OP_FLAG_MU;
+/// Set on a `TYPE_UNI` header when the union declares a default case.
+///
+/// `dds_opcodes.h`: `[ADR, UNI, d, z] [offset] [alen] [next-insn, cases]`, where
+/// `z` is this flag.
+pub const OP_FLAG_DEF: u32 = DDS_OP_FLAG_DEF;
 pub const OP_FLAG_OPT: u32 = DDS_OP_FLAG_OPT;
 
 /// Key Offset Format opcode.
