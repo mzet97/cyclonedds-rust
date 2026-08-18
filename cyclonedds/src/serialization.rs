@@ -60,6 +60,65 @@ pub struct CdrSerializer<'a, T: DdsType> {
 }
 
 impl<T: DdsType> CdrSerializer<'_, T> {
+    fn write_key_stream(
+        sample: &T,
+        encoding: CdrEncoding,
+        desc: &CdrStreamDesc,
+        key_stream: &mut dds_ostream_t,
+    ) -> DdsResult<()> {
+        let mut arena = crate::write_arena::WriteArena::new();
+        let data_ptr = sample.write_to_native(&mut arena)?;
+
+        // SAFETY: [Category 8 — FFI boundary]
+        // `data_ptr` is backed by `sample` and `arena` for this entire block;
+        // both streams are initialized with CycloneDDS's allocator and finalized
+        // exactly once. The input stream only borrows `data_stream`'s buffer and
+        // is finalized before that buffer is released.
+        unsafe {
+            let mut data_stream: dds_ostream_t = std::mem::zeroed();
+            dds_ostream_init(
+                &mut data_stream,
+                &dds_cdrstream_default_allocator,
+                0,
+                encoding.as_xcdr_version(),
+            );
+
+            let wrote_sample = dds_stream_write_sample(
+                &mut data_stream,
+                &dds_cdrstream_default_allocator,
+                data_ptr,
+                desc.as_ptr(),
+            );
+            if !wrote_sample {
+                dds_ostream_fini(&mut data_stream, &dds_cdrstream_default_allocator);
+                return Err(DdsError::Unsupported("CDR serialization failed".into()));
+            }
+
+            let mut input_stream: dds_istream_t = std::mem::zeroed();
+            dds_istream_init(
+                &mut input_stream,
+                data_stream.m_index,
+                data_stream.m_buffer as *const c_void,
+                encoding.as_xcdr_version(),
+            );
+            let extracted = dds_stream_extract_key_from_data(
+                &mut input_stream,
+                key_stream,
+                &dds_cdrstream_default_allocator,
+                desc.as_ptr(),
+            );
+
+            dds_istream_fini(&mut input_stream);
+            dds_ostream_fini(&mut data_stream, &dds_cdrstream_default_allocator);
+
+            if extracted {
+                Ok(())
+            } else {
+                Err(DdsError::Unsupported("CDR key serialization failed".into()))
+            }
+        }
+    }
+
     /// Serialize `sample` to CDR bytes using the given encoding.
     ///
     /// Builds a temporary `dds_cdrstream_desc` from the type's ops/keys/flagset,
@@ -113,16 +172,10 @@ impl<T: DdsType> CdrSerializer<'_, T> {
                 encoding.as_xcdr_version(),
             );
 
-            let mut arena = crate::write_arena::WriteArena::new();
-            let data_ptr = sample.write_to_native(&mut arena)?;
-
-            dds_stream_write_key(
-                &mut os,
-                cyclonedds_rust_sys::dds_cdr_key_serialization_kind_DDS_CDR_KEY_SERIALIZATION_SAMPLE,
-                &dds_cdrstream_default_allocator,
-                data_ptr as *const _,
-                desc.as_ptr(),
-            );
+            if let Err(error) = Self::write_key_stream(sample, encoding, &desc, &mut os) {
+                dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+                return Err(error);
+            }
 
             let len = os.m_index as usize;
             let mut buf = vec![0u8; len];
@@ -202,16 +255,10 @@ impl<T: DdsType> CdrSerializer<'_, T> {
                 encoding.as_xcdr_version(),
             );
 
-            let mut arena = crate::write_arena::WriteArena::new();
-            let data_ptr = sample.write_to_native(&mut arena)?;
-
-            dds_stream_write_key(
-                &mut os,
-                cyclonedds_rust_sys::dds_cdr_key_serialization_kind_DDS_CDR_KEY_SERIALIZATION_SAMPLE,
-                &dds_cdrstream_default_allocator,
-                data_ptr as *const _,
-                desc.as_ptr(),
-            );
+            if let Err(error) = Self::write_key_stream(sample, encoding, &desc, &mut os) {
+                dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
+                return Err(error);
+            }
 
             let len = os.m_index as usize;
             if len > buf.len() {
