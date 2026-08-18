@@ -48,7 +48,7 @@ use std::ffi::c_void;
 /// `std::any::type_name` is no better — it carries crate paths and has no
 /// stability guarantee across compilations.
 ///
-/// So the name is supplied, not inferred. Use [`serde_type_name!`] for the
+/// So the name is supplied, not inferred. Use [`serde_type_name!`](crate::serde_type_name) for the
 /// common case:
 ///
 /// ```
