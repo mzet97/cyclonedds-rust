@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 3.0.0-alpha.1
+## [Unreleased]
 
-`main` carries breaking changes and is versioned `3.0.0-alpha.1`. Anything tagged
+## [3.0.0-alpha.2] - 2026-08-18
+
+`3.0.0-alpha.2` carries breaking changes relative to 2.x. Anything tagged
 `v2.0.4` is the last release without them.
 
 ### Fixed
@@ -603,7 +605,8 @@ what makes the rest verifiable.
   therefore did not compile. Added a feature-flag table and documented the per-target
   ABI probe and the `abi/<triple>.rs` snapshot required for cross-compilation.
 
-[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.4...HEAD
+[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v3.0.0-alpha.2...HEAD
+[3.0.0-alpha.2]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.4...v3.0.0-alpha.2
 [2.0.4]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.3...v2.0.4
 
 ## [2.0.3] - 2026-07-23
