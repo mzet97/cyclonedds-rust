@@ -22,7 +22,7 @@
 //!     .build()
 //!     .unwrap();
 //!
-//! let participant = DomainParticipant::with_qos(0, &qos).unwrap();
+//! let participant = DomainParticipant::with_qos(0, Some(&qos)).unwrap();
 //! ```
 
 use crate::QosBuilder;

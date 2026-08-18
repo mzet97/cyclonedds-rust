@@ -25,12 +25,21 @@ fn cross_process_pub_sub_reliable() {
     let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("must be in workspace");
-    let pub_bin = workspace_root
-        .join("target/debug/examples/interop_pub")
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| workspace_root.join("target"));
+    let pub_bin = target_dir
+        .join(format!(
+            "debug/examples/interop_pub{}",
+            std::env::consts::EXE_SUFFIX
+        ))
         .to_string_lossy()
         .to_string();
-    let sub_bin = workspace_root
-        .join("target/debug/examples/interop_sub")
+    let sub_bin = target_dir
+        .join(format!(
+            "debug/examples/interop_sub{}",
+            std::env::consts::EXE_SUFFIX
+        ))
         .to_string_lossy()
         .to_string();
 

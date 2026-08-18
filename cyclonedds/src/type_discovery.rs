@@ -113,7 +113,7 @@ pub fn discover_type_from_endpoint(
 /// Discover a type directly from a `TypeInfo` obtained from any entity.
 ///
 /// This resolves the type information into a topic descriptor and schema.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(type_info)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(participant, type_info)))]
 pub fn discover_type_from_type_info(
     participant: &DomainParticipant,
     type_info: &TypeInfo,

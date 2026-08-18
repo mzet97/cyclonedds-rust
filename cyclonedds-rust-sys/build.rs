@@ -137,9 +137,19 @@ fn emit_link_info(lib_dir: &Path, link_kind: &'static str) {
             println!("cargo:rustc-link-lib=dl");
             println!("cargo:rustc-link-lib=rt");
             println!("cargo:rustc-link-lib=m");
+            if env::var_os("CARGO_FEATURE_SECURITY").is_some() {
+                println!("cargo:rustc-link-lib=ssl");
+                println!("cargo:rustc-link-lib=crypto");
+            }
         }
         #[cfg(target_os = "macos")]
-        println!("cargo:rustc-link-lib=pthread");
+        {
+            println!("cargo:rustc-link-lib=pthread");
+            if env::var_os("CARGO_FEATURE_SECURITY").is_some() {
+                println!("cargo:rustc-link-lib=ssl");
+                println!("cargo:rustc-link-lib=crypto");
+            }
+        }
     }
     // Windows system libraries required by CycloneDDS
     #[cfg(target_os = "windows")]

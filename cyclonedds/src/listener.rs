@@ -82,9 +82,7 @@ where
     }
     let closures = &*(arg as *const ListenerClosures);
     if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(closures))).is_err() {
-        eprintln!(
-            "cyclonedds: listener callback panicked; panic contained at the FFI boundary"
-        );
+        eprintln!("cyclonedds: listener callback panicked; panic contained at the FFI boundary");
     }
 }
 

@@ -531,7 +531,7 @@ impl DynamicTypeBuilder {
         })
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entity)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, participant)))]
     pub fn build(mut self, participant: &DomainParticipant) -> DdsResult<DynamicType> {
         let members = std::mem::take(&mut self.members);
         let enum_literals = std::mem::take(&mut self.enum_literals);

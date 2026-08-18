@@ -14,7 +14,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use cyclonedds::SerdeSample;
+//! use cyclonedds::{serde_type_name, SerdeSample};
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -22,6 +22,8 @@
 //!     id: u32,
 //!     text: String,
 //! }
+//!
+//! serde_type_name!(MyMessage, "example::MyMessage");
 //!
 //! let participant = cyclonedds::DomainParticipant::new(0).unwrap();
 //! let topic = participant
