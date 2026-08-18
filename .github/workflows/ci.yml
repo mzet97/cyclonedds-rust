@@ -41,7 +41,7 @@ jobs:
           committed="cyclonedds-rust-sys/abi/$triple.rs"
           if [ -f "$committed" ]; then
             # The committed file carries a provenance header the probe does not.
-            if ! diff <(grep -v '^//' "$committed" | tr -d '\r') "$probe"; then
+            if ! diff <(grep -v '^//' "$committed" | tr -d '\r') <(tr -d '\r' < "$probe"); then
               echo "::error::committed ABI snapshot for $triple differs from the probe"
               exit 1
             fi
@@ -87,7 +87,7 @@ jobs:
           committed="cyclonedds-rust-sys/abi/$triple.rs"
           if [ -f "$committed" ]; then
             # The committed file carries a provenance header the probe does not.
-            if ! diff <(grep -v '^//' "$committed" | tr -d '\r') "$probe"; then
+            if ! diff <(grep -v '^//' "$committed" | tr -d '\r') <(tr -d '\r' < "$probe"); then
               echo "::error::committed ABI snapshot for $triple differs from the probe"
               exit 1
             fi
@@ -133,7 +133,7 @@ jobs:
           committed="cyclonedds-rust-sys/abi/$triple.rs"
           if [ -f "$committed" ]; then
             # The committed file carries a provenance header the probe does not.
-            if ! diff <(grep -v '^//' "$committed" | tr -d '\r') "$probe"; then
+            if ! diff <(grep -v '^//' "$committed" | tr -d '\r') <(tr -d '\r' < "$probe"); then
               echo "::error::committed ABI snapshot for $triple differs from the probe"
               exit 1
             fi
