@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake clang libssl-dev
       - name: Generate coverage
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info -- --test-threads=1
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
         with:
