@@ -2,7 +2,7 @@
 
 Everything still open, with the fix for each item. Nothing curated out.
 
-Baseline: `main @ HEAD` · version `3.0.0-alpha.2` · 356 tests on each of
+Baseline: `main @ HEAD` · version `3.0.0-alpha.3` · 356 tests on each of
 linux/windows/macos, 25 under the ASan job (now blocking).
 
 `v2.0.4` is tagged at `f2ef9e6` and **not** published.
@@ -269,10 +269,10 @@ matches everything.
 | Item | State | Action |
 |---|---|---|
 | tag `v2.0.4` | **created**, at `f2ef9e6` | done |
-| publish 2.0.4 to crates.io | superseded by the 3.0.0-alpha.2 release | no action |
+| publish 2.0.4 to crates.io | superseded by the 3.0.0-alpha.3 release | no action |
 | `cyclonedds-src` | 1.0.2 | bundled source includes the rejected-loan lifecycle fix |
 | `cyclonedds-rust-sys` | 1.1.1 on `main` | the A6 probe changed `sys/src/lib.rs`; needs a bump before the 3.0.0 publish |
-| `[Unreleased]` | released as 3.0.0-alpha.2 | keep 3.0.0 stable pending the remaining backlog |
+| `[Unreleased]` | released as 3.0.0-alpha.3 | keep 3.0.0 stable pending the remaining backlog |
 
 ---
 

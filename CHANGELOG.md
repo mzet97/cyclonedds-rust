@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0-alpha.3] - 2026-08-18
+
+### Fixed
+
+- Key serialization no longer links against CycloneDDS's private
+  `dds_stream_write_key` symbol. It now serializes through the exported sample
+  writer and extracts the key through the exported CDR API, so shared-library
+  consumers link correctly.
+- The coverage workflow runs DDS tests serially, matching the CI and MSRV
+  workflows and avoiding cross-test discovery contention.
+
 ## [3.0.0-alpha.2] - 2026-08-18
 
 `3.0.0-alpha.2` carries breaking changes relative to 2.x. Anything tagged
@@ -605,7 +616,8 @@ what makes the rest verifiable.
   therefore did not compile. Added a feature-flag table and documented the per-target
   ABI probe and the `abi/<triple>.rs` snapshot required for cross-compilation.
 
-[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v3.0.0-alpha.2...HEAD
+[Unreleased]: https://github.com/mzet97/cyclonedds-rust/compare/v3.0.0-alpha.3...HEAD
+[3.0.0-alpha.3]: https://github.com/mzet97/cyclonedds-rust/compare/v3.0.0-alpha.2...v3.0.0-alpha.3
 [3.0.0-alpha.2]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.4...v3.0.0-alpha.2
 [2.0.4]: https://github.com/mzet97/cyclonedds-rust/compare/v2.0.3...v2.0.4
 

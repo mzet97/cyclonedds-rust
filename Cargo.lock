@@ -247,7 +247,7 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cargo-cyclonedds"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -517,7 +517,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "async-stream",
  "console-subscriber",
@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-bench"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "criterion",
  "cyclonedds",
@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-build"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "anyhow",
  "serde",
@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-cli"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "clap",
  "ctrlc",
@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-derive"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "cyclonedds-idlc"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -597,7 +597,7 @@ version = "1.0.2"
 
 [[package]]
 name = "cyclonedds-test-suite"
-version = "3.0.0-alpha.2"
+version = "3.0.0-alpha.3"
 dependencies = [
  "cyclonedds",
  "cyclonedds-derive",
