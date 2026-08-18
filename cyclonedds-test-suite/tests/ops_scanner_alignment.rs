@@ -127,7 +127,10 @@ fn seq_enum_followed_by_nested_struct() {
             assert_eq!(got.id, 1);
             assert_eq!(got.levels, vec![Level::Low, Level::High]);
             assert_eq!(got.inner.a, 42, "nested struct corrupted");
-            assert!((got.inner.b - 2.5).abs() < f64::EPSILON, "nested struct corrupted");
+            assert!(
+                (got.inner.b - 2.5).abs() < f64::EPSILON,
+                "nested struct corrupted"
+            );
         },
     );
 }
@@ -145,7 +148,10 @@ fn arr_enum_followed_by_nested_struct() {
             assert_eq!(got.id, 2);
             assert_eq!(got.levels, [Level::Low, Level::Mid, Level::High]);
             assert_eq!(got.inner.a, 7, "nested struct corrupted");
-            assert!((got.inner.b + 1.25).abs() < f64::EPSILON, "nested struct corrupted");
+            assert!(
+                (got.inner.b + 1.25).abs() < f64::EPSILON,
+                "nested struct corrupted"
+            );
         },
     );
 }
@@ -163,7 +169,10 @@ fn bsq_enum_followed_by_nested_struct() {
             assert_eq!(got.id, 3);
             assert_eq!(got.levels.to_vec(), vec![Level::Mid, Level::High]);
             assert_eq!(got.inner.a, 99, "nested struct corrupted");
-            assert!((got.inner.b - 0.5).abs() < f64::EPSILON, "nested struct corrupted");
+            assert!(
+                (got.inner.b - 0.5).abs() < f64::EPSILON,
+                "nested struct corrupted"
+            );
         },
     );
 }
@@ -181,7 +190,10 @@ fn seq_string_followed_by_nested_struct() {
             assert_eq!(got.id, 4);
             assert_eq!(got.names, vec!["alpha".to_string(), "beta".to_string()]);
             assert_eq!(got.inner.a, -5, "nested struct corrupted");
-            assert!((got.inner.b - 3.75).abs() < f64::EPSILON, "nested struct corrupted");
+            assert!(
+                (got.inner.b - 3.75).abs() < f64::EPSILON,
+                "nested struct corrupted"
+            );
         },
     );
 }

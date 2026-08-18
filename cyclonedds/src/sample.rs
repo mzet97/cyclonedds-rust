@@ -100,12 +100,14 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
     ///
     /// For a genuinely zero-copy view, use [`iter_native`](Self::iter_native).
     pub fn iter(&self) -> impl Iterator<Item = DdsResult<Sample<T>>> + '_ {
-        (0..self.count).map(move |i| unsafe {
-            Ok(Sample {
-                data: T::clone_out(self.samples[i] as *const T)?,
-                info: self.infos[i],
+        (0..self.count)
+            .filter(move |&i| self.infos[i].valid_data && !self.samples[i].is_null())
+            .map(move |i| unsafe {
+                Ok(Sample {
+                    data: T::clone_out(self.samples[i] as *const T)?,
+                    info: self.infos[i],
+                })
             })
-        })
     }
 
     /// Zero-copy view over the loaned samples, borrowing the DDS-owned buffers
@@ -116,12 +118,14 @@ impl<'a, T: crate::DdsType> Loan<'a, T> {
     /// copied, so this is the path to use when the sample is large and only a
     /// few fields are read. The borrow ends when the `Loan` is dropped.
     pub fn iter_native(&self) -> impl Iterator<Item = Sample<&T::Native>> + '_ {
-        (0..self.count).map(move |i| unsafe {
-            Sample {
-                data: &*(self.samples[i] as *const T::Native),
-                info: self.infos[i],
-            }
-        })
+        (0..self.count)
+            .filter(move |&i| self.infos[i].valid_data && !self.samples[i].is_null())
+            .map(move |i| unsafe {
+                Sample {
+                    data: &*(self.samples[i] as *const T::Native),
+                    info: self.infos[i],
+                }
+            })
     }
 
     pub fn len(&self) -> usize {

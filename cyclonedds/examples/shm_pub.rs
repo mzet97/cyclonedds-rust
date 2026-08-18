@@ -17,9 +17,7 @@
 //! Terminal 2:
 //!   cargo run --example shm_pub
 
-use cyclonedds::{
-    DataWriter, DdsTypeDerive, DomainParticipant, Publisher, QosBuilder, Topic,
-};
+use cyclonedds::{DataWriter, DdsTypeDerive, DomainParticipant, Publisher, QosBuilder, Topic};
 
 #[derive(DdsTypeDerive, Clone, Debug)]
 struct LargeMessage {

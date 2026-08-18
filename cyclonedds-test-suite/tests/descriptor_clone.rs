@@ -19,7 +19,9 @@ use cyclonedds_test_suite::unique_topic;
 
 fn build_descriptor(participant: &DomainParticipant) -> TopicDescriptor {
     let mut dynamic_type = participant
-        .create_dynamic_type(DynamicTypeBuilder::structure(unique_topic("desc_clone_type")))
+        .create_dynamic_type(DynamicTypeBuilder::structure(unique_topic(
+            "desc_clone_type",
+        )))
         .unwrap();
     dynamic_type
         .add_member(DynamicMemberBuilder::primitive("id", DynamicPrimitiveKind::UInt32).id(10))
@@ -42,7 +44,10 @@ fn cloned_descriptor_does_not_double_free() {
     // Dropping one clone must leave the other fully usable: the descriptor is
     // only released once the last owner goes away.
     drop(original);
-    assert!(copy.op_count() > 0, "descriptor freed while a clone was live");
+    assert!(
+        copy.op_count() > 0,
+        "descriptor freed while a clone was live"
+    );
     assert_eq!(copy.key_count(), 1);
 
     // And dropping the survivor must not free a second time.

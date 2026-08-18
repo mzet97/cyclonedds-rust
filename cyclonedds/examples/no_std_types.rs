@@ -17,7 +17,7 @@ pub struct SensorReading {
     pub temperature: f32,
 }
 
-impl DdsType for SensorReading {
+unsafe impl DdsType for SensorReading {
     type Native = Self;
 
     fn type_name() -> &'static str {

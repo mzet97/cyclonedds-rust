@@ -1,7 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use cyclonedds::{
-    DataReader, DataWriter, DdsTypeDerive, DomainParticipant, Publisher, Subscriber,
-    Topic,
+    DataReader, DataWriter, DdsTypeDerive, DomainParticipant, Publisher, Subscriber, Topic,
 };
 use std::thread;
 use std::time::Duration;
@@ -23,10 +22,8 @@ fn bench_dds_latency(c: &mut Criterion) {
     let topic_pub = Topic::<PingPong>::new(&participant, "PingPong").unwrap();
     let topic_sub = Topic::<PingPong>::new(&participant, "PingPong").unwrap();
 
-    let writer: DataWriter<PingPong> =
-        DataWriter::new(&publisher, &topic_pub).unwrap();
-    let reader: DataReader<PingPong> =
-        DataReader::new(&subscriber, &topic_sub).unwrap();
+    let writer: DataWriter<PingPong> = DataWriter::new(&publisher, &topic_pub).unwrap();
+    let reader: DataReader<PingPong> = DataReader::new(&subscriber, &topic_sub).unwrap();
 
     thread::sleep(Duration::from_millis(200));
 

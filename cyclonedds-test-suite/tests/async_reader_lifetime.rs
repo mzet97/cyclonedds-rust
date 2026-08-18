@@ -43,8 +43,7 @@ async fn cancelled_take_async_does_not_outlive_the_reader() {
         let topic = participant
             .create_topic::<AsyncMessage>(&unique_topic(&format!("async_life_{i}")))
             .unwrap();
-        let reader =
-            DataReader::<AsyncMessage>::new(&subscriber, &topic).unwrap();
+        let reader = DataReader::<AsyncMessage>::new(&subscriber, &topic).unwrap();
 
         // Cancel the read almost immediately.
         let outcome = tokio::time::timeout(Duration::from_micros(1), reader.take_async()).await;
@@ -72,8 +71,7 @@ async fn dropped_stream_does_not_outlive_the_reader() {
             .create_topic::<AsyncMessage>(&unique_topic(&format!("async_stream_life_{i}")))
             .unwrap();
         let writer = publisher.create_writer(&topic).unwrap();
-        let reader =
-            DataReader::<AsyncMessage>::new(&subscriber, &topic).unwrap();
+        let reader = DataReader::<AsyncMessage>::new(&subscriber, &topic).unwrap();
 
         short_delay();
         writer

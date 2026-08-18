@@ -110,6 +110,7 @@ fn generate_struct(s: &IdlStruct) -> String {
 fn generate_enum(e: &IdlEnum) -> String {
     let mut output = String::new();
 
+    output.push_str("#[repr(i32)]\n");
     output.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, DdsEnumDerive)]\n");
     output.push_str("pub enum ");
     output.push_str(&e.name);
@@ -343,6 +344,7 @@ mod tests {
             ],
         };
         let code = generate_enum(&e);
+        assert!(code.contains("#[repr(i32)]"));
         assert!(code.contains("#[derive(Debug, Clone, Copy, PartialEq, Eq, DdsEnumDerive)]"));
         assert!(code.contains("Red = 0"));
         assert!(code.contains("Blue = 2"));

@@ -1,10 +1,12 @@
 use crate::{
-    error::check, qos::Qos, DdsError, DdsResult, TopicKeyDescriptor, UntypedTopic,
-    DDS_OP_MASK_CONST, DDS_OP_SUBTYPE_MASK_CONST, DDS_OP_TYPE_MASK_CONST, OP_ADR, OP_DLC,
-    OP_FLAG_EXT, OP_FLAG_KEY, OP_FLAG_MU, OP_FLAG_OPT, OP_JEQ4, OP_KOF, OP_MID, OP_RTS,
-    SUBTYPE_BSQ, SUBTYPE_BST, SUBTYPE_ENU, SUBTYPE_SEQ, SUBTYPE_STU, TYPE_1BY, TYPE_2BY, TYPE_4BY,
-    TYPE_8BY, TYPE_ARR, TYPE_BSQ, TYPE_BST, TYPE_ENU,
-    TYPE_EXT, TYPE_SEQ, TYPE_STR, TYPE_UNI,
+    entity::{DdsEntity, OwnedHandle},
+    error::check,
+    qos::Qos,
+    DdsError, DdsResult, TopicKeyDescriptor, UntypedTopic, DDS_OP_MASK_CONST,
+    DDS_OP_SUBTYPE_MASK_CONST, DDS_OP_TYPE_MASK_CONST, OP_ADR, OP_DLC, OP_FLAG_EXT, OP_FLAG_KEY,
+    OP_FLAG_MU, OP_FLAG_OPT, OP_JEQ4, OP_KOF, OP_MID, OP_RTS, SUBTYPE_BSQ, SUBTYPE_BST,
+    SUBTYPE_ENU, SUBTYPE_SEQ, SUBTYPE_STU, TYPE_1BY, TYPE_2BY, TYPE_4BY, TYPE_8BY, TYPE_ARR,
+    TYPE_BSQ, TYPE_BST, TYPE_ENU, TYPE_EXT, TYPE_SEQ, TYPE_STR, TYPE_UNI,
 };
 use cyclonedds_rust_sys::*;
 use std::ffi::CStr;
@@ -89,10 +91,10 @@ impl TypeIdRef<'_> {
 
     pub fn resolve_type_object(
         &self,
-        entity: dds_entity_t,
+        participant: &crate::DomainParticipant,
         timeout: dds_duration_t,
     ) -> DdsResult<TypeObject> {
-        TypeObject::from_entity_type_id(entity, self.ptr, timeout)
+        TypeObject::from_entity_type_id(participant.entity(), self.ptr, timeout)
     }
 
     pub fn equivalence_hash(&self) -> [u8; 14] {
@@ -187,10 +189,10 @@ impl OwnedTypeId {
 
     pub fn resolve_type_object(
         &self,
-        entity: dds_entity_t,
+        participant: &crate::DomainParticipant,
         timeout: dds_duration_t,
     ) -> DdsResult<TypeObject> {
-        TypeObject::from_entity_type_id(entity, self.as_ptr(), timeout)
+        TypeObject::from_entity_type_id(participant.entity(), self.as_ptr(), timeout)
     }
 }
 
@@ -245,7 +247,7 @@ impl SertypeHandle {
 
     pub fn create_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         name: &str,
         qos: Option<&Qos>,
     ) -> DdsResult<UntypedTopic> {
@@ -268,7 +270,7 @@ impl OwnedSertype {
 
     pub fn create_topic(
         mut self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         name: &str,
         qos: Option<&Qos>,
     ) -> DdsResult<UntypedTopic> {
@@ -277,7 +279,7 @@ impl OwnedSertype {
         let mut sertype = self.ptr;
         let handle = unsafe {
             dds_create_topic_sertype(
-                participant,
+                participant.entity(),
                 name.as_ptr(),
                 &mut sertype,
                 qos.map_or(std::ptr::null(), |q| q.as_ptr()),
@@ -287,7 +289,10 @@ impl OwnedSertype {
         };
         crate::error::check_entity(handle)?;
         self.ptr = std::ptr::null_mut();
-        Ok(UntypedTopic::from_entity(handle))
+        Ok(UntypedTopic::adopt(
+            handle,
+            vec![participant.owned().clone()],
+        ))
     }
 }
 
@@ -373,17 +378,21 @@ impl TopicDescriptor {
         self.owner.ptr.cast_const()
     }
 
-    pub fn create_topic(&self, participant: dds_entity_t, name: &str) -> DdsResult<UntypedTopic> {
-        UntypedTopic::from_descriptor(participant, name, self)
+    pub fn create_topic(
+        &self,
+        participant: &crate::DomainParticipant,
+        name: &str,
+    ) -> DdsResult<UntypedTopic> {
+        participant.create_topic_from_descriptor(name, self)
     }
 
     pub fn create_topic_with_qos(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         name: &str,
         qos: &Qos,
     ) -> DdsResult<UntypedTopic> {
-        UntypedTopic::from_descriptor_with_qos(participant, name, self, Some(qos))
+        participant.create_topic_from_descriptor_with_qos(name, self, qos)
     }
 
     pub fn size(&self) -> u32 {
@@ -575,29 +584,49 @@ impl TypeInfo {
 
     pub fn minimal_type_object(
         &self,
+        participant: &crate::DomainParticipant,
+        timeout: dds_duration_t,
+    ) -> DdsResult<Option<TypeObject>> {
+        self.minimal_type_object_from_entity(participant.entity(), timeout)
+    }
+
+    pub(crate) fn minimal_type_object_from_entity(
+        &self,
         entity: dds_entity_t,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<TypeObject>> {
         match self.minimal_type_id() {
-            Some(type_id) => type_id.resolve_type_object(entity, timeout).map(Some),
+            Some(type_id) => {
+                TypeObject::from_entity_type_id(entity, type_id.as_ptr(), timeout).map(Some)
+            }
             None => Ok(None),
         }
     }
 
     pub fn complete_type_object(
         &self,
+        participant: &crate::DomainParticipant,
+        timeout: dds_duration_t,
+    ) -> DdsResult<Option<TypeObject>> {
+        self.complete_type_object_from_entity(participant.entity(), timeout)
+    }
+
+    pub(crate) fn complete_type_object_from_entity(
+        &self,
         entity: dds_entity_t,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<TypeObject>> {
         match self.complete_type_id() {
-            Some(type_id) => type_id.resolve_type_object(entity, timeout).map(Some),
+            Some(type_id) => {
+                TypeObject::from_entity_type_id(entity, type_id.as_ptr(), timeout).map(Some)
+            }
             None => Ok(None),
         }
     }
 
     pub fn create_topic_descriptor(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<TopicDescriptor> {
@@ -605,7 +634,7 @@ impl TypeInfo {
         unsafe {
             check(dds_create_topic_descriptor(
                 scope.as_raw(),
-                participant,
+                participant.entity(),
                 self.as_ptr(),
                 timeout,
                 &mut ptr,
@@ -621,7 +650,7 @@ impl TypeInfo {
 
     pub fn create_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
         name: &str,
@@ -632,7 +661,7 @@ impl TypeInfo {
 
     pub fn create_topic_with_qos(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
         name: &str,
@@ -644,7 +673,7 @@ impl TypeInfo {
 
     pub fn find_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
         name: &str,
@@ -654,7 +683,7 @@ impl TypeInfo {
         let handle = unsafe {
             dds_find_topic(
                 scope.as_raw(),
-                participant,
+                participant.entity(),
                 name.as_ptr(),
                 self.as_ptr(),
                 timeout,
@@ -663,7 +692,12 @@ impl TypeInfo {
         if handle == 0 {
             return Ok(None);
         }
-        crate::error::check_entity(handle).map(|entity| Some(UntypedTopic::from_entity(entity)))
+        crate::error::check_entity(handle).map(|entity| {
+            Some(UntypedTopic::adopt(
+                entity,
+                vec![participant.owned().clone()],
+            ))
+        })
     }
 }
 
@@ -781,7 +815,7 @@ impl MatchedEndpoint {
 
     pub fn create_topic_descriptor(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<TopicDescriptor> {
@@ -791,7 +825,7 @@ impl MatchedEndpoint {
 
     pub fn create_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<UntypedTopic> {
@@ -801,7 +835,7 @@ impl MatchedEndpoint {
 
     pub fn create_topic_with_qos(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
         qos: &Qos,
@@ -812,7 +846,7 @@ impl MatchedEndpoint {
 
     pub fn find_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<UntypedTopic>> {
@@ -837,18 +871,18 @@ impl MatchedEndpoint {
 
     pub fn minimal_type_object(
         &self,
-        entity: dds_entity_t,
+        participant: &crate::DomainParticipant,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<TypeObject>> {
-        self.type_info()?.minimal_type_object(entity, timeout)
+        self.type_info()?.minimal_type_object(participant, timeout)
     }
 
     pub fn complete_type_object(
         &self,
-        entity: dds_entity_t,
+        participant: &crate::DomainParticipant,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<TypeObject>> {
-        self.type_info()?.complete_type_object(entity, timeout)
+        self.type_info()?.complete_type_object(participant, timeout)
     }
 }
 
@@ -1160,7 +1194,7 @@ impl TypeInfo {
     /// high-level [`TypeDescriptor`] in a single call.
     pub fn parse_type_descriptor(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<TypeDescriptor> {

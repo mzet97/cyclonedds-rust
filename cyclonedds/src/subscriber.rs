@@ -50,18 +50,23 @@ impl Subscriber {
 
     /// Create a subscriber under a raw participant handle.
     ///
-    /// # Unchecked
+    /// # Safety
     ///
     /// Nothing keeps the participant alive: if it is deleted first, CycloneDDS
     /// deletes this subscriber with it and every call on it fails. Prefer
     /// [`Subscriber::new`]; this exists for FFI interop, where the participant is
     /// owned elsewhere.
-    pub fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
-        Self::from_entity_with(participant, None, None)
+    pub unsafe fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
+        unsafe { Self::from_entity_with(participant, None, None) }
     }
 
-    /// [`Subscriber::from_entity`] with QoS and a listener. Same caveat.
-    pub fn from_entity_with(
+    /// [`Subscriber::from_entity`] with QoS and a listener.
+    ///
+    /// # Safety
+    ///
+    /// The participant handle must remain valid until the returned subscriber
+    /// and all of its children are dropped.
+    pub unsafe fn from_entity_with(
         participant: dds_entity_t,
         qos: Option<&Qos>,
         listener: Option<&Listener>,

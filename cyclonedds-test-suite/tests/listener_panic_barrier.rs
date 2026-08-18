@@ -44,9 +44,7 @@ fn panicking_data_available_callback_is_contained() {
         .build()
         .unwrap();
 
-    let reader =
-        DataReader::<PanicMessage>::with_listener(&subscriber, &topic, &listener)
-            .unwrap();
+    let reader = DataReader::<PanicMessage>::with_listener(&subscriber, &topic, &listener).unwrap();
     let writer = publisher.create_writer(&topic).unwrap();
 
     short_delay();
@@ -91,8 +89,7 @@ fn listener_keeps_working_after_a_panicking_callback() {
         .unwrap();
 
     let _reader =
-        DataReader::<PanicMessage>::with_listener(&subscriber, &topic, &listener)
-            .unwrap();
+        DataReader::<PanicMessage>::with_listener(&subscriber, &topic, &listener).unwrap();
     let writer = publisher.create_writer(&topic).unwrap();
 
     short_delay();

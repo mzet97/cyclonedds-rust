@@ -22,7 +22,10 @@
 use cyclonedds::*;
 use cyclonedds_test_suite::unique_topic;
 
-fn descriptor(participant: &DomainParticipant, build: impl FnOnce(&mut DynamicType)) -> TopicDescriptor {
+fn descriptor(
+    participant: &DomainParticipant,
+    build: impl FnOnce(&mut DynamicType),
+) -> TopicDescriptor {
     let mut ty = participant
         .create_dynamic_type(DynamicTypeBuilder::structure(unique_topic("parse_walk_ty")))
         .unwrap();
@@ -131,8 +134,10 @@ fn nested_struct_does_not_desynchronise_the_walk() {
 fn plain_type_is_unaffected() {
     let participant = DomainParticipant::new(0).unwrap();
     let desc = descriptor(&participant, |ty| {
-        ty.add_member(DynamicMemberBuilder::primitive("value", DynamicPrimitiveKind::Float64).id(2))
-            .unwrap();
+        ty.add_member(
+            DynamicMemberBuilder::primitive("value", DynamicPrimitiveKind::Float64).id(2),
+        )
+        .unwrap();
         ty.add_member(DynamicMemberBuilder::primitive("count", DynamicPrimitiveKind::Int32).id(3))
             .unwrap();
     });

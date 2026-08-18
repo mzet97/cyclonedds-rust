@@ -73,18 +73,31 @@ impl<T: DdsType> DataWriter<T> {
 
     /// Create from raw handles.
     ///
-    /// # Unchecked
+    /// # Safety
     ///
     /// Escape hatch for handles obtained outside this crate (FFI interop). The
     /// caller guarantees `topic` really is a topic of type `T` and that both
     /// handles outlive the returned datawriter; neither is checked, and unlike
     /// [`DataWriter::new`] nothing is held alive on your behalf.
-    pub fn from_entities(publisher: dds_entity_t, topic: dds_entity_t) -> DdsResult<Self> {
-        Self::from_entities_with(publisher, topic, None, None)
+    ///
+    /// ```compile_fail
+    /// use cyclonedds::{DataWriter, DdsTypeDerive};
+    ///
+    /// #[derive(DdsTypeDerive)]
+    /// struct Message { value: i32 }
+    ///
+    /// let _writer = DataWriter::<Message>::from_entities(1, 2);
+    /// ```
+    pub unsafe fn from_entities(publisher: dds_entity_t, topic: dds_entity_t) -> DdsResult<Self> {
+        unsafe { Self::from_entities_with(publisher, topic, None, None) }
     }
 
-    /// See [`DataWriter::from_entities`].
-    pub fn from_entities_with(
+    /// Create from raw handles with QoS and an optional listener.
+    ///
+    /// # Safety
+    ///
+    /// The requirements of [`DataWriter::from_entities`] apply unchanged.
+    pub unsafe fn from_entities_with(
         publisher: dds_entity_t,
         topic: dds_entity_t,
         qos: Option<&Qos>,
@@ -168,7 +181,9 @@ impl<T: DdsType> DataWriter<T> {
     }
 
     pub fn dispose(&self, data: &T) -> DdsResult<()> {
-        self.with_native_ptr(data, |ptr| unsafe { check(dds_dispose(self.entity(), ptr)) })
+        self.with_native_ptr(data, |ptr| unsafe {
+            check(dds_dispose(self.entity(), ptr))
+        })
     }
 
     pub fn dispose_instance_handle(&self, handle: dds_instance_handle_t) -> DdsResult<()> {
@@ -336,7 +351,7 @@ impl<T: DdsType> DataWriter<T> {
             std::ptr::write_bytes(sample_ptr as *mut u8, 0, std::mem::size_of::<T::Native>());
             Ok(WriteLoan {
                 sample: sample_ptr as *mut T::Native,
-                writer: self.entity(),
+                writer: Arc::clone(&self.inner),
                 written: false,
                 _marker: PhantomData,
             })
@@ -412,18 +427,26 @@ impl<T: DdsType> DataWriter<T> {
     /// # #[derive(DdsTypeDerive)]
     /// # struct HelloWorld { id: i32, message: DdsString }
     /// # async fn example(writer: &DataWriter<HelloWorld>) -> DdsResult<()> {
-    /// writer.write_loan_async(|sample| {
-    ///     sample.id = 42;
-    /// }).await
+    /// unsafe {
+    ///     writer.write_loan_async(|sample| {
+    ///         sample.id = 42;
+    ///     }).await
+    /// }
     /// # }
     /// ```
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, f)))]
-    pub async fn write_loan_async<F>(&self, f: F) -> DdsResult<()>
+    ///
+    /// # Safety
+    ///
+    /// The closure must leave every field of `T::Native` in a valid native
+    /// representation. In particular, it must not install arbitrary pointers
+    /// in optional members or invalid discriminants in DDS enums.
+    pub async unsafe fn write_loan_async<F>(&self, f: F) -> DdsResult<()>
     where
         F: FnOnce(&mut T::Native),
     {
         let mut loan = self.request_loan()?;
-        f(loan.get_mut());
+        f(unsafe { loan.get_mut() });
         WriteLoan::write(loan)
     }
 }
@@ -456,7 +479,7 @@ impl<T: DdsType> OwnedHandle for DataWriter<T> {
 /// sample is *not* published).
 pub struct WriteLoan<T: DdsType> {
     sample: *mut T::Native,
-    writer: dds_entity_t,
+    writer: Arc<OwnedEntity>,
     written: bool,
     _marker: PhantomData<T>,
 }
@@ -469,15 +492,11 @@ impl<T: DdsType> WriteLoan<T> {
     /// `DdsString` field via `DdsString::new(..)` instead of assigning a
     /// `String` directly.
     ///
-    /// # Safety contract
+    /// # Safety
     ///
-    /// The buffer starts zero-initialized (a valid `T::Native` value — see
-    /// [`DataWriter::request_loan`]). Normal field assignment
-    /// (`loan.get_mut().field = value;`) is sound: it drops the old
-    /// (zero-valid) field before moving in the new one. Do not move the
-    /// entire referenced value out of the loan (the DDS loan owns this
-    /// memory; only individual fields should be replaced).
-    pub fn get_mut(&mut self) -> &mut T::Native {
+    /// The caller must preserve all invariants of `T::Native`, including
+    /// pointer provenance for optional members and valid enum discriminants.
+    pub unsafe fn get_mut(&mut self) -> &mut T::Native {
         unsafe { &mut *self.sample }
     }
 
@@ -489,7 +508,7 @@ impl<T: DdsType> WriteLoan<T> {
     pub fn write(mut loan: Self) -> DdsResult<()> {
         loan.written = true;
         unsafe {
-            let ret = dds_write(loan.writer, loan.sample as *const c_void);
+            let ret = dds_write(loan.writer.handle(), loan.sample as *const c_void);
             check(ret)
         }
     }
@@ -509,7 +528,7 @@ impl<T: DdsType> Drop for WriteLoan<T> {
                 // Return the loan buffer itself.  dds_return_loan expects
                 // a *mut *mut c_void array.
                 let mut ptr = self.sample as *mut c_void;
-                let _ = dds_return_loan(self.writer, &mut ptr, 1);
+                let _ = dds_return_loan(self.writer.handle(), &mut ptr, 1);
             }
         }
     }

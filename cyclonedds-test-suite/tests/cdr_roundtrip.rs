@@ -92,7 +92,11 @@ fn take_cdr_consumes_samples() {
         >= 2));
 
     let taken = reader.take_cdr().unwrap();
-    assert!(taken.len() >= 2, "take_cdr returned {} samples", taken.len());
+    assert!(
+        taken.len() >= 2,
+        "take_cdr returned {} samples",
+        taken.len()
+    );
     for sample in &taken {
         assert!(sample.data.len() > 4);
     }

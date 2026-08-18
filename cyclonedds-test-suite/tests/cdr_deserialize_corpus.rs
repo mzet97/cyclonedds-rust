@@ -153,8 +153,10 @@ fn well_formed_input_still_round_trips() {
 
         let bytes = CdrSerializer::<HeapSample>::serialize(&sample, encoding)
             .unwrap_or_else(|e| panic!("serialize failed for {encoding:?}: {e}"));
-        let back = CdrDeserializer::<HeapSample>::deserialize(&bytes, encoding)
-            .unwrap_or_else(|e| panic!("deserialize rejected its own output for {encoding:?}: {e}"));
+        let back =
+            CdrDeserializer::<HeapSample>::deserialize(&bytes, encoding).unwrap_or_else(|e| {
+                panic!("deserialize rejected its own output for {encoding:?}: {e}")
+            });
 
         assert_eq!(back.id, sample.id);
         assert_eq!(back.name, sample.name);

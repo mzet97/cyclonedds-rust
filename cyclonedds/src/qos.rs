@@ -664,8 +664,10 @@ impl QosBuilder {
             if let Some(values) = self.psmx_instances {
                 let cstrings: Vec<CString> = values
                     .iter()
-                    .map(|v| CString::new(v.as_str())
-                        .map_err(|_| DdsError::BadParameter("QoS string contains null".into())))
+                    .map(|v| {
+                        CString::new(v.as_str())
+                            .map_err(|_| DdsError::BadParameter("QoS string contains null".into()))
+                    })
                     .collect::<DdsResult<Vec<_>>>()?
                     .into_iter()
                     .collect();
@@ -675,10 +677,12 @@ impl QosBuilder {
             }
 
             for (name, value, propagate) in self.properties {
-                let c_name = CString::new(name)
-                    .map_err(|_| DdsError::BadParameter("QoS property name contains null".into()))?;
-                let c_value = CString::new(value)
-                    .map_err(|_| DdsError::BadParameter("QoS property value contains null".into()))?;
+                let c_name = CString::new(name).map_err(|_| {
+                    DdsError::BadParameter("QoS property name contains null".into())
+                })?;
+                let c_value = CString::new(value).map_err(|_| {
+                    DdsError::BadParameter("QoS property value contains null".into())
+                })?;
                 if propagate {
                     dds_qset_prop_propagate(qos.ptr, c_name.as_ptr(), c_value.as_ptr(), true);
                 } else {
@@ -687,8 +691,9 @@ impl QosBuilder {
             }
 
             for (name, value, propagate) in self.binary_properties {
-                let c_name = CString::new(name)
-                    .map_err(|_| DdsError::BadParameter("QoS property name contains null".into()))?;
+                let c_name = CString::new(name).map_err(|_| {
+                    DdsError::BadParameter("QoS property name contains null".into())
+                })?;
                 if propagate {
                     dds_qset_bprop_propagate(
                         qos.ptr,
@@ -1350,7 +1355,9 @@ impl Qos {
             // error path, so a peer advertising an unknown representation id —
             // a remote input — leaked the array on every read of this policy.
             dds_free(values.cast());
-            let result = collected.into_iter().collect::<crate::DdsResult<Vec<_>>>()?;
+            let result = collected
+                .into_iter()
+                .collect::<crate::DdsResult<Vec<_>>>()?;
             Ok(Some(result))
         }
     }

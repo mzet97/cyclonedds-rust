@@ -15,7 +15,7 @@ impl LoanTestMsg {
     }
 }
 
-impl DdsType for LoanTestMsg {
+unsafe impl DdsType for LoanTestMsg {
     type Native = Self;
 
     fn type_name() -> &'static str {
@@ -53,7 +53,7 @@ fn zero_copy_loan_write_and_read() {
     // Request loan, populate, and write
     let mut loan = writer.request_loan().unwrap();
     {
-        let sample = loan.get_mut();
+        let sample = unsafe { loan.get_mut() };
         sample.id = 42;
         sample.value = 12345;
     }
@@ -86,7 +86,7 @@ fn zero_copy_loan_drop_without_write() {
     // Request and drop without writing — should not panic or leak
     {
         let mut loan = writer.request_loan().unwrap();
-        let sample = loan.get_mut();
+        let sample = unsafe { loan.get_mut() };
         sample.id = 99;
         sample.value = 999;
         // loan dropped here
@@ -94,7 +94,41 @@ fn zero_copy_loan_drop_without_write() {
 
     // Should be able to request another loan after drop
     let mut loan2 = writer.request_loan().unwrap();
-    let sample2 = loan2.get_mut();
+    let sample2 = unsafe { loan2.get_mut() };
     assert_eq!(sample2.id, 0); // zero-initialized
     assert_eq!(sample2.value, 0);
+}
+
+#[test]
+fn write_loan_keeps_writer_alive_after_original_handle_is_dropped() {
+    // Given: a loan requested from a writer with a live matching reader.
+    let participant = DomainParticipant::new(171).unwrap();
+    let topic = participant
+        .create_topic::<LoanTestMsg>("loan_writer_lifetime")
+        .unwrap();
+    let publisher = participant.create_publisher().unwrap();
+    let subscriber = participant.create_subscriber().unwrap();
+    let writer = publisher.create_writer(&topic).unwrap();
+    let reader = subscriber.create_reader(&topic).unwrap();
+    let mut loan = writer.request_loan().unwrap();
+
+    // When: the original writer handle is dropped before the loan is written.
+    drop(writer);
+    unsafe {
+        loan.get_mut().id = 77;
+        loan.get_mut().value = 770;
+    }
+    WriteLoan::write(loan).unwrap();
+
+    // Then: the loan retained the writer entity and the sample is observable.
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(3) {
+        if let Some(sample) = reader.take().unwrap().into_iter().next() {
+            assert_eq!(sample.id, 77);
+            assert_eq!(sample.value, 770);
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("did not receive sample written after dropping the original writer handle");
 }

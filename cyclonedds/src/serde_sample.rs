@@ -141,7 +141,7 @@ pub struct SerdeSampleNative {
     payload: crate::DdsSequence<u8>,
 }
 
-impl<T> DdsType for SerdeSample<T>
+unsafe impl<T> DdsType for SerdeSample<T>
 where
     T: serde::Serialize + for<'de> serde::Deserialize<'de> + SerdeTypeName + Send + 'static,
 {

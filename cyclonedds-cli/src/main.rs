@@ -365,12 +365,12 @@ fn cmd_subscribe(
     // Discover the full type (schema + topic descriptor)
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
     let schema = discovered.type_schema;
     let topic_descriptor = &discovered.topic_descriptor;
 
     // Create the topic and reader
-    let topic = topic_descriptor.create_topic(participant.entity(), topic_name)?;
+    let topic = topic_descriptor.create_topic(&participant, topic_name)?;
     let subscriber = Subscriber::new(&participant)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
@@ -549,16 +549,12 @@ fn cmd_subscribe_multi(
 
         let type_name = endpoint.type_name();
         let type_info = endpoint.type_info()?;
-        let discovered = discover_type_from_type_info(
-            participant.entity(),
-            &type_info,
-            &type_name,
-            5_000_000_000,
-        )?;
+        let discovered =
+            discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
         let schema = discovered.type_schema;
         let topic_descriptor = discovered.topic_descriptor;
 
-        let topic = topic_descriptor.create_topic(participant.entity(), topic_name)?;
+        let topic = topic_descriptor.create_topic(&participant, topic_name)?;
         let qos = QosBuilder::new()
             .reliability(Reliability::Reliable, 10_000_000_000)
             .build()?;
@@ -736,14 +732,10 @@ fn cmd_bridge(
 
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
-    let discovered = discover_type_from_type_info(
-        participant_src.entity(),
-        &type_info,
-        &type_name,
-        5_000_000_000,
-    )?;
+    let discovered =
+        discover_type_from_type_info(&participant_src, &type_info, &type_name, 5_000_000_000)?;
 
-    let topic_src = discovered.create_topic(participant_src.entity(), src_topic)?;
+    let topic_src = discovered.create_topic(&participant_src, src_topic)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;
@@ -765,7 +757,7 @@ fn cmd_bridge(
 
     let (_participant_dst, _publisher, writer_entity) = if domain_src == domain_dst {
         let publisher = Publisher::new(&participant_src)?;
-        let topic_dst = discovered.create_topic(participant_src.entity(), dst_topic)?;
+        let topic_dst = discovered.create_topic(&participant_src, dst_topic)?;
         let writer = unsafe {
             check_entity(cyclonedds_rust_sys::dds_create_writer(
                 publisher.entity(),
@@ -778,7 +770,7 @@ fn cmd_bridge(
     } else {
         let pd = DomainParticipant::new(domain_dst)?;
         let publisher = Publisher::new(&pd)?;
-        let topic_dst = discovered.create_topic(pd.entity(), dst_topic)?;
+        let topic_dst = discovered.create_topic(&pd, dst_topic)?;
         let writer = unsafe {
             check_entity(cyclonedds_rust_sys::dds_create_writer(
                 publisher.entity(),
@@ -1242,7 +1234,7 @@ fn cmd_typeof(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
 
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
     println!("\n=== Type Information ===");
     println!("Type name: {}", discovered.type_name);
@@ -1295,7 +1287,7 @@ fn cmd_discover(topic_name: &str, domain_id: u32) -> cyclonedds::DdsResult<()> {
 
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
     println!("Type schema discovered successfully.");
     println!("  Size: {} bytes", discovered.topic_descriptor.size());
@@ -1618,9 +1610,9 @@ fn cmd_publish(
 
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
-    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let topic = discovered.create_topic(&participant, topic_name)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;
@@ -1734,9 +1726,9 @@ fn cmd_echo(topic_name: &str, domain_id: u32, max_samples: usize) -> cyclonedds:
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
-    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let topic = discovered.create_topic(&participant, topic_name)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;
@@ -1882,9 +1874,9 @@ fn cmd_record(
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
-    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let topic = discovered.create_topic(&participant, topic_name)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;
@@ -2026,9 +2018,9 @@ fn cmd_replay(
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
-    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let topic = discovered.create_topic(&participant, topic_name)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;
@@ -2104,9 +2096,9 @@ fn cmd_monitor(topic_name: &str, domain_id: u32, interval_secs: u64) -> cycloned
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
-    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let topic = discovered.create_topic(&participant, topic_name)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;
@@ -2395,9 +2387,9 @@ fn cmd_metrics(topic_name: &str, domain_id: u32, max_samples: usize) -> cycloned
     let type_name = endpoint.type_name();
     let type_info = endpoint.type_info()?;
     let discovered =
-        discover_type_from_type_info(participant.entity(), &type_info, &type_name, 5_000_000_000)?;
+        discover_type_from_type_info(&participant, &type_info, &type_name, 5_000_000_000)?;
 
-    let topic = discovered.create_topic(participant.entity(), topic_name)?;
+    let topic = discovered.create_topic(&participant, topic_name)?;
     let qos = QosBuilder::new()
         .reliability(Reliability::Reliable, 10_000_000_000)
         .build()?;

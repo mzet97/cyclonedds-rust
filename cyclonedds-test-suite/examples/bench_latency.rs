@@ -17,7 +17,7 @@ impl BenchMsg {
     }
 }
 
-impl DdsType for BenchMsg {
+unsafe impl DdsType for BenchMsg {
     type Native = Self;
 
     fn type_name() -> &'static str {

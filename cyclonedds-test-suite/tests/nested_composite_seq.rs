@@ -109,12 +109,10 @@ fn sequence_of_pod_composite_stride_is_unchanged() {
 #[test]
 fn ops_match_idlc_for_sequence_of_heap_composite() {
     let native_stride = std::mem::size_of::<<Inner as DdsType>::Native>() as u32;
-    let inner_native_name_off =
-        std::mem::offset_of!(<Inner as DdsType>::Native, name) as u32;
+    let inner_native_name_off = std::mem::offset_of!(<Inner as DdsType>::Native, name) as u32;
     let inner_native_v_off = std::mem::offset_of!(<Inner as DdsType>::Native, v) as u32;
     let outer_native_id_off = std::mem::offset_of!(<Outer as DdsType>::Native, id) as u32;
-    let outer_native_items_off =
-        std::mem::offset_of!(<Outer as DdsType>::Native, items) as u32;
+    let outer_native_items_off = std::mem::offset_of!(<Outer as DdsType>::Native, items) as u32;
 
     // idlc emits, for the sequence member:
     //   ADR|SEQ|STU, offsetof(Outer, items), sizeof(Inner), (4<<16)+5

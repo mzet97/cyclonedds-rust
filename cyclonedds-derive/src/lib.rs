@@ -134,7 +134,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let mut native_init_fields: Vec<TokenStream2> = Vec::new();
     let mut len_exprs: Vec<TokenStream2> = Vec::new();
     let mut key_count_exprs: Vec<TokenStream2> = Vec::new();
-    let mut uses_native = false;
     let native_name = format_ident!("__CycloneDdsNative{}", name);
 
     for field in fields {
@@ -215,7 +214,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             && !is_enum;
 
         let len_expr = if let Some(inner_ty) = option_inner.clone() {
-            uses_native = true;
             if is_key {
                 return Err(syn::Error::new_spanned(
                     field,
@@ -272,7 +270,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                         "keyed Vec<Enum> fields are not supported yet",
                     ));
                 }
-                uses_native = true;
                 main_ops_parts.push(quote! {
                     __ops.push(
                         cyclonedds::OP_ADR
@@ -351,14 +348,12 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 quote! { 3u32 }
             }
         } else if let Some((typecode_expr, word_count, _native_ty)) = direct_vec.clone() {
-            uses_native = true;
             main_ops_parts.push(quote! {
                 __ops.push(cyclonedds::OP_ADR | #typecode_expr);
                 __ops.push(#offset_expr);
             });
             quote! { #word_count }
         } else if let Some(inner_ty) = direct_vec_composite.clone() {
-            uses_native = true;
             main_ops_parts.push(quote! {
                 __patch_positions.push((__ops.len(), 3usize, 4u32));
                 __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_SEQ | cyclonedds::SUBTYPE_STU);
@@ -371,14 +366,12 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             });
             quote! { 4u32 }
         } else if direct_vec_string.is_some() {
-            uses_native = true;
             main_ops_parts.push(quote! {
                 __ops.push(cyclonedds::OP_ADR | cyclonedds::TYPE_SEQ | cyclonedds::SUBTYPE_STR);
                 __ops.push(#offset_expr);
             });
             quote! { 2u32 }
         } else if direct_string {
-            uses_native = true;
             if is_key {
                 main_ops_parts.push(quote! {
                     __ops.extend(cyclonedds::adr_key(cyclonedds::TYPE_STR, #offset_expr));
@@ -438,7 +431,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             });
             quote! { 5u32 }
         } else if let Some((typecode_expr, bound_expr)) = bounded_type {
-            uses_native = true;
             if is_key {
                 main_ops_parts.push(quote! {
                     __ops.push(cyclonedds::OP_ADR | cyclonedds::OP_FLAG_KEY | #typecode_expr);
@@ -494,11 +486,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             });
             quote! { 5u32 }
         } else if let Some((typecode_expr, word_count)) = primitive_type {
-            // DdsSequence / DdsBoundedSequence fields need native struct conversion
-            // because the CDR serializer uses offsets from the #[repr(C)] native layout.
-            if sequence_typecode(field_ty)?.is_some() {
-                uses_native = true;
-            }
             if is_key {
                 main_ops_parts.push(quote! {
                     __ops.extend(cyclonedds::adr_key(#typecode_expr, #offset_expr));
@@ -725,7 +712,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             // `DdsSequence<Inner>` declared directly by the user: same
             // translation as `Vec<Inner>`, the element type on the wire is
             // `Inner::Native`.
-            uses_native = true;
             native_fields.push(quote! {
                 pub #field_name:
                     cyclonedds::DdsSequence<<#inner_ty as cyclonedds::DdsType>::Native>,
@@ -757,7 +743,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 },
             });
         } else if let NativeKind::CompositeBoundedSeq(inner_ty, bound_expr) = &native_kind {
-            uses_native = true;
             native_fields.push(quote! {
                 pub #field_name: cyclonedds::DdsBoundedSequence<
                     <#inner_ty as cyclonedds::DdsType>::Native,
@@ -791,7 +776,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 },
             });
         } else if let NativeKind::CompositeArray(inner_ty) = &native_kind {
-            uses_native = true;
             let Type::Array(arr) = field_ty else {
                 unreachable!()
             };
@@ -858,7 +842,6 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             // through `Inner::Native`, so the enclosing native struct has to
             // hold that layout too — keeping `#field_ty` here made the outer
             // offsets and the inner ops describe two different structs.
-            uses_native = true;
             native_fields.push(quote! {
                 pub #field_name: <#field_ty as cyclonedds::DdsType>::Native,
             });
@@ -898,19 +881,15 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         }
     };
 
-    let descriptor_methods = if uses_native {
-        quote! {
-            fn write_to_native<'a>(
-                &'a self,
-                arena: &'a mut cyclonedds::write_arena::WriteArena,
-            ) -> cyclonedds::DdsResult<*const ::std::ffi::c_void> {
-                let native =
-                    <Self as cyclonedds::DdsNativeValue>::to_native_value(self, arena)?;
-                Ok(arena.hold(native) as *const #native_name as *const ::std::ffi::c_void)
-            }
+    let descriptor_methods = quote! {
+        fn write_to_native<'a>(
+            &'a self,
+            arena: &'a mut cyclonedds::write_arena::WriteArena,
+        ) -> cyclonedds::DdsResult<*const ::std::ffi::c_void> {
+            let native =
+                <Self as cyclonedds::DdsNativeValue>::to_native_value(self, arena)?;
+            Ok(arena.hold(native) as *const #native_name as *const ::std::ffi::c_void)
         }
-    } else {
-        quote! {}
     };
 
     // Emitted for every type, not just the ones that need an arena write: a
@@ -939,7 +918,7 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
         #native_value_impl
 
-        impl cyclonedds::DdsType for #name {
+        unsafe impl cyclonedds::DdsType for #name {
             type Native = #native_name;
 
             fn type_name() -> &'static str { #type_name_str }
@@ -1045,6 +1024,23 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
 fn derive_enum_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
+    let has_repr_i32 = input.attrs.iter().any(|attr| {
+        if !attr.path().is_ident("repr") {
+            return false;
+        }
+        let mut found = false;
+        let _ = attr.parse_nested_meta(|meta| {
+            found |= meta.path.is_ident("i32");
+            Ok(())
+        });
+        found
+    });
+    if !has_repr_i32 {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "DdsEnum requires #[repr(i32)]",
+        ));
+    }
     let data = match &input.data {
         Data::Enum(data) => data,
         _ => {
@@ -1070,10 +1066,10 @@ fn derive_enum_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
         } else {
             next_value
         };
-        if value < 0 {
+        if value != next_value {
             return Err(syn::Error::new_spanned(
                 variant,
-                "DdsEnum currently supports only non-negative discriminants",
+                "DdsEnum discriminants must be contiguous from zero",
             ));
         }
         max_value = max_value.max(value as u32);
@@ -1494,7 +1490,7 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             }
         }
 
-        impl cyclonedds::DdsType for #name {
+        unsafe impl cyclonedds::DdsType for #name {
             type Native = #native_name;
 
             fn type_name() -> &'static str { #type_name_str }
@@ -1747,7 +1743,7 @@ fn derive_bitmask_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             __bits: #backing_ty,
         }
 
-        impl cyclonedds::DdsType for #name {
+        unsafe impl cyclonedds::DdsType for #name {
             type Native = #native_name;
 
             fn type_name() -> &'static str { #type_name_str }
@@ -2616,5 +2612,44 @@ fn type_to_string(ty: &Type) -> String {
             format!("[{}; {}]", elem, len)
         }
         _ => format!("<unknown type: {}>", quote::quote!(#ty)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::derive_enum_impl;
+    use syn::{parse_quote, DeriveInput};
+
+    #[test]
+    fn dds_enum_requires_i32_wire_representation() {
+        let input: DeriveInput = parse_quote! {
+            enum Status { Ready = 0, Done = 1 }
+        };
+
+        let error = derive_enum_impl(&input).expect_err("missing repr(i32) must be rejected");
+
+        assert!(error.to_string().contains("requires #[repr(i32)]"));
+    }
+
+    #[test]
+    fn dds_enum_rejects_invalid_zero_initialized_discriminants() {
+        let input: DeriveInput = parse_quote! {
+            #[repr(i32)]
+            enum Status { Ready = 1, Done = 2 }
+        };
+
+        let error = derive_enum_impl(&input).expect_err("non-zero first variant must be rejected");
+
+        assert!(error.to_string().contains("contiguous from zero"));
+    }
+
+    #[test]
+    fn dds_enum_accepts_contiguous_i32_discriminants_from_zero() {
+        let input: DeriveInput = parse_quote! {
+            #[repr(i32)]
+            enum Status { Ready = 0, Running = 1, Done = 2 }
+        };
+
+        assert!(derive_enum_impl(&input).is_ok());
     }
 }

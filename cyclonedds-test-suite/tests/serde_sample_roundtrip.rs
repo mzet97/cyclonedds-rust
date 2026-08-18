@@ -78,9 +78,7 @@ fn serde_sample_round_trips_over_dds() {
     short_delay();
 
     let original = sample();
-    writer
-        .write(&SerdeSample::new(&original).unwrap())
-        .unwrap();
+    writer.write(&SerdeSample::new(&original).unwrap()).unwrap();
 
     assert!(
         wait_for(Duration::from_secs(3), || !reader

@@ -1,8 +1,9 @@
 use crate::{
+    entity::{DdsEntity, OwnedHandle},
     error::check,
     qos::Qos,
     xtypes::{FindScope, TopicDescriptor, TypeInfo, TypeObject},
-    DdsError, DdsResult, DdsType, UntypedTopic,
+    DdsError, DdsResult, DdsType, DomainParticipant, UntypedTopic,
 };
 use cyclonedds_rust_sys::*;
 use std::ffi::{c_char, CStr};
@@ -75,7 +76,7 @@ impl Drop for BuiltinParticipantSample {
     }
 }
 
-impl DdsType for BuiltinParticipantSample {
+unsafe impl DdsType for BuiltinParticipantSample {
     type Native = Self;
 
     fn type_name() -> &'static str {
@@ -133,7 +134,7 @@ impl BuiltinTopicSample {
 
     pub fn find_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &crate::DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<UntypedTopic>> {
@@ -142,7 +143,7 @@ impl BuiltinTopicSample {
         let handle = unsafe {
             dds_find_topic(
                 scope.as_raw(),
-                participant,
+                participant.entity(),
                 name.as_ptr(),
                 std::ptr::null(),
                 timeout,
@@ -151,7 +152,12 @@ impl BuiltinTopicSample {
         if handle == 0 {
             return Ok(None);
         }
-        crate::error::check_entity(handle).map(|entity| Some(UntypedTopic::from_entity(entity)))
+        crate::error::check_entity(handle).map(|entity| {
+            Some(UntypedTopic::adopt(
+                entity,
+                vec![participant.owned().clone()],
+            ))
+        })
     }
 }
 
@@ -187,7 +193,7 @@ impl Drop for BuiltinTopicSample {
     }
 }
 
-impl DdsType for BuiltinTopicSample {
+unsafe impl DdsType for BuiltinTopicSample {
     type Native = Self;
 
     fn type_name() -> &'static str {
@@ -357,7 +363,7 @@ impl BuiltinEndpointSample {
 
     pub fn create_topic_descriptor(
         &self,
-        participant: dds_entity_t,
+        participant: &DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<TopicDescriptor> {
@@ -367,7 +373,7 @@ impl BuiltinEndpointSample {
 
     pub fn create_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<UntypedTopic> {
@@ -377,7 +383,7 @@ impl BuiltinEndpointSample {
 
     pub fn create_topic_with_qos(
         &self,
-        participant: dds_entity_t,
+        participant: &DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
         qos: &Qos,
@@ -388,31 +394,17 @@ impl BuiltinEndpointSample {
 
     pub fn find_topic(
         &self,
-        participant: dds_entity_t,
+        participant: &DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<UntypedTopic>> {
-        let type_info = self.type_info()?;
-        let name = std::ffi::CString::new(self.topic_name())
-            .map_err(|_| DdsError::BadParameter("topic name contains null".into()))?;
-        let handle = unsafe {
-            dds_find_topic(
-                scope.as_raw(),
-                participant,
-                name.as_ptr(),
-                type_info.as_ptr(),
-                timeout,
-            )
-        };
-        if handle == 0 {
-            return Ok(None);
-        }
-        crate::error::check_entity(handle).map(|entity| Some(UntypedTopic::from_entity(entity)))
+        self.type_info()?
+            .find_topic(participant, scope, timeout, &self.topic_name())
     }
 
     pub fn minimal_type_object(
         &self,
-        participant: dds_entity_t,
+        participant: &DomainParticipant,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<TypeObject>> {
         self.type_info()?.minimal_type_object(participant, timeout)
@@ -420,7 +412,7 @@ impl BuiltinEndpointSample {
 
     pub fn complete_type_object(
         &self,
-        participant: dds_entity_t,
+        participant: &DomainParticipant,
         timeout: dds_duration_t,
     ) -> DdsResult<Option<TypeObject>> {
         self.type_info()?.complete_type_object(participant, timeout)
@@ -461,7 +453,7 @@ impl Drop for BuiltinEndpointSample {
     }
 }
 
-impl DdsType for BuiltinEndpointSample {
+unsafe impl DdsType for BuiltinEndpointSample {
     type Native = Self;
 
     fn type_name() -> &'static str {

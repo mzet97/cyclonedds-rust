@@ -55,15 +55,13 @@ unsafe extern "C" fn trampoline_qc_filter(sample: *const c_void) -> bool {
         registry.get(&handle).cloned()
     };
     match closure {
-        Some(c) => {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c(sample))) {
-                Ok(keep) => keep,
-                Err(_) => {
-                    eprintln!("QueryCondition filter closure panicked; sample excluded");
-                    false
-                }
+        Some(c) => match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c(sample))) {
+            Ok(keep) => keep,
+            Err(_) => {
+                eprintln!("QueryCondition filter closure panicked; sample excluded");
+                false
             }
-        }
+        },
         None => {
             eprintln!("QueryCondition {handle} not found in registry; sample excluded");
             false
@@ -141,10 +139,10 @@ impl WaitSet {
 
     /// Create a waitset from a raw participant handle.
     ///
-    /// # Unchecked
+    /// # Safety
     ///
     /// Does not hold the participant alive. Prefer [`WaitSet::new`].
-    pub fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
+    pub unsafe fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
         let entity = unsafe { dds_create_waitset(participant) };
         check_entity(entity)?;
         Ok(WaitSet {
@@ -170,7 +168,8 @@ impl WaitSet {
     pub fn wait(&self, timeout_ns: i64) -> DdsResult<Vec<i64>> {
         let max_results: usize = 64;
         let mut xs: Vec<dds_attach_t> = vec![0; max_results];
-        let n = unsafe { dds_waitset_wait(self.entity(), xs.as_mut_ptr(), max_results, timeout_ns) };
+        let n =
+            unsafe { dds_waitset_wait(self.entity(), xs.as_mut_ptr(), max_results, timeout_ns) };
         if n < 0 {
             return Err(crate::DdsError::from(n));
         }
@@ -236,12 +235,7 @@ impl ReadCondition {
         let entity = unsafe { dds_create_readcondition(reader.entity(), mask) };
         check_entity(entity)?;
         Ok(ReadCondition {
-            inner: OwnedEntity::new(
-                entity,
-                "ReadCondition",
-                None,
-                vec![reader.owned().clone()],
-            ),
+            inner: OwnedEntity::new(entity, "ReadCondition", None, vec![reader.owned().clone()]),
         })
     }
 
@@ -255,10 +249,10 @@ impl ReadCondition {
 
     /// Create a read condition from a raw reader handle.
     ///
-    /// # Unchecked
+    /// # Safety
     ///
     /// Does not hold the reader alive. Prefer [`ReadCondition::new`].
-    pub fn from_entity(reader: dds_entity_t, mask: u32) -> DdsResult<Self> {
+    pub unsafe fn from_entity(reader: dds_entity_t, mask: u32) -> DdsResult<Self> {
         let entity = unsafe { dds_create_readcondition(reader, mask) };
         check_entity(entity)?;
         Ok(ReadCondition {
@@ -318,10 +312,10 @@ impl QueryCondition {
 
     /// [`QueryCondition::new`] from a raw reader handle.
     ///
-    /// # Unchecked
+    /// # Safety
     ///
     /// Does not hold the reader alive.
-    pub fn from_entity(
+    pub unsafe fn from_entity(
         reader: dds_entity_t,
         mask: u32,
         filter: unsafe extern "C" fn(*const std::ffi::c_void) -> bool,
@@ -430,10 +424,10 @@ impl GuardCondition {
 
     /// Create a guard condition from a raw participant handle.
     ///
-    /// # Unchecked
+    /// # Safety
     ///
     /// Does not hold the participant alive. Prefer [`GuardCondition::new`].
-    pub fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
+    pub unsafe fn from_entity(participant: dds_entity_t) -> DdsResult<Self> {
         let entity = unsafe { dds_create_guardcondition(participant) };
         check_entity(entity)?;
         Ok(GuardCondition {

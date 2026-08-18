@@ -496,7 +496,7 @@ mod tests {
         y: i32,
     }
 
-    impl DdsType for Point {
+    unsafe impl DdsType for Point {
         type Native = Self;
 
         fn type_name() -> &'static str {

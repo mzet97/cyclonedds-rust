@@ -3,13 +3,13 @@ use crate::{
         DynamicBitmaskFieldSchema, DynamicEnumLiteralSchema, DynamicFieldSchema, DynamicTypeSchema,
         DynamicUnionCaseSchema,
     },
-    entity::DdsEntity,
+    entity::{DdsEntity, OwnedEntity, OwnedHandle},
     error::check,
     xtypes::{FindScope, TopicDescriptor, TypeInfo},
-    DdsError, DdsResult,
+    DdsError, DdsResult, DomainParticipant,
 };
 use cyclonedds_rust_sys::*;
-use std::{ffi::CString, mem::ManuallyDrop};
+use std::{ffi::CString, mem::ManuallyDrop, sync::Arc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DynamicPrimitiveKind {
@@ -532,11 +532,11 @@ impl DynamicTypeBuilder {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entity)))]
-    pub fn build<E: DdsEntity>(mut self, entity: &E) -> DdsResult<DynamicType> {
+    pub fn build(mut self, participant: &DomainParticipant) -> DdsResult<DynamicType> {
         let members = std::mem::take(&mut self.members);
         let enum_literals = std::mem::take(&mut self.enum_literals);
         let bitmask_fields = std::mem::take(&mut self.bitmask_fields);
-        let mut dynamic_type = DynamicType::create(entity.entity(), self)?;
+        let mut dynamic_type = DynamicType::create(participant, self)?;
         for member in members {
             dynamic_type.add_member(member)?;
         }
@@ -657,14 +657,24 @@ impl DynamicMemberBuilder {
     }
 }
 
-#[derive(Debug)]
 pub struct DynamicType {
     raw: dds_dynamic_type_t,
     schema: DynamicTypeSchema,
+    _participant: Arc<OwnedEntity>,
+}
+
+impl std::fmt::Debug for DynamicType {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DynamicType")
+            .field("raw", &self.raw)
+            .field("schema", &self.schema)
+            .finish_non_exhaustive()
+    }
 }
 
 impl DynamicType {
-    pub fn create(entity: dds_entity_t, builder: DynamicTypeBuilder) -> DdsResult<Self> {
+    pub fn create(participant: &DomainParticipant, builder: DynamicTypeBuilder) -> DdsResult<Self> {
         let schema = builder.to_schema()?;
         let DynamicTypeBuilder {
             kind,
@@ -712,14 +722,18 @@ impl DynamicType {
                 .unwrap_or_default(),
         };
 
-        let raw = unsafe { dds_dynamic_type_create(entity, descriptor) };
+        let raw = unsafe { dds_dynamic_type_create(participant.entity(), descriptor) };
         check(raw.ret)?;
         if raw.x.iter().all(|ptr| ptr.is_null()) {
             return Err(DdsError::Other(
                 "CycloneDDS returned null dynamic type handle".into(),
             ));
         }
-        let mut dynamic_type = Self { raw, schema };
+        let mut dynamic_type = Self {
+            raw,
+            schema,
+            _participant: participant.owned().clone(),
+        };
         if let Some(extensibility) = extensibility {
             dynamic_type.set_extensibility(extensibility)?;
         }
@@ -746,6 +760,7 @@ impl DynamicType {
         Ok(Self {
             raw,
             schema: self.schema.clone(),
+            _participant: Arc::clone(&self._participant),
         })
     }
 
@@ -1073,25 +1088,25 @@ impl DynamicType {
         self.register()
     }
 
-    pub fn register_topic_descriptor<E: DdsEntity>(
+    pub fn register_topic_descriptor(
         &mut self,
-        participant: &E,
+        participant: &DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
     ) -> DdsResult<TopicDescriptor> {
         let type_info = self.register()?;
-        type_info.create_topic_descriptor(participant.entity(), scope, timeout)
+        type_info.create_topic_descriptor(participant, scope, timeout)
     }
 
-    pub fn register_topic<E: DdsEntity>(
+    pub fn register_topic(
         &mut self,
-        participant: &E,
+        participant: &DomainParticipant,
         scope: FindScope,
         timeout: dds_duration_t,
         name: &str,
     ) -> DdsResult<crate::UntypedTopic> {
         let descriptor = self.register_topic_descriptor(participant, scope, timeout)?;
-        descriptor.create_topic(participant.entity(), name)
+        descriptor.create_topic(participant, name)
     }
 }
 

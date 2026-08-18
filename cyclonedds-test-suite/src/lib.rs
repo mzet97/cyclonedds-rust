@@ -35,7 +35,7 @@ impl TestMessage {
     }
 }
 
-impl DdsType for TestMessage {
+unsafe impl DdsType for TestMessage {
     type Native = Self;
 
     fn type_name() -> &'static str {
@@ -64,7 +64,7 @@ pub struct KeyedMessage {
     pub value: i32,
 }
 
-impl DdsType for KeyedMessage {
+unsafe impl DdsType for KeyedMessage {
     type Native = Self;
 
     fn type_name() -> &'static str {

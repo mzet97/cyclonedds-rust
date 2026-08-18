@@ -56,10 +56,27 @@ fn keyed_instances_support_register_lookup_key_and_lifecycle() {
     assert_eq!(recovered.key, 10);
 
     writer
-        .write_dispose(&KeyedMessage {
+        .dispose(&KeyedMessage {
             key: 10,
             value: 999,
         })
         .unwrap();
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let loan = reader.take_loan().unwrap();
+        let valid_count = loan.iter().count();
+        if loan.len() > valid_count {
+            assert_eq!(valid_count, 0);
+            assert_eq!(loan.iter_native().count(), 0);
+            assert!(loan.to_vec().unwrap().is_empty());
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "dispose metadata was not observed"
+        );
+        std::thread::yield_now();
+    }
     writer.unregister_instance_handle(second_handle).unwrap();
 }

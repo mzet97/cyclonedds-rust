@@ -1,4 +1,4 @@
-use crate::{entity::DdsEntity, error::DdsResult, DomainParticipant, Qos};
+use crate::{error::DdsResult, DomainParticipant, Qos};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -81,9 +81,16 @@ impl ParticipantPool {
 
     /// Returns the participant for a domain, if any.
     pub fn get(&self, domain_id: u32) -> Option<DomainParticipant> {
-        let p = self.participants.lock().unwrap();
-        p.get(&domain_id)
-            .and_then(|e| DomainParticipant::new(e.participant.entity() as u32).ok())
+        self.participant_for_domain(domain_id).ok()
+    }
+
+    fn participant_for_domain(&self, domain_id: u32) -> DdsResult<DomainParticipant> {
+        self.participants
+            .lock()
+            .unwrap()
+            .get(&domain_id)
+            .map(|entry| entry.participant.clone())
+            .ok_or_else(|| crate::DdsError::BadParameter("domain not in pool".into()))
     }
 
     /// Discover topics in a domain using DDS builtin topics.
@@ -92,12 +99,8 @@ impl ParticipantPool {
         domain_id: u32,
         timeout: Duration,
     ) -> DdsResult<Vec<DiscoveredTopic>> {
-        let p = self.participants.lock().unwrap();
-        let entry = p
-            .get(&domain_id)
-            .ok_or_else(|| crate::DdsError::BadParameter("domain not in pool".into()))?;
-
-        let reader = entry.participant.create_builtin_topic_reader()?;
+        let participant = self.participant_for_domain(domain_id)?;
+        let reader = participant.create_builtin_topic_reader()?;
 
         let deadline = Instant::now() + timeout;
         let mut discovered = Vec::new();
@@ -121,12 +124,8 @@ impl ParticipantPool {
         domain_id: u32,
         timeout: Duration,
     ) -> DdsResult<Vec<DiscoveredParticipant>> {
-        let p = self.participants.lock().unwrap();
-        let entry = p
-            .get(&domain_id)
-            .ok_or_else(|| crate::DdsError::BadParameter("domain not in pool".into()))?;
-
-        let reader = entry.participant.create_builtin_participant_reader()?;
+        let participant = self.participant_for_domain(domain_id)?;
+        let reader = participant.create_builtin_participant_reader()?;
 
         let deadline = Instant::now() + timeout;
         let mut discovered = Vec::new();
@@ -180,5 +179,56 @@ impl ParticipantPool {
 impl Default for ParticipantPool {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::DdsEntity;
+
+    #[test]
+    fn participant_lookup_reuses_stored_entity_and_releases_pool_lock() {
+        // Given: a pool with one participant.
+        let pool = ParticipantPool::new();
+        pool.join_domain(172, None).unwrap();
+        let stored = pool
+            .participants
+            .lock()
+            .unwrap()
+            .get(&172)
+            .unwrap()
+            .participant
+            .entity();
+
+        // When: lookup clones the participant out of the map.
+        let fetched = pool.participant_for_domain(172).unwrap();
+
+        // Then: the DDS entity is identical and the map lock is no longer held.
+        assert_eq!(fetched.entity(), stored);
+        assert!(pool.participants.try_lock().is_ok());
+    }
+
+    #[test]
+    fn discovery_wait_does_not_block_other_pool_operations() {
+        let pool = Arc::new(ParticipantPool::new());
+        pool.join_domain(173, None).unwrap();
+
+        let discovery_pool = Arc::clone(&pool);
+        let discovery = std::thread::spawn(move || {
+            discovery_pool
+                .discover_topics(173, Duration::from_millis(500))
+                .unwrap()
+        });
+
+        std::thread::sleep(Duration::from_millis(100));
+        let started = Instant::now();
+        pool.heartbeat(173).unwrap();
+        assert!(
+            started.elapsed() < Duration::from_millis(100),
+            "heartbeat waited for the discovery loop to release the pool lock"
+        );
+
+        discovery.join().unwrap();
     }
 }

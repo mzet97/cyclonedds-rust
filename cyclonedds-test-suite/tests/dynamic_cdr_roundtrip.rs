@@ -37,7 +37,7 @@ fn discovered(
         .unwrap();
     build(participant, &mut ty);
     let type_info = ty.register().unwrap();
-    discover_type_from_type_info(participant.entity(), &type_info, &type_name, 0)
+    discover_type_from_type_info(participant, &type_info, &type_name, 0)
         .expect("type discovery failed")
 }
 

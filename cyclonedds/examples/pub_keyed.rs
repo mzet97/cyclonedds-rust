@@ -6,7 +6,7 @@ struct KeyValue {
     value: i32,
 }
 
-impl DdsType for KeyValue {
+unsafe impl DdsType for KeyValue {
     type Native = Self;
 
     fn type_name() -> &'static str {

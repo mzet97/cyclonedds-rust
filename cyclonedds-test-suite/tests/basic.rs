@@ -263,7 +263,11 @@ fn loan_peek_and_next_operations_work() {
 
     let peeked = reader.peek().unwrap();
     assert_eq!(peeked.len(), 1);
-    let first = peeked.iter().next().unwrap().expect("sample failed to decode");
+    let first = peeked
+        .iter()
+        .next()
+        .unwrap()
+        .expect("sample failed to decode");
     assert_eq!(first.data.id, 1);
     assert_eq!(first.data.text(), "peek-me");
 
@@ -1313,14 +1317,11 @@ fn matched_endpoint_qos_and_keys_are_accessible() {
         .build()
         .unwrap();
 
-    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
-        Some(&writer_qos),
-    )
-    .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
-        Some(&reader_qos),
-    )
-    .unwrap();
+    let writer =
+        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&writer_qos)).unwrap();
+    let reader =
+        DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic, Some(&reader_qos))
+            .unwrap();
 
     short_delay();
 
@@ -1365,14 +1366,11 @@ fn matched_endpoint_can_create_topic_descriptor_and_topic() {
         .reliable()
         .build()
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
-        Some(&writer_qos),
-    )
-    .unwrap();
-    let _reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
-        Some(&reader_qos),
-    )
-    .unwrap();
+    let writer =
+        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&writer_qos)).unwrap();
+    let _reader =
+        DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic, Some(&reader_qos))
+            .unwrap();
 
     short_delay();
 
@@ -1383,11 +1381,11 @@ fn matched_endpoint_can_create_topic_descriptor_and_topic() {
         .next()
         .unwrap();
     if let Ok(descriptor) =
-        endpoint.create_topic_descriptor(participant3.entity(), FindScope::LocalDomain, 0)
+        endpoint.create_topic_descriptor(&participant3, FindScope::LocalDomain, 0)
     {
         assert_eq!(descriptor.type_name(), "DirectStringMessage");
         let discovered_topic = endpoint
-            .create_topic(participant3.entity(), FindScope::LocalDomain, 0)
+            .create_topic(&participant3, FindScope::LocalDomain, 0)
             .unwrap();
         assert_eq!(discovered_topic.get_name().unwrap(), topic_name);
         assert_eq!(
@@ -1655,9 +1653,7 @@ fn topic_descriptor_can_create_topic_directly() {
     let descriptor = dynamic_type
         .register_topic_descriptor(&participant, FindScope::LocalDomain, 0)
         .unwrap();
-    let topic = descriptor
-        .create_topic(participant.entity(), &topic_name)
-        .unwrap();
+    let topic = descriptor.create_topic(&participant, &topic_name).unwrap();
     assert_eq!(topic.get_name().unwrap(), topic_name);
     assert_eq!(topic.get_type_name().unwrap(), type_name);
 }
@@ -1719,9 +1715,7 @@ fn dynamic_union_member_properties_work() {
         .register_topic_descriptor(&participant, FindScope::LocalDomain, 0)
         .unwrap();
     assert_eq!(descriptor.type_name(), union_name);
-    let topic = descriptor
-        .create_topic(participant.entity(), &topic_name)
-        .unwrap();
+    let topic = descriptor.create_topic(&participant, &topic_name).unwrap();
     assert_eq!(topic.get_name().unwrap(), topic_name);
     assert_eq!(topic.get_type_name().unwrap(), union_name);
 }
@@ -1777,9 +1771,7 @@ fn dynamic_sequence_array_and_string_builders_work() {
         .unwrap();
     assert_eq!(descriptor.type_name(), root_name);
     assert_eq!(descriptor.key_count(), 1);
-    let topic = descriptor
-        .create_topic(participant.entity(), &topic_name)
-        .unwrap();
+    let topic = descriptor.create_topic(&participant, &topic_name).unwrap();
     assert_eq!(topic.get_type_name().unwrap(), root_name);
 }
 
@@ -2028,8 +2020,7 @@ fn dynamic_struct_without_members_can_register_work() {
         .build(&participant)
         .unwrap();
     let type_info = dynamic_type.register_type_info().unwrap();
-    if let Ok(topic) =
-        type_info.create_topic(participant.entity(), FindScope::LocalDomain, 0, &topic_name)
+    if let Ok(topic) = type_info.create_topic(&participant, FindScope::LocalDomain, 0, &topic_name)
     {
         assert_eq!(topic.get_name().unwrap(), topic_name);
         assert_eq!(topic.get_type_name().unwrap(), type_name);
@@ -2090,7 +2081,7 @@ fn dynamic_register_type_info_alias_works() {
         .unwrap();
     let type_info = dynamic_type.register_type_info().unwrap();
     let descriptor = type_info
-        .create_topic_descriptor(participant.entity(), FindScope::LocalDomain, 0)
+        .create_topic_descriptor(&participant, FindScope::LocalDomain, 0)
         .unwrap();
     assert!(descriptor.op_count() > 0);
 }
@@ -2257,11 +2248,11 @@ fn builtin_endpoint_sample_can_create_topic_descriptor_and_topic() {
     assert_eq!(publication.type_name_value(), "DirectStringMessage");
     let _ = publication.qos().unwrap();
     if let Ok(descriptor) =
-        publication.create_topic_descriptor(participant2.entity(), FindScope::LocalDomain, 0)
+        publication.create_topic_descriptor(&participant2, FindScope::LocalDomain, 0)
     {
         assert_eq!(descriptor.type_name(), "DirectStringMessage");
         let discovered = publication
-            .create_topic(participant2.entity(), FindScope::LocalDomain, 0)
+            .create_topic(&participant2, FindScope::LocalDomain, 0)
             .unwrap();
         assert_eq!(discovered.get_name().unwrap(), topic_name);
     }
@@ -2274,7 +2265,7 @@ fn builtin_endpoint_sample_can_create_topic_descriptor_and_topic() {
     assert_eq!(subscription.type_name_value(), "DirectStringMessage");
     let _ = subscription.qos().unwrap();
     if let Ok(descriptor) =
-        subscription.create_topic_descriptor(participant2.entity(), FindScope::LocalDomain, 0)
+        subscription.create_topic_descriptor(&participant2, FindScope::LocalDomain, 0)
     {
         assert_eq!(descriptor.type_name(), "DirectStringMessage");
     }
@@ -2299,7 +2290,7 @@ fn typeinfo_and_descriptor_can_create_topics_with_qos() {
         .unwrap();
     let type_info = dynamic_type.register_type_info().unwrap();
     let descriptor = type_info
-        .create_topic_descriptor(participant.entity(), FindScope::LocalDomain, 0)
+        .create_topic_descriptor(&participant, FindScope::LocalDomain, 0)
         .unwrap();
 
     let qos1 = Qos::builder()
@@ -2313,7 +2304,7 @@ fn typeinfo_and_descriptor_can_create_topics_with_qos() {
 
     let topic1 = type_info
         .create_topic_with_qos(
-            participant.entity(),
+            &participant,
             FindScope::LocalDomain,
             0,
             &topic_name_1,
@@ -2321,7 +2312,7 @@ fn typeinfo_and_descriptor_can_create_topics_with_qos() {
         )
         .unwrap();
     let topic2 = descriptor
-        .create_topic_with_qos(participant.entity(), &topic_name_2, &qos2)
+        .create_topic_with_qos(&participant, &topic_name_2, &qos2)
         .unwrap();
 
     assert_eq!(topic1.get_name().unwrap(), topic_name_1);
@@ -2359,7 +2350,7 @@ fn builtin_samples_can_find_existing_topics() {
             .find(|sample| sample.topic_name() == topic_name)
         {
             let found = topic_sample
-                .find_topic(participant2.entity(), FindScope::LocalDomain, 0)
+                .find_topic(&participant2, FindScope::LocalDomain, 0)
                 .unwrap();
             if let Some(found) = found {
                 assert_eq!(found.get_name().unwrap(), topic_name);
@@ -2373,9 +2364,7 @@ fn builtin_samples_can_find_existing_topics() {
         .iter()
         .find(|sample| sample.topic_name() == topic_name)
         .unwrap();
-    if let Ok(Some(found)) =
-        publication.find_topic(participant2.entity(), FindScope::LocalDomain, 0)
-    {
+    if let Ok(Some(found)) = publication.find_topic(&participant2, FindScope::LocalDomain, 0) {
         assert_eq!(found.get_name().unwrap(), topic_name);
         assert_eq!(found.get_type_name().unwrap(), "DirectStringMessage");
     }
@@ -2410,7 +2399,7 @@ fn sertype_hash_equality_and_topic_creation_work() {
     let cloned_topic = topic_st
         .clone_ref()
         .unwrap()
-        .create_topic(participant.entity(), &cloned_topic_name, Some(&qos))
+        .create_topic(&participant, &cloned_topic_name, Some(&qos))
         .unwrap();
     assert_eq!(cloned_topic.get_name().unwrap(), cloned_topic_name);
     assert_eq!(cloned_topic.get_type_name().unwrap(), "DirectStringMessage");
@@ -2524,19 +2513,15 @@ fn typeinfo_matches_and_resolves_type_objects() {
     let info_b = duplicate.register_type_info().unwrap();
 
     assert!(info_a.matches(&info_b));
-    let min_obj = info_a.minimal_type_object(participant.entity(), 0).unwrap();
-    let compl_obj = info_a
-        .complete_type_object(participant.entity(), 0)
-        .unwrap();
+    let min_obj = info_a.minimal_type_object(&participant, 0).unwrap();
+    let compl_obj = info_a.complete_type_object(&participant, 0).unwrap();
     assert!(min_obj.is_some());
     assert!(compl_obj.is_some());
 
     let min_id = info_a.minimal_type_id().unwrap();
     let compl_id = info_a.complete_type_id().unwrap();
-    let _ = min_id.resolve_type_object(participant.entity(), 0).unwrap();
-    let _ = compl_id
-        .resolve_type_object(participant.entity(), 0)
-        .unwrap();
+    let _ = min_id.resolve_type_object(&participant, 0).unwrap();
+    let _ = compl_id.resolve_type_object(&participant, 0).unwrap();
 }
 
 #[test]
@@ -2554,12 +2539,7 @@ fn typeinfo_and_matched_endpoint_can_find_topics_with_qos_variants() {
 
     if let Ok(type_info) = writer.get_type_info() {
         let found = type_info
-            .find_topic(
-                participant2.entity(),
-                FindScope::LocalDomain,
-                0,
-                &topic_name,
-            )
+            .find_topic(&participant2, FindScope::LocalDomain, 0, &topic_name)
             .unwrap();
         if let Some(found) = found {
             assert_eq!(found.get_name().unwrap(), topic_name);
@@ -2572,7 +2552,7 @@ fn typeinfo_and_matched_endpoint_can_find_topics_with_qos_variants() {
         .into_iter()
         .next()
         .unwrap();
-    if let Ok(Some(found)) = endpoint.find_topic(participant2.entity(), FindScope::LocalDomain, 0) {
+    if let Ok(Some(found)) = endpoint.find_topic(&participant2, FindScope::LocalDomain, 0) {
         assert_eq!(found.get_name().unwrap(), topic_name);
     }
 
@@ -2581,7 +2561,7 @@ fn typeinfo_and_matched_endpoint_can_find_topics_with_qos_variants() {
         .build()
         .unwrap();
     if let Ok(cloned) =
-        endpoint.create_topic_with_qos(participant2.entity(), FindScope::LocalDomain, 0, &qos)
+        endpoint.create_topic_with_qos(&participant2, FindScope::LocalDomain, 0, &qos)
     {
         assert_eq!(
             cloned.get_qos().unwrap().durability().unwrap().unwrap(),
@@ -2618,11 +2598,11 @@ fn entity_and_endpoint_type_objects_match() {
     let info_b = dup.register_type_info().unwrap();
     assert!(info_a.matches(&info_b));
     assert!(info_a
-        .minimal_type_object(participant.entity(), 0)
+        .minimal_type_object(&participant, 0)
         .unwrap()
         .is_some());
     assert!(info_a
-        .complete_type_object(participant.entity(), 0)
+        .complete_type_object(&participant, 0)
         .unwrap()
         .is_some());
 
@@ -2632,8 +2612,8 @@ fn entity_and_endpoint_type_objects_match() {
         .into_iter()
         .next()
         .unwrap();
-    if let Ok(Some(_obj)) = endpoint.minimal_type_object(participant.entity(), 0) {}
-    if let Ok(Some(_obj)) = endpoint.complete_type_object(participant.entity(), 0) {}
+    if let Ok(Some(_obj)) = endpoint.minimal_type_object(&participant, 0) {}
+    if let Ok(Some(_obj)) = endpoint.complete_type_object(&participant, 0) {}
 }
 
 #[test]
@@ -2658,8 +2638,8 @@ fn builtin_endpoint_type_objects_are_accessible_when_available() {
 
     if let Ok(info) = publication.type_info() {
         assert!(info.is_present());
-        let _ = publication.minimal_type_object(participant.entity(), 0);
-        let _ = publication.complete_type_object(participant.entity(), 0);
+        let _ = publication.minimal_type_object(&participant, 0);
+        let _ = publication.complete_type_object(&participant, 0);
     }
 }
 
@@ -2811,12 +2791,8 @@ fn owned_typeids_roundtrip_and_typeobject_resolution() {
     assert!(!compl_owned.display_string().is_empty());
     let _ = min_owned.equivalence_hash();
     let _ = compl_owned.equivalence_hash();
-    let _ = min_owned
-        .resolve_type_object(participant.entity(), 0)
-        .unwrap();
-    let _ = compl_owned
-        .resolve_type_object(participant.entity(), 0)
-        .unwrap();
+    let _ = min_owned.resolve_type_object(&participant, 0).unwrap();
+    let _ = compl_owned.resolve_type_object(&participant, 0).unwrap();
 }
 
 #[test]
@@ -3028,12 +3004,9 @@ fn entity_qos_roundtrip_for_type_consistency_and_data_representation() {
         .unwrap();
 
     let writer =
-        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&qos))
-            .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
-        Some(&qos),
-    )
-    .unwrap();
+        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&qos)).unwrap();
+    let reader =
+        DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic, Some(&qos)).unwrap();
 
     if let Some(tc) = writer.get_qos().unwrap().type_consistency().unwrap() {
         assert_eq!(tc.kind, TypeConsistency::AllowTypeCoercion);
@@ -3084,14 +3057,11 @@ fn builtin_reader_qos_matches_discovered_endpoint_qos() {
         .entity_name("builtin-pub-writer")
         .build()
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
-        Some(&writer_qos),
-    )
-    .unwrap();
-    let _reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
-        Some(&reader_qos),
-    )
-    .unwrap();
+    let writer =
+        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&writer_qos)).unwrap();
+    let _reader =
+        DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic, Some(&reader_qos))
+            .unwrap();
 
     short_delay();
 
@@ -3171,14 +3141,11 @@ fn builtin_sample_qos_matches_entity_qos() {
     let topic = participant
         .create_topic::<DirectStringMessage>(&topic_name)
         .unwrap();
-    let writer = DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic,
-        Some(&writer_qos),
-    )
-    .unwrap();
-    let reader = DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic,
-        Some(&reader_qos),
-    )
-    .unwrap();
+    let writer =
+        DataWriter::<DirectStringMessage>::with_qos(&publisher, &topic, Some(&writer_qos)).unwrap();
+    let reader =
+        DataReader::<DirectStringMessage>::with_qos(&subscriber, &topic, Some(&reader_qos))
+            .unwrap();
 
     short_delay();
 

@@ -6,6 +6,8 @@ use crate::{
     DdsError, DdsResult, Qos,
 };
 use cyclonedds_rust_sys::*;
+use std::any::Any;
+use std::sync::Mutex;
 
 /// Read a string-valued entity property, growing the buffer if it did not fit.
 ///
@@ -101,6 +103,8 @@ pub(crate) struct OwnedEntity {
     _listener: Option<crate::Listener>,
     /// Ancestors, released only once this entity is gone.
     _parents: Vec<std::sync::Arc<OwnedEntity>>,
+    /// Callback data retained for as long as this DDS entity or any child is alive.
+    _callback_state: Mutex<Option<Box<dyn Any + Send + Sync>>>,
 }
 
 impl OwnedEntity {
@@ -116,6 +120,7 @@ impl OwnedEntity {
             what,
             _listener: listener,
             _parents: parents,
+            _callback_state: Mutex::new(None),
         })
     }
 
@@ -145,6 +150,14 @@ impl OwnedEntity {
     /// been handed to anyone yet.
     pub(crate) fn push_parent(&mut self, parent: std::sync::Arc<OwnedEntity>) {
         self._parents.push(parent);
+    }
+
+    pub(crate) fn replace_callback_state(&self, state: Option<Box<dyn Any + Send + Sync>>) {
+        let mut current = self
+            ._callback_state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *current = state;
     }
 }
 
@@ -411,12 +424,12 @@ pub trait DdsEntity {
 
     fn get_minimal_type_object(&self, timeout: dds_duration_t) -> DdsResult<Option<TypeObject>> {
         self.get_type_info()?
-            .minimal_type_object(self.entity(), timeout)
+            .minimal_type_object_from_entity(self.entity(), timeout)
     }
 
     fn get_complete_type_object(&self, timeout: dds_duration_t) -> DdsResult<Option<TypeObject>> {
         self.get_type_info()?
-            .complete_type_object(self.entity(), timeout)
+            .complete_type_object_from_entity(self.entity(), timeout)
     }
 
     fn matches_entity_type_info<E: DdsEntity>(&self, other: &E) -> DdsResult<bool> {

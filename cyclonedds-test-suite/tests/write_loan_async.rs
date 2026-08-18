@@ -17,13 +17,15 @@ fn write_loan_async_publishes_sample() {
 
         short_delay();
 
-        writer
-            .write_loan_async(|sample| {
-                sample.id = 42;
-                sample.value = 999;
-            })
-            .await
-            .unwrap();
+        unsafe {
+            writer
+                .write_loan_async(|sample| {
+                    sample.id = 42;
+                    sample.value = 999;
+                })
+                .await
+                .unwrap();
+        }
 
         assert!(wait_for(Duration::from_secs(2), || !reader
             .read()

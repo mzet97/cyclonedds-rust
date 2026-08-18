@@ -105,10 +105,7 @@ fn take_loan_to_vec_does_not_corrupt_heap() {
 
     for s in &owned {
         assert_eq!(s.data.text, format!("loan-heap-{}", s.data.id));
-        assert_eq!(
-            s.data.values,
-            vec![s.data.id, s.data.id * 2, s.data.id * 3]
-        );
+        assert_eq!(s.data.values, vec![s.data.id, s.data.id * 2, s.data.id * 3]);
     }
 
     // Dropping `owned` here must not double-free: with the bug the cloned
@@ -136,7 +133,11 @@ fn peek_with_heap_fields_is_sound() {
         .is_empty()));
 
     let peeked = reader.peek().unwrap();
-    let first = peeked.iter().next().unwrap().expect("sample failed to decode");
+    let first = peeked
+        .iter()
+        .next()
+        .unwrap()
+        .expect("sample failed to decode");
     assert_eq!(first.data.id, 9);
     assert_eq!(first.data.text, "loan-heap-9");
 }

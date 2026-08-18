@@ -7,7 +7,7 @@
 use crate::{
     dynamic_value::{DynamicFieldSchema, DynamicTypeSchema},
     xtypes::{FindScope, MatchedEndpoint, TopicDescriptor, TypeInfo},
-    DataReader, DataWriter, DdsEntity, DdsError, DdsResult,
+    DataReader, DataWriter, DdsEntity, DdsError, DdsResult, DomainParticipant,
 };
 use cyclonedds_rust_sys::*;
 use std::ffi::CStr;
@@ -34,22 +34,21 @@ impl DiscoveredType {
     /// Create a topic for this discovered type on the given participant.
     pub fn create_topic(
         &self,
-        participant_entity: dds_entity_t,
+        participant: &DomainParticipant,
         topic_name: &str,
     ) -> DdsResult<crate::UntypedTopic> {
-        self.topic_descriptor
-            .create_topic(participant_entity, topic_name)
+        self.topic_descriptor.create_topic(participant, topic_name)
     }
 
     /// Create a topic for this discovered type with QoS.
     pub fn create_topic_with_qos(
         &self,
-        participant_entity: dds_entity_t,
+        participant: &DomainParticipant,
         topic_name: &str,
         qos: &crate::Qos,
     ) -> DdsResult<crate::UntypedTopic> {
         self.topic_descriptor
-            .create_topic_with_qos(participant_entity, topic_name, qos)
+            .create_topic_with_qos(participant, topic_name, qos)
     }
 }
 
@@ -67,12 +66,13 @@ impl DiscoveredType {
 /// what type a remote writer publishes, then create a local reader using
 /// the discovered type information.
 pub fn discover_type_from_publication(
+    participant: &DomainParticipant,
     reader: &DataReader<impl crate::DdsType>,
     publication_handle: dds_instance_handle_t,
     timeout: dds_duration_t,
 ) -> DdsResult<DiscoveredType> {
     let endpoint = MatchedEndpoint::from_publication(reader.entity(), publication_handle)?;
-    discover_type_from_endpoint(reader.entity(), &endpoint, timeout)
+    discover_type_from_endpoint(participant, &endpoint, timeout)
 }
 
 /// Discover the type of a matched subscription endpoint.
@@ -80,12 +80,13 @@ pub fn discover_type_from_publication(
 /// Obtains the type information from a matched subscription (reader on a
 /// remote participant) and resolves it into a full type schema.
 pub fn discover_type_from_subscription(
+    participant: &DomainParticipant,
     writer: &DataWriter<impl crate::DdsType>,
     subscription_handle: dds_instance_handle_t,
     timeout: dds_duration_t,
 ) -> DdsResult<DiscoveredType> {
     let endpoint = MatchedEndpoint::from_subscription(writer.entity(), subscription_handle)?;
-    discover_type_from_endpoint(writer.entity(), &endpoint, timeout)
+    discover_type_from_endpoint(participant, &endpoint, timeout)
 }
 
 /// Discover a type from any matched endpoint.
@@ -93,14 +94,13 @@ pub fn discover_type_from_subscription(
 /// Given a `MatchedEndpoint` (obtained from `matched_publication_endpoints()`
 /// or `matched_subscription_endpoints()`), resolve the full type information.
 pub fn discover_type_from_endpoint(
-    participant_entity: dds_entity_t,
+    participant: &DomainParticipant,
     endpoint: &MatchedEndpoint,
     timeout: dds_duration_t,
 ) -> DdsResult<DiscoveredType> {
     let type_info = endpoint.type_info()?;
     let type_name = endpoint.type_name();
-    let descriptor =
-        type_info.create_topic_descriptor(participant_entity, FindScope::Global, timeout)?;
+    let descriptor = type_info.create_topic_descriptor(participant, FindScope::Global, timeout)?;
     let schema = type_schema_from_descriptor(&descriptor, &type_name)?;
 
     Ok(DiscoveredType {
@@ -115,13 +115,12 @@ pub fn discover_type_from_endpoint(
 /// This resolves the type information into a topic descriptor and schema.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(type_info)))]
 pub fn discover_type_from_type_info(
-    participant_entity: dds_entity_t,
+    participant: &DomainParticipant,
     type_info: &TypeInfo,
     type_name: &str,
     timeout: dds_duration_t,
 ) -> DdsResult<DiscoveredType> {
-    let descriptor =
-        type_info.create_topic_descriptor(participant_entity, FindScope::Global, timeout)?;
+    let descriptor = type_info.create_topic_descriptor(participant, FindScope::Global, timeout)?;
     let schema = type_schema_from_descriptor(&descriptor, type_name)?;
 
     Ok(DiscoveredType {
@@ -136,13 +135,14 @@ pub fn discover_type_from_type_info(
 /// Convenience function that chains getting the matched publications with
 /// type discovery. Returns discovered types for all matched publications.
 pub fn discover_all_publication_types(
+    participant: &DomainParticipant,
     reader: &DataReader<impl crate::DdsType>,
     timeout: dds_duration_t,
 ) -> DdsResult<Vec<DiscoveredType>> {
     let endpoints = reader.matched_publication_endpoints()?;
     let mut results = Vec::with_capacity(endpoints.len());
     for endpoint in &endpoints {
-        match discover_type_from_endpoint(reader.entity(), endpoint, timeout) {
+        match discover_type_from_endpoint(participant, endpoint, timeout) {
             Ok(dt) => results.push(dt),
             Err(_) => continue, // skip endpoints whose type we can't resolve
         }
@@ -155,13 +155,14 @@ pub fn discover_all_publication_types(
 /// Convenience function that chains getting the matched subscriptions with
 /// type discovery. Returns discovered types for all matched subscriptions.
 pub fn discover_all_subscription_types(
+    participant: &DomainParticipant,
     writer: &DataWriter<impl crate::DdsType>,
     timeout: dds_duration_t,
 ) -> DdsResult<Vec<DiscoveredType>> {
     let endpoints = writer.matched_subscription_endpoints()?;
     let mut results = Vec::with_capacity(endpoints.len());
     for endpoint in &endpoints {
-        match discover_type_from_endpoint(writer.entity(), endpoint, timeout) {
+        match discover_type_from_endpoint(participant, endpoint, timeout) {
             Ok(dt) => results.push(dt),
             Err(_) => continue,
         }

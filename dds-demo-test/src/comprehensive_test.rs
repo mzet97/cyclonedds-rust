@@ -80,11 +80,9 @@ fn test_publisher_subscriber(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_topic_creation(dp: &DomainParticipant) -> Result<String, String> {
-    let t1 =
-        Topic::<SensorData>::new(dp, "test_sensor").map_err(|e| format!("{:?}", e))?;
+    let t1 = Topic::<SensorData>::new(dp, "test_sensor").map_err(|e| format!("{:?}", e))?;
     let t2 = Topic::<KeyValue>::new(dp, "test_kv").map_err(|e| format!("{:?}", e))?;
-    let t3 =
-        Topic::<BatchReading>::new(dp, "test_batch").map_err(|e| format!("{:?}", e))?;
+    let t3 = Topic::<BatchReading>::new(dp, "test_batch").map_err(|e| format!("{:?}", e))?;
     Ok(format!(
         "3 topics: {}, {}, {}",
         t1.entity(),
@@ -96,8 +94,7 @@ fn test_topic_creation(dp: &DomainParticipant) -> Result<String, String> {
 fn test_basic_pubsub(dp: &DomainParticipant) -> Result<String, String> {
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let topic =
-        Topic::<SensorData>::new(dp, "pubsub_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<SensorData>::new(dp, "pubsub_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<SensorData> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
@@ -130,8 +127,7 @@ fn test_basic_pubsub(dp: &DomainParticipant) -> Result<String, String> {
 fn test_multiple_writes(dp: &DomainParticipant) -> Result<String, String> {
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let topic =
-        Topic::<SensorData>::new(dp, "multi_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<SensorData>::new(dp, "multi_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<SensorData> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
@@ -160,8 +156,7 @@ fn test_multiple_writes(dp: &DomainParticipant) -> Result<String, String> {
 fn test_keyed_data(dp: &DomainParticipant) -> Result<String, String> {
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let topic =
-        Topic::<KeyValue>::new(dp, "keyed_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<KeyValue>::new(dp, "keyed_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<KeyValue> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
@@ -192,8 +187,7 @@ fn test_keyed_data(dp: &DomainParticipant) -> Result<String, String> {
 fn test_sequence_fields(dp: &DomainParticipant) -> Result<String, String> {
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let topic =
-        Topic::<BatchReading>::new(dp, "seq_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<BatchReading>::new(dp, "seq_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<BatchReading> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
@@ -224,8 +218,7 @@ fn test_qos_builder(dp: &DomainParticipant) -> Result<String, String> {
         .build()
         .map_err(|e| format!("build qos: {:?}", e))?;
 
-    let topic =
-        Topic::<SensorData>::new(dp, "qos_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<SensorData>::new(dp, "qos_test").map_err(|e| format!("{:?}", e))?;
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let writer = pub_
         .create_writer_with_qos(&topic, &qos)
@@ -245,8 +238,7 @@ fn test_qos_builder(dp: &DomainParticipant) -> Result<String, String> {
 fn test_waitset(dp: &DomainParticipant) -> Result<String, String> {
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let topic =
-        Topic::<SensorData>::new(dp, "waitset_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<SensorData>::new(dp, "waitset_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<SensorData> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
@@ -285,8 +277,7 @@ fn test_waitset(dp: &DomainParticipant) -> Result<String, String> {
 fn test_read_vs_take(dp: &DomainParticipant) -> Result<String, String> {
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let topic =
-        Topic::<SensorData>::new(dp, "readtake_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<SensorData>::new(dp, "readtake_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let reader: DataReader<SensorData> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
@@ -328,8 +319,7 @@ fn test_read_vs_take(dp: &DomainParticipant) -> Result<String, String> {
 fn test_write_dispose(dp: &DomainParticipant) -> Result<String, String> {
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let topic =
-        Topic::<KeyValue>::new(dp, "dispose_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<KeyValue>::new(dp, "dispose_test").map_err(|e| format!("{:?}", e))?;
     let writer = DataWriter::new(&pub_, &topic).map_err(|e| format!("{:?}", e))?;
     let _reader: DataReader<KeyValue> =
         DataReader::new(&sub, &topic).map_err(|e| format!("{:?}", e))?;
@@ -345,8 +335,7 @@ fn test_write_dispose(dp: &DomainParticipant) -> Result<String, String> {
 }
 
 fn test_content_filtered_topic(dp: &DomainParticipant) -> Result<String, String> {
-    let topic =
-        Topic::<SensorData>::new(dp, "cft_test").map_err(|e| format!("{:?}", e))?;
+    let topic = Topic::<SensorData>::new(dp, "cft_test").map_err(|e| format!("{:?}", e))?;
 
     let cft =
         cyclonedds::ContentFilteredTopic::new(&topic, |data: &SensorData| data.temperature > 20.0)
@@ -354,9 +343,14 @@ fn test_content_filtered_topic(dp: &DomainParticipant) -> Result<String, String>
 
     let pub_ = Publisher::new(dp).map_err(|e| format!("{:?}", e))?;
     let sub = Subscriber::new(dp).map_err(|e| format!("{:?}", e))?;
-    let writer = DataWriter::from_entities(pub_.entity(), cft.entity()).map_err(|e| format!("{:?}", e))?;
+    // SAFETY: `cft` is derived from `Topic<SensorData>` and the publisher,
+    // subscriber and filtered topic all outlive these endpoints.
+    let writer = unsafe { DataWriter::from_entities(pub_.entity(), cft.entity()) }
+        .map_err(|e| format!("{:?}", e))?;
+    // SAFETY: same `SensorData` topic identity and parent lifetimes as above.
     let reader: DataReader<SensorData> =
-        DataReader::from_entities(sub.entity(), cft.entity()).map_err(|e| format!("{:?}", e))?;
+        unsafe { DataReader::from_entities(sub.entity(), cft.entity()) }
+            .map_err(|e| format!("{:?}", e))?;
 
     let cold = SensorData {
         sensor_id: 1,
@@ -393,16 +387,15 @@ fn test_content_filtered_topic(dp: &DomainParticipant) -> Result<String, String>
 
 fn test_topic_filter_ext(dp: &DomainParticipant) -> Result<String, String> {
     use cyclonedds::TopicFilterExt;
-    let topic = Topic::<SensorData>::new(dp, "topic_filter_test")
-        .map_err(|e| format!("{:?}", e))?;
+    let topic =
+        Topic::<SensorData>::new(dp, "topic_filter_test").map_err(|e| format!("{:?}", e))?;
 
-    topic
-        .set_filter(|data: &SensorData| data.sensor_id > 0)
+    // SAFETY: no endpoint is created from `topic` while its filter is changed.
+    unsafe { topic.set_filter(|data: &SensorData| data.sensor_id > 0) }
         .map_err(|e| format!("set_filter: {:?}", e))?;
 
-    topic
-        .clear_filter()
-        .map_err(|e| format!("clear_filter: {:?}", e))?;
+    // SAFETY: the topic still has no readers or writers using the filter.
+    unsafe { topic.clear_filter() }.map_err(|e| format!("clear_filter: {:?}", e))?;
 
     Ok("set + clear OK".into())
 }
@@ -420,10 +413,8 @@ fn test_multiple_participants() -> Result<String, String> {
     let dp1 = DomainParticipant::new(0).map_err(|e| format!("dp1: {:?}", e))?;
     let dp2 = DomainParticipant::new(1).map_err(|e| format!("dp2: {:?}", e))?;
 
-    let t1 = Topic::<SensorData>::new(&dp1, "cross_domain")
-        .map_err(|e| format!("t1: {:?}", e))?;
-    let t2 = Topic::<SensorData>::new(&dp2, "cross_domain")
-        .map_err(|e| format!("t2: {:?}", e))?;
+    let t1 = Topic::<SensorData>::new(&dp1, "cross_domain").map_err(|e| format!("t1: {:?}", e))?;
+    let t2 = Topic::<SensorData>::new(&dp2, "cross_domain").map_err(|e| format!("t2: {:?}", e))?;
 
     Ok(format!(
         "dp1 topic={}, dp2 topic={}",

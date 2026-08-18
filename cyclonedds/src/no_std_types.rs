@@ -127,7 +127,12 @@ pub struct KeyDescriptor {
 /// Trait that DDS topic types must implement.
 ///
 /// In `no_std` mode this is a pure-Rust trait without FFI methods.
-pub trait DdsType: Sized + Send + 'static {
+///
+/// # Safety
+///
+/// The descriptor size, alignment, opcodes and keys must exactly describe the
+/// implementing type's native layout.
+pub unsafe trait DdsType: Sized + Send + 'static {
     fn type_name() -> &'static str;
     fn ops() -> Vec<u32>;
     fn descriptor_size() -> u32 {

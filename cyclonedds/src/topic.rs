@@ -16,12 +16,6 @@ pub struct UntypedTopic {
 }
 
 impl UntypedTopic {
-    pub(crate) fn from_entity(entity: dds_entity_t) -> Self {
-        Self {
-            inner: OwnedEntity::unowned(entity, "UntypedTopic"),
-        }
-    }
-
     pub(crate) fn adopt(entity: dds_entity_t, parents: Vec<Arc<OwnedEntity>>) -> Self {
         Self {
             inner: OwnedEntity::new(entity, "UntypedTopic", None, parents),
@@ -43,22 +37,26 @@ impl UntypedTopic {
         self
     }
 
-    /// # Unchecked
+    /// # Safety
     ///
     /// Takes a raw participant handle and does not hold it alive. Prefer
     /// [`DomainParticipant::create_topic_from_descriptor`], which does.
     ///
     /// [`DomainParticipant::create_topic_from_descriptor`]: crate::DomainParticipant::create_topic_from_descriptor
-    pub fn from_descriptor(
+    pub unsafe fn from_descriptor(
         participant: dds_entity_t,
         name: &str,
         descriptor: &TopicDescriptor,
     ) -> DdsResult<Self> {
-        Self::from_descriptor_with_qos(participant, name, descriptor, None)
+        unsafe { Self::from_descriptor_with_qos(participant, name, descriptor, None) }
     }
 
-    /// See [`UntypedTopic::from_descriptor`].
-    pub fn from_descriptor_with_qos(
+    /// # Safety
+    ///
+    /// `participant` must identify a live domain participant and must outlive
+    /// the returned topic. `descriptor` and `qos`, when present, must be valid
+    /// for the duration of the CycloneDDS creation call.
+    pub unsafe fn from_descriptor_with_qos(
         participant: dds_entity_t,
         name: &str,
         descriptor: &TopicDescriptor,
@@ -195,7 +193,32 @@ pub const OP_FLAG_OPT: u32 = DDS_OP_FLAG_OPT;
 pub const OP_KOF: u32 = 0x07 << 24;
 pub const OP_MID: u32 = dds_stream_opcode_DDS_OP_MID;
 
-pub trait DdsType: Sized + Send + 'static {
+/// Describes the native layout consumed by CycloneDDS for a Rust sample type.
+///
+/// Implementing this contract requires proving layout, initialization and
+/// clone-out invariants. A normal safe implementation must therefore be
+/// rejected by the compiler:
+///
+/// ```compile_fail
+/// use cyclonedds::DdsType;
+///
+/// struct Invalid;
+///
+/// impl DdsType for Invalid {
+///     type Native = String;
+///
+///     fn type_name() -> &'static str { "Invalid" }
+///     fn ops() -> Vec<u32> { Vec::new() }
+/// }
+/// ```
+///
+/// # Safety
+///
+/// `Native` must match the size, alignment and opcode layout announced to
+/// CycloneDDS, its all-zero bit pattern must be valid, `write_to_native` must
+/// return that representation, and `clone_out` must produce an owned `Self`
+/// from a valid native sample without retaining borrowed DDS memory.
+pub unsafe trait DdsType: Sized + Send + 'static {
     /// The DDS wire-compatible representation of this type — what CycloneDDS's
     /// topic descriptor (`m_size`/`m_ops`, see [`DdsType::descriptor_size`]) and
     /// the loan APIs ([`crate::DataWriter::request_loan`]) actually operate on.
@@ -394,18 +417,22 @@ impl<T: DdsType> Topic<T> {
 
     /// Create a topic from a raw participant handle.
     ///
-    /// # Unchecked
+    /// # Safety
     ///
     /// Escape hatch for handles obtained outside this crate (FFI interop).
     /// Unlike [`Topic::new`], the returned topic does **not** hold the
     /// participant alive: the caller guarantees the handle is a live
     /// participant and outlives the topic.
-    pub fn from_entity(participant: dds_entity_t, name: &str) -> DdsResult<Self> {
-        Self::with_qos_from_entity(participant, name, None)
+    pub unsafe fn from_entity(participant: dds_entity_t, name: &str) -> DdsResult<Self> {
+        unsafe { Self::with_qos_from_entity(participant, name, None) }
     }
 
-    /// See [`Topic::from_entity`].
-    pub fn with_qos_from_entity(
+    /// Create a topic from a raw participant handle with QoS.
+    ///
+    /// # Safety
+    ///
+    /// The requirements of [`Topic::from_entity`] apply unchanged.
+    pub unsafe fn with_qos_from_entity(
         participant: dds_entity_t,
         name: &str,
         qos: Option<&Qos>,
@@ -439,9 +466,8 @@ impl<T: DdsType> Topic<T> {
             let key_names: Vec<CString> = key_defs
                 .iter()
                 .map(|k| {
-                    CString::new(k.name.as_str()).map_err(|_| {
-                        DdsError::BadParameter("key name contains null".into())
-                    })
+                    CString::new(k.name.as_str())
+                        .map_err(|_| DdsError::BadParameter("key name contains null".into()))
                 })
                 .collect::<DdsResult<_>>()?;
             let mut keys: Vec<dds_key_descriptor> = Vec::with_capacity(key_defs.len());

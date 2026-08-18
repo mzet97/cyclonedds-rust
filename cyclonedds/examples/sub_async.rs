@@ -6,7 +6,7 @@ struct HelloWorld {
     message: [u8; 256],
 }
 
-impl DdsType for HelloWorld {
+unsafe impl DdsType for HelloWorld {
     type Native = Self;
 
     fn type_name() -> &'static str {

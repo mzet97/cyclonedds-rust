@@ -178,7 +178,11 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
     ///
     /// The new closure replaces the old one.  The DDS filter is updated
     /// atomically before the old closure is dropped.
-    pub fn set_filter<F>(&mut self, filter: F) -> DdsResult<()>
+    /// # Safety
+    ///
+    /// CycloneDDS requires that no reader or writer uses this topic while its
+    /// filter is replaced. The caller must provide that external exclusion.
+    pub unsafe fn set_filter<F>(&mut self, filter: F) -> DdsResult<()>
     where
         F: Fn(&T) -> bool + Send + Sync + 'static,
     {
@@ -207,7 +211,11 @@ impl<T: DdsType + 'static> ContentFilteredTopic<T> {
     }
 
     /// Remove the filter, allowing all samples through.
-    pub fn clear_filter(&mut self) -> DdsResult<()> {
+    ///
+    /// # Safety
+    ///
+    /// No reader or writer may use this topic while the filter is cleared.
+    pub unsafe fn clear_filter(&mut self) -> DdsResult<()> {
         unsafe {
             let mut dds_filter: dds_topic_filter = std::mem::zeroed();
             dds_filter.mode = dds_topic_filter_mode_DDS_TOPIC_FILTER_NONE;
@@ -361,37 +369,45 @@ pub trait TopicFilterExt<T: DdsType + 'static> {
     ///
     /// Only one filter can be active at a time; calling this replaces any
     /// previously set filter.
-    fn set_filter<F: Fn(&T) -> bool + Send + Sync + 'static>(&self, filter: F) -> DdsResult<()>;
+    ///
+    /// ```compile_fail
+    /// use cyclonedds::{DdsTypeDerive, DomainParticipant, Topic, TopicFilterExt};
+    ///
+    /// #[derive(DdsTypeDerive)]
+    /// struct Message { value: i32 }
+    ///
+    /// let participant = DomainParticipant::new(0).unwrap();
+    /// let topic = Topic::<Message>::new(&participant, "filtered").unwrap();
+    /// topic.set_filter(|sample| sample.value > 0).unwrap();
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// CycloneDDS requires external exclusion: no reader or writer may use
+    /// this topic while its filter is replaced.
+    unsafe fn set_filter<F: Fn(&T) -> bool + Send + Sync + 'static>(
+        &self,
+        filter: F,
+    ) -> DdsResult<()>;
 
     /// Remove any previously set writer-side filter.
-    fn clear_filter(&self) -> DdsResult<()>;
+    ///
+    /// # Safety
+    ///
+    /// No reader or writer may use this topic while the filter is cleared.
+    unsafe fn clear_filter(&self) -> DdsResult<()>;
 }
 
-// We store the filter arg in a thread-safe box that outlives the C callback.
-// Since Topic<T> doesn't have a field for this, we use a leaked Box and
-// track it.  This is acceptable because Topic is typically long-lived and
-// there's usually only one filter per topic.
-//
-// A more elaborate design could use a HashMap<entity, Box> but for the
-// common case this is overkill.  Instead, we use the "set and forget"
-// pattern: the arg is leaked on set, and re-leaked on clear.
-
 impl<T: DdsType + 'static> TopicFilterExt<T> for Topic<T> {
-    fn set_filter<F: Fn(&T) -> bool + Send + Sync + 'static>(&self, filter: F) -> DdsResult<()> {
-        // Step 1: Capture the old arg pointer so we can free it later.
-        let old_arg = unsafe {
-            let mut old_fn: dds_topic_filter_arg_fn = None;
-            let mut old_arg: *mut c_void = std::ptr::null_mut();
-            let _ = dds_get_topic_filter_and_arg(self.entity(), &mut old_fn, &mut old_arg);
-            old_arg
-        };
-
-        // Step 2: Build new filter arg and set it.
+    unsafe fn set_filter<F: Fn(&T) -> bool + Send + Sync + 'static>(
+        &self,
+        filter: F,
+    ) -> DdsResult<()> {
         let filter_arg: Box<FilterArg<T>> = Box::new(FilterArg {
             type_id: std::any::TypeId::of::<T>(),
             filter: Box::new(filter),
         });
-        let arg_ptr = Box::into_raw(filter_arg) as *mut c_void;
+        let arg_ptr = &*filter_arg as *const FilterArg<T> as *mut c_void;
 
         unsafe {
             let mut dds_filter: dds_topic_filter = std::mem::zeroed();
@@ -404,29 +420,15 @@ impl<T: DdsType + 'static> TopicFilterExt<T> for Topic<T> {
                 &dds_filter as *const dds_topic_filter,
             );
             if ret < 0 {
-                // Reconstruct the Box and drop it to free memory.
-                let _ = Box::from_raw(arg_ptr as *mut FilterArg<T>);
                 return Err(DdsError::from(ret));
             }
         }
-
-        // Step 3: Free the old arg now that the new filter is active.
-        if !old_arg.is_null() {
-            unsafe {
-                let _ = Box::from_raw(old_arg as *mut FilterArg<T>);
-            }
-        }
-
+        self.owned().replace_callback_state(Some(filter_arg));
         Ok(())
     }
 
-    fn clear_filter(&self) -> DdsResult<()> {
-        // Retrieve the old arg so we can free it.
+    unsafe fn clear_filter(&self) -> DdsResult<()> {
         unsafe {
-            let mut old_fn: dds_topic_filter_arg_fn = None;
-            let mut old_arg: *mut c_void = std::ptr::null_mut();
-            let _ = dds_get_topic_filter_and_arg(self.entity(), &mut old_fn, &mut old_arg);
-
             let mut dds_filter: dds_topic_filter = std::mem::zeroed();
             dds_filter.mode = dds_topic_filter_mode_DDS_TOPIC_FILTER_NONE;
             let ret = dds_set_topic_filter_extended(
@@ -434,12 +436,8 @@ impl<T: DdsType + 'static> TopicFilterExt<T> for Topic<T> {
                 &dds_filter as *const dds_topic_filter,
             );
             check(ret)?;
-
-            // Free the old arg if we got one.
-            if !old_arg.is_null() {
-                let _ = Box::from_raw(old_arg as *mut FilterArg<T>);
-            }
         }
+        self.owned().replace_callback_state(None);
         Ok(())
     }
 }

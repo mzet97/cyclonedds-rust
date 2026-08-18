@@ -105,19 +105,23 @@ const _: () = {
         "ABI mismatch: size_of dds_liveliness_changed_status_t"
     );
     assert!(
-        core::mem::size_of::<dds_offered_deadline_missed_status_t>() == PROBE_OFFERED_DEADLINE_MISSED_SIZE,
+        core::mem::size_of::<dds_offered_deadline_missed_status_t>()
+            == PROBE_OFFERED_DEADLINE_MISSED_SIZE,
         "ABI mismatch: size_of dds_offered_deadline_missed_status_t"
     );
     assert!(
-        core::mem::size_of::<dds_offered_incompatible_qos_status_t>() == PROBE_OFFERED_INCOMPATIBLE_QOS_SIZE,
+        core::mem::size_of::<dds_offered_incompatible_qos_status_t>()
+            == PROBE_OFFERED_INCOMPATIBLE_QOS_SIZE,
         "ABI mismatch: size_of dds_offered_incompatible_qos_status_t"
     );
     assert!(
-        core::mem::size_of::<dds_requested_deadline_missed_status_t>() == PROBE_REQUESTED_DEADLINE_MISSED_SIZE,
+        core::mem::size_of::<dds_requested_deadline_missed_status_t>()
+            == PROBE_REQUESTED_DEADLINE_MISSED_SIZE,
         "ABI mismatch: size_of dds_requested_deadline_missed_status_t"
     );
     assert!(
-        core::mem::size_of::<dds_requested_incompatible_qos_status_t>() == PROBE_REQUESTED_INCOMPATIBLE_QOS_SIZE,
+        core::mem::size_of::<dds_requested_incompatible_qos_status_t>()
+            == PROBE_REQUESTED_INCOMPATIBLE_QOS_SIZE,
         "ABI mismatch: size_of dds_requested_incompatible_qos_status_t"
     );
     assert!(
@@ -133,7 +137,8 @@ const _: () = {
         "ABI mismatch: size_of dds_publication_matched_status_t"
     );
     assert!(
-        core::mem::size_of::<dds_subscription_matched_status_t>() == PROBE_SUBSCRIPTION_MATCHED_SIZE,
+        core::mem::size_of::<dds_subscription_matched_status_t>()
+            == PROBE_SUBSCRIPTION_MATCHED_SIZE,
         "ABI mismatch: size_of dds_subscription_matched_status_t"
     );
 
@@ -469,9 +474,8 @@ struct SerdataOps {
     from_ser_iov: *const ::std::ffi::c_void,
     from_keyhash: *const ::std::ffi::c_void,
     from_sample: *const ::std::ffi::c_void,
-    to_ser: Option<
-        unsafe extern "C" fn(*const ddsi_serdata, usize, usize, *mut ::std::ffi::c_void),
-    >,
+    to_ser:
+        Option<unsafe extern "C" fn(*const ddsi_serdata, usize, usize, *mut ::std::ffi::c_void)>,
     to_ser_ref: *const ::std::ffi::c_void,
     to_ser_unref: *const ::std::ffi::c_void,
     to_sample: *const ::std::ffi::c_void,
