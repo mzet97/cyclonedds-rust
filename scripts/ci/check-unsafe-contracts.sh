@@ -7,10 +7,13 @@ actual="$(mktemp)"
 trap 'rm -f "$actual"' EXIT
 
 cd "$root"
-rg -l '\bunsafe\b' --glob '*.rs' \
-  | while IFS= read -r file; do
-      count="$(rg -n '\bunsafe\b' "$file" | wc -l)"
-      printf '%s %s\n' "$count" "$file"
+git ls-files -z -- '*.rs' \
+  | while IFS= read -r -d '' file; do
+      file="${file#./}"
+      if grep -qE '\bunsafe\b' "$file"; then
+        count="$(grep -nE '\bunsafe\b' "$file" | wc -l)"
+        printf '%s %s\n' "$count" "$file"
+      fi
     done \
   | sort -k2 > "$actual"
 
