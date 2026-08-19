@@ -17,7 +17,10 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # T-810: cold runners need >30 min for recursive submodule checkout + build +
+    # CodeQL extraction on this workspace. Previous successful runs were ~5 min with
+    # warm cache; observed cold run hit the 30 min wall.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
