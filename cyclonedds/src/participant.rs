@@ -249,7 +249,13 @@ impl DomainParticipant {
         dynamic_type: &mut DynamicType,
         data: &crate::DynamicData,
     ) -> DdsResult<()> {
+        if data.schema() != dynamic_type.schema() {
+            return Err(DdsError::BadParameter(
+                "dynamic data schema does not match the dynamic type".into(),
+            ));
+        }
         let descriptor = dynamic_type.register_topic_descriptor(self, FindScope::Global, 0)?;
+        crate::type_discovery::validate_data_for_native(data, descriptor.ops())?;
 
         let topic = descriptor.create_topic(self, topic_name)?;
 
@@ -281,7 +287,12 @@ impl DomainParticipant {
             }
 
             // Write the DynamicValue into the native buffer
-            crate::type_discovery::write_value_to_native(data.value(), buf, descriptor.ops(), 0);
+            let native_write =
+                crate::type_discovery::write_data_to_native(data, buf, descriptor.ops());
+            if let Err(error) = native_write {
+                std::alloc::dealloc(buf, layout);
+                return Err(error);
+            }
 
             // Write via native pointer
             let ret = dds_write(writer.entity, buf as *const std::ffi::c_void);

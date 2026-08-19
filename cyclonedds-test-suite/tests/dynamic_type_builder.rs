@@ -1,7 +1,34 @@
 use cyclonedds::{
-    DomainParticipant, DynamicEnumLiteralValue, DynamicPrimitiveKind, DynamicTypeBuilder,
-    DynamicTypeExtensibility, DynamicTypeSpec,
+    DdsError, DomainParticipant, DynamicData, DynamicEnumLiteralValue, DynamicPrimitiveKind,
+    DynamicTypeBuilder, DynamicTypeExtensibility, DynamicTypeSpec, DynamicValue,
 };
+
+#[test]
+fn bounded_string_public_api_enforces_bound_after_safe_mutation() {
+    // Given: a public dynamic struct containing IDL string<4>.
+    let participant = DomainParticipant::new(0).unwrap();
+    let bounded = DynamicTypeBuilder::bounded_string8(4)
+        .build(&participant)
+        .unwrap();
+    let mut dynamic_type = DynamicTypeBuilder::structure("BoundedMessage")
+        .add_field("field_0", bounded.as_spec())
+        .build(&participant)
+        .unwrap();
+    let mut data = DynamicData::new(dynamic_type.schema());
+
+    // When: exact and overlength values cross public mutation boundaries.
+    let exact = data.set_string("field_0", "four");
+    let overlength = data.set_string("field_0", "12345");
+    if let DynamicValue::Struct(fields) = data.value_mut() {
+        fields.insert("field_0".into(), DynamicValue::String("12345".into()));
+    }
+    let publish = participant.dynamic_publish("t802_bound_guard", &mut dynamic_type, &data);
+
+    // Then: four bytes succeed and both checked and raw-safe overlength paths reject.
+    assert!(exact.is_ok());
+    assert!(matches!(overlength, Err(DdsError::BadParameter(_))));
+    assert!(matches!(publish, Err(DdsError::BadParameter(_))));
+}
 
 #[test]
 fn builder_add_field_creates_struct() {
