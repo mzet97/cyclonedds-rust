@@ -54,7 +54,10 @@ done
 
 grep -Eq 'tool:[[:space:]]+cargo-llvm-cov' "$workflows/coverage.yml" \
   || fail "coverage installer does not name cargo-llvm-cov"
-grep -Rqs 'fail_ci_if_error:[[:space:]]*true' "$workflows" || fail "Codecov is not blocking"
+grep -Eq 'actions/upload-artifact@[0-9a-f]{40}' "$workflows/coverage.yml" \
+  || fail "coverage report is not uploaded by immutable action"
+grep -Eq 'if-no-files-found:[[:space:]]+error' "$workflows/coverage.yml" \
+  || fail "missing coverage report does not fail the job"
 ! grep -Rqs 'continue-on-error:[[:space:]]*true' "$workflows" || fail "security checks may not continue on error"
 
 printf 'security workflow check: PASS\n'

@@ -25,8 +25,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake clang libssl-dev
       - name: Generate coverage
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info -- --test-threads=1
-      - name: Upload to Codecov
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          files: lcov.info
-          fail_ci_if_error: true
+          name: lcov-report
+          path: lcov.info
+          if-no-files-found: error
