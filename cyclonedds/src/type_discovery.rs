@@ -1258,7 +1258,7 @@ mod tests {
     #[test]
     fn bounded_native_read_rejects_missing_terminator() {
         // Given: all four bytes in a TYPE_BST native capacity are non-NUL.
-        let native = [b'a', b'b', b'c', b'd'];
+        let native = *b"abcd";
 
         // When: the bounded native reader scans only that capacity.
         let result = decode_bounded_string(&native);
@@ -1270,7 +1270,7 @@ mod tests {
     #[test]
     fn malformed_bounded_native_value_is_not_replaced_with_valid_default() {
         // Given: a non-terminated native string and its string<3> public schema.
-        let mut native = [b'a', b'b', b'c', b'd'];
+        let mut native = *b"abcd";
         let ops = [crate::topic::OP_ADR | crate::topic::TYPE_BST, 0, 4];
         let schema = bounded_string_schema(3);
 
