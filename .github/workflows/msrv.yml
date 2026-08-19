@@ -9,17 +9,23 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
   msrv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake build-essential
       - name: Install MSRV Rust
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          key: msrv-1.85-${{ hashFiles('Cargo.lock') }}
+          cache-targets: false
       - name: Build with MSRV
         run: cargo build --workspace --features async --locked
       - name: Test with MSRV
