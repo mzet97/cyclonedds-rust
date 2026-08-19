@@ -52,6 +52,8 @@ for pattern in "${required[@]}"; do
   grep -Eq -- "$pattern" "$security" || fail "missing required gate: $pattern"
 done
 
+grep -Eq 'tool:[[:space:]]+cargo-llvm-cov' "$workflows/coverage.yml" \
+  || fail "coverage installer does not name cargo-llvm-cov"
 grep -Rqs 'fail_ci_if_error:[[:space:]]*true' "$workflows" || fail "Codecov is not blocking"
 ! grep -Rqs 'continue-on-error:[[:space:]]*true' "$workflows" || fail "security checks may not continue on error"
 

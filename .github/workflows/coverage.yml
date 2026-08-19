@@ -19,6 +19,8 @@ jobs:
           components: llvm-tools-preview
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532
+        with:
+          tool: cargo-llvm-cov
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake clang libssl-dev
       - name: Generate coverage
