@@ -4,10 +4,10 @@
 
 Only the latest release is supported with security fixes.
 
-| Version | Supported |
-|---------|-----------|
-| 1.8.x   | Yes       |
-| < 1.8.0 | No        |
+| Version         | Supported |
+|-----------------|-----------|
+| 3.0.0-alpha.3   | Yes       |
+| < 3.0.0-alpha.3 | No        |
 
 ## Reporting a vulnerability
 
@@ -61,7 +61,7 @@ This project supports DDS Security via the `security` feature flag:
 
 ```toml
 [dependencies]
-cyclonedds = { version = "1.8", features = ["security"] }
+cyclonedds = { version = "3.0.0-alpha.3", features = ["security"] }
 ```
 
 See [docs/security-guide.md](docs/security-guide.md) and [docs/security-production.md](docs/security-production.md) for configuration details.

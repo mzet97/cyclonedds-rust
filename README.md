@@ -31,7 +31,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cyclonedds = "2.0"
+cyclonedds = "3.0.0-alpha.3"
 ```
 
 ### Define a Topic Type
@@ -54,7 +54,7 @@ struct HelloWorld {
 <details>
 <summary>Advanced: manual <code>DdsType</code> implementation</summary>
 
-For fixed-size, `#[repr(C)]` types you can implement `DdsType` by hand. Note the mandatory `type Native` associated type (added in 2.0.0) — for types with no heap-allocated fields it is simply `Self`:
+For fixed-size, `#[repr(C)]` types you can implement `DdsType` by hand. Note the mandatory `type Native` associated type (added in 3.0.0-alpha.3) — for types with no heap-allocated fields it is simply `Self`:
 
 ```rust
 use cyclonedds::{adr, adr_bst, DdsType, OP_FLAG_SGN, TYPE_4BY};
@@ -365,7 +365,7 @@ When the `no_std` feature is enabled, `cyclonedds` exports only pure-Rust DDS ty
 
 ```toml
 [dependencies]
-cyclonedds = { version = "2.0", default-features = false, features = ["no_std"] }
+cyclonedds = { version = "3.0.0-alpha.3", default-features = false, features = ["no_std"] }
 ```
 
 ```rust
