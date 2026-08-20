@@ -17,10 +17,13 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # T-810: cold runners need >30 min for recursive submodule checkout + build +
+    # CodeQL extraction on this workspace. Previous successful runs were ~5 min with
+    # warm cache; observed cold run hit the 30 min wall.
+    timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           submodules: recursive
 
@@ -28,7 +31,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake build-essential
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@f3712979fa5f215279b101dd0a2e3bdfb4353324
         with:
           languages: rust
           queries: security-extended,security-and-quality
@@ -37,6 +40,6 @@ jobs:
         run: cargo build --workspace --features async --locked
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@f3712979fa5f215279b101dd0a2e3bdfb4353324
         with:
           category: "/language:rust"

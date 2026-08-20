@@ -3,11 +3,12 @@ name = "cyclonedds-bench"
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
+license.workspace = true
 publish = false
 
 [dependencies]
-cyclonedds = { path = "../cyclonedds" }
-cyclonedds-derive = { path = "../cyclonedds-derive" }
+cyclonedds.workspace = true
+cyclonedds-derive.workspace = true
 
 [features]
 # Enables the take/async arm of the async_read bench.

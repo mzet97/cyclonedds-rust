@@ -124,6 +124,150 @@ fn plain_struct_round_trips() {
     assert_eq!(back.get_i32("field_1").unwrap(), 8);
 }
 
+#[test]
+fn public_string_cdr_round_trip_preserves_value() {
+    // Given: a discovered public type containing one unbounded string.
+    let participant = DomainParticipant::new(0).unwrap();
+    let discovered = discovered(&participant, |participant, ty| {
+        let string_type = DynamicTypeBuilder::unbounded_string8()
+            .build(participant)
+            .unwrap();
+        ty.add_member(DynamicMemberBuilder::new("text", string_type.as_spec()).id(1))
+            .unwrap();
+    });
+    let mut data = DynamicData::new(&discovered.type_schema);
+    data.set_string("field_0", "valid").unwrap();
+
+    // When: the public serializer and deserializer perform a complete round-trip.
+    let bytes = dynamic_data_to_cdr(&data, &discovered.topic_descriptor).unwrap();
+    let decoded = cdr_to_dynamic_data(
+        &bytes,
+        &discovered.type_schema,
+        &discovered.topic_descriptor,
+    )
+    .unwrap();
+
+    // Then: the exact value survives and the fixture has a length header plus NUL.
+    assert_eq!(decoded.get_string("field_0").unwrap(), "valid");
+    assert_eq!(u32::from_ne_bytes(bytes[..4].try_into().unwrap()), 6);
+    assert_eq!(bytes.last(), Some(&0));
+}
+
+fn public_string_cdr_fixture(participant: &DomainParticipant) -> (DiscoveredType, Vec<u8>) {
+    let discovered = discovered(participant, |participant, ty| {
+        let string_type = DynamicTypeBuilder::unbounded_string8()
+            .build(participant)
+            .unwrap();
+        ty.add_member(DynamicMemberBuilder::new("text", string_type.as_spec()).id(1))
+            .unwrap();
+    });
+    let mut data = DynamicData::new(&discovered.type_schema);
+    data.set_string("field_0", "valid").unwrap();
+    let bytes = dynamic_data_to_cdr(&data, &discovered.topic_descriptor).unwrap();
+    (discovered, bytes)
+}
+
+#[test]
+fn public_dynamic_cdr_rejects_every_truncation_before_native_decode() {
+    // Given: every strict prefix of a valid string sample, including 0..4-byte headers.
+    let participant = DomainParticipant::new(0).unwrap();
+    let (discovered, bytes) = public_string_cdr_fixture(&participant);
+
+    // When: each truncated sample crosses the public decode boundary.
+    let results: Vec<_> = (0..bytes.len())
+        .map(|len| {
+            cdr_to_dynamic_data(
+                &bytes[..len],
+                &discovered.type_schema,
+                &discovered.topic_descriptor,
+            )
+        })
+        .collect();
+
+    // Then: every boundary returns a typed error instead of reaching unsafe C reads.
+    for (len, result) in results.iter().enumerate() {
+        assert!(
+            matches!(result, Err(DdsError::BadParameter(_))),
+            "truncation at byte {len} was accepted as {result:?}"
+        );
+    }
+}
+
+#[test]
+fn public_dynamic_cdr_rejects_hostile_string_lengths_and_terminator() {
+    // Given: valid storage carrying overflow-sized lengths or no string terminator.
+    let participant = DomainParticipant::new(0).unwrap();
+    let (discovered, bytes) = public_string_cdr_fixture(&participant);
+    let mut oversized = bytes.clone();
+    oversized[..4].copy_from_slice(&u32::MAX.to_ne_bytes());
+    let mut wrapping = bytes.clone();
+    wrapping[..4].copy_from_slice(&(u32::MAX - 3).to_ne_bytes());
+    let mut unterminated = bytes;
+    *unterminated.last_mut().unwrap() = b'!';
+
+    // When: the malformed corpus crosses the public decode boundary.
+    let results: Vec<_> = [oversized, wrapping, unterminated]
+        .iter()
+        .map(|input| {
+            cdr_to_dynamic_data(input, &discovered.type_schema, &discovered.topic_descriptor)
+        })
+        .collect();
+
+    // Then: all variants fail with the public malformed-input error.
+    assert!(results
+        .iter()
+        .all(|result| matches!(result, Err(DdsError::BadParameter(_)))));
+}
+
+#[test]
+fn public_dynamic_cdr_rejects_bytes_for_the_wrong_descriptor() {
+    // Given: four valid Int32 CDR bytes submitted against a string descriptor.
+    let participant = DomainParticipant::new(0).unwrap();
+    let (string_discovered, _) = public_string_cdr_fixture(&participant);
+    let integer_discovered = discovered(&participant, |_, ty| {
+        ty.add_member(DynamicMemberBuilder::primitive("value", DynamicPrimitiveKind::Int32).id(1))
+            .unwrap();
+    });
+    let mut integer = DynamicData::new(&integer_discovered.type_schema);
+    integer.set_i32("field_0", 7).unwrap();
+    let bytes = dynamic_data_to_cdr(&integer, &integer_discovered.topic_descriptor).unwrap();
+
+    // When: the public decoder validates the bytes with the string descriptor.
+    let result = cdr_to_dynamic_data(
+        &bytes,
+        &string_discovered.type_schema,
+        &string_discovered.topic_descriptor,
+    );
+
+    // Then: the descriptor mismatch is rejected as malformed CDR.
+    assert!(matches!(result, Err(DdsError::BadParameter(_))));
+}
+
+#[test]
+fn public_dynamic_cdr_cleans_native_members_when_schema_validation_fails() {
+    // Given: valid string CDR and a deliberately incompatible Int32 schema.
+    let participant = DomainParticipant::new(0).unwrap();
+    let (string_discovered, bytes) = public_string_cdr_fixture(&participant);
+    let integer_discovered = discovered(&participant, |_, ty| {
+        ty.add_member(DynamicMemberBuilder::primitive("value", DynamicPrimitiveKind::Int32).id(1))
+            .unwrap();
+    });
+
+    // When: post-read DynamicData validation fails repeatedly after C allocated strings.
+    let results: Vec<_> = (0..64)
+        .map(|_| {
+            cdr_to_dynamic_data(
+                &bytes,
+                &integer_discovered.type_schema,
+                &string_discovered.topic_descriptor,
+            )
+        })
+        .collect();
+
+    // Then: every attempt returns an error; ASan verifies each native member is freed once.
+    assert!(results.iter().all(Result::is_err));
+}
+
 /// A key name with an interior NUL must be reported, not leak the native buffer
 /// it was allocated alongside. (The allocation now happens after this fallible
 /// step; there is no `Drop` on a raw pointer to clean it up otherwise.)

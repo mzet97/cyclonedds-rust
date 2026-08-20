@@ -201,7 +201,7 @@ fn type_schema_from_descriptor(
     };
 
     // Parse the ops array to extract field information
-    let fields = parse_ops_to_fields(ops, descriptor.size());
+    let fields = parse_ops_to_fields(ops, descriptor.size())?;
 
     Ok(DynamicTypeSchema::Struct {
         name: type_name.to_string(),
@@ -218,7 +218,7 @@ fn type_schema_from_descriptor(
 /// The ops array is a sequence of opcodes that describe how to serialize
 /// a type. We extract field names from the key descriptors and types from
 /// the opcodes.
-fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> Vec<DynamicFieldSchema> {
+fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> DdsResult<Vec<DynamicFieldSchema>> {
     use crate::dynamic_type::DynamicPrimitiveKind;
     use crate::dynamic_value::DynamicTypeSchema as Sch;
     use crate::topic::*;
@@ -277,7 +277,17 @@ fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> Vec<DynamicFieldSchema
                     }
                     TYPE_STR => Sch::String { bound: None },
                     TYPE_BST => {
-                        let bound = if i + 2 < ops.len() { ops[i + 2] } else { 0 };
+                        let capacity = *ops.get(i + 2).ok_or_else(|| {
+                            DdsError::BadParameter(
+                                "bounded string descriptor is missing its capacity".into(),
+                            )
+                        })?;
+                        let bound = capacity.checked_sub(1).ok_or_else(|| {
+                            DdsError::BadParameter(
+                                "bounded string descriptor capacity must include a terminator"
+                                    .into(),
+                            )
+                        })?;
                         Sch::String { bound: Some(bound) }
                     }
                     TYPE_SEQ => Sch::Sequence {
@@ -329,12 +339,254 @@ fn parse_ops_to_fields(ops: &[u32], _struct_size: u32) -> Vec<DynamicFieldSchema
         }
     }
 
-    fields
+    Ok(fields)
 }
 
 // ---------------------------------------------------------------------------
 // DynamicData CDR I/O helpers
 // ---------------------------------------------------------------------------
+
+struct DynamicCdrDescriptor {
+    inner: dds_cdrstream_desc,
+    _key_names: Vec<std::ffi::CString>,
+    _keys: Vec<dds_key_descriptor>,
+}
+
+impl DynamicCdrDescriptor {
+    fn new(descriptor: &TopicDescriptor) -> DdsResult<Self> {
+        let key_defs = descriptor.key_descriptors();
+        let key_names: Vec<std::ffi::CString> = key_defs
+            .iter()
+            .map(|key| {
+                std::ffi::CString::new(key.name.as_str())
+                    .map_err(|_| DdsError::BadParameter("key name contains null".into()))
+            })
+            .collect::<DdsResult<_>>()?;
+        let keys: Vec<dds_key_descriptor> = key_defs
+            .iter()
+            .enumerate()
+            .map(|(index, key)| dds_key_descriptor {
+                m_name: key_names[index].as_ptr(),
+                m_offset: key.offset,
+                m_idx: key.index,
+            })
+            .collect();
+        let key_count = u32::try_from(keys.len())
+            .map_err(|_| DdsError::BadParameter("too many dynamic type keys".into()))?;
+
+        let mut inner = dds_cdrstream_desc::default();
+        // SAFETY: [Category 8 — FFI boundary] `inner` is writable initialized
+        // storage; the topic-owned ops and locally owned key pointers remain
+        // alive for the call, and CycloneDDS copies both into `inner`.
+        unsafe {
+            dds_cdrstream_desc_init(
+                &mut inner,
+                &dds_cdrstream_default_allocator,
+                descriptor.size(),
+                descriptor.align(),
+                descriptor.flagset(),
+                descriptor.ops().as_ptr(),
+                if keys.is_empty() {
+                    std::ptr::null()
+                } else {
+                    keys.as_ptr()
+                },
+                key_count,
+            );
+        }
+        Ok(Self {
+            inner,
+            _key_names: key_names,
+            _keys: keys,
+        })
+    }
+
+    fn as_ptr(&self) -> *const dds_cdrstream_desc {
+        &self.inner
+    }
+}
+
+impl Drop for DynamicCdrDescriptor {
+    fn drop(&mut self) {
+        // SAFETY: [Category 12 — Double Free] `inner` was initialized exactly
+        // once by `new` and is finalized only by this unique RAII owner.
+        unsafe {
+            dds_cdrstream_desc_fini(&mut self.inner, &dds_cdrstream_default_allocator);
+        }
+    }
+}
+
+struct DynamicNativeSample<'a> {
+    ptr: std::ptr::NonNull<u8>,
+    layout: std::alloc::Layout,
+    ops: &'a [u32],
+}
+
+impl<'a> DynamicNativeSample<'a> {
+    fn new(descriptor: &'a TopicDescriptor) -> DdsResult<Self> {
+        let size = usize::try_from(descriptor.size())
+            .map_err(|_| DdsError::BadParameter("dynamic type size is too large".into()))?;
+        if size == 0 {
+            return Err(DdsError::BadParameter(
+                "dynamic type size must be non-zero".into(),
+            ));
+        }
+        let align = usize::try_from(descriptor.align().max(1))
+            .map_err(|_| DdsError::BadParameter("dynamic type alignment is too large".into()))?;
+        let layout = std::alloc::Layout::from_size_align(size, align)
+            .map_err(|_| DdsError::BadParameter("invalid type layout for dynamic data".into()))?;
+        // SAFETY: [Category 4 — Uninitialized Memory] `layout` is non-zero and
+        // valid; zero-initialization makes all descriptor-owned pointer members
+        // null so `dds_stream_free_sample` is valid on every later error path.
+        let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
+        let ptr = std::ptr::NonNull::new(ptr).ok_or(DdsError::OutOfMemory)?;
+        Ok(Self {
+            ptr,
+            layout,
+            ops: descriptor.ops(),
+        })
+    }
+
+    fn as_ptr(&self) -> *const std::ffi::c_void {
+        self.ptr.as_ptr().cast()
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut std::ffi::c_void {
+        self.ptr.as_ptr().cast()
+    }
+
+    fn as_mut_bytes(&mut self) -> *mut u8 {
+        self.ptr.as_ptr()
+    }
+}
+
+impl Drop for DynamicNativeSample<'_> {
+    fn drop(&mut self) {
+        // SAFETY: [Categories 3 and 12 — Use After Free / Double Free] this
+        // unique owner keeps the zeroed or fully initialized sample alive,
+        // releases descriptor-owned members first, then deallocates its storage
+        // exactly once with the original layout.
+        unsafe {
+            dds_stream_free_sample(
+                self.ptr.as_ptr().cast(),
+                &dds_cdrstream_default_allocator,
+                self.ops.as_ptr(),
+            );
+            std::alloc::dealloc(self.ptr.as_ptr(), self.layout);
+        }
+    }
+}
+
+struct DynamicInputStream<'a> {
+    inner: dds_istream_t,
+    _data: std::marker::PhantomData<&'a [u8]>,
+}
+
+impl<'a> DynamicInputStream<'a> {
+    fn new(data: &'a [u8]) -> DdsResult<Self> {
+        let size = u32::try_from(data.len())
+            .map_err(|_| DdsError::BadParameter("CDR input is too large".into()))?;
+        let mut inner = dds_istream_t::default();
+        // SAFETY: [Category 8 — FFI boundary] `data` remains borrowed by this
+        // guard for the stream lifetime, and `size` exactly describes it.
+        unsafe {
+            dds_istream_init(&mut inner, size, data.as_ptr().cast(), 1);
+        }
+        Ok(Self {
+            inner,
+            _data: std::marker::PhantomData,
+        })
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut dds_istream_t {
+        &mut self.inner
+    }
+}
+
+impl Drop for DynamicInputStream<'_> {
+    fn drop(&mut self) {
+        // SAFETY: [Category 12 — Double Free] this guard exclusively owns one
+        // initialized input stream and finalizes it exactly once.
+        unsafe { dds_istream_fini(&mut self.inner) };
+    }
+}
+
+struct DynamicOutputStream {
+    inner: dds_ostream_t,
+}
+
+impl DynamicOutputStream {
+    fn new() -> Self {
+        let mut inner = dds_ostream_t::default();
+        // SAFETY: [Category 8 — FFI boundary] `inner` is writable initialized
+        // storage and this guard retains exclusive ownership until finalization.
+        unsafe { dds_ostream_init(&mut inner, &dds_cdrstream_default_allocator, 0, 1) };
+        Self { inner }
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut dds_ostream_t {
+        &mut self.inner
+    }
+
+    fn to_vec(&self) -> DdsResult<Vec<u8>> {
+        let len = usize::try_from(self.inner.m_index)
+            .map_err(|_| DdsError::BadParameter("serialized CDR size is too large".into()))?;
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        let buffer = std::ptr::NonNull::new(self.inner.m_buffer)
+            .ok_or_else(|| DdsError::Other("CDR writer returned a null buffer".into()))?;
+        let mut bytes = vec![0u8; len];
+        // SAFETY: [Category 10 — Out of Bounds] CycloneDDS sets `m_index` to
+        // the initialized byte count within its non-null output allocation;
+        // `bytes` was allocated to that exact checked length.
+        unsafe { std::ptr::copy_nonoverlapping(buffer.as_ptr(), bytes.as_mut_ptr(), len) };
+        Ok(bytes)
+    }
+}
+
+impl Drop for DynamicOutputStream {
+    fn drop(&mut self) {
+        // SAFETY: [Category 12 — Double Free] this guard exclusively owns one
+        // initialized output stream and finalizes it exactly once.
+        unsafe { dds_ostream_fini(&mut self.inner, &dds_cdrstream_default_allocator) };
+    }
+}
+
+fn normalize_dynamic_cdr(cdr_data: &[u8], descriptor: &DynamicCdrDescriptor) -> DdsResult<Vec<u8>> {
+    let size = u32::try_from(cdr_data.len())
+        .map_err(|_| DdsError::BadParameter("CDR input is too large".into()))?;
+    let mut normalized = cdr_data.to_vec();
+    let mut actual_size = 0u32;
+    // SAFETY: [Categories 8 and 10 — FFI Boundary / Out of Bounds]
+    // `normalized` owns exactly `size` writable bytes and `descriptor` is live;
+    // CycloneDDS's normalizer validates every descriptor-directed access.
+    let valid = unsafe {
+        dds_stream_normalize(
+            normalized.as_mut_ptr().cast(),
+            size,
+            false,
+            1,
+            descriptor.as_ptr(),
+            false,
+            &mut actual_size,
+        )
+    };
+    if !valid {
+        return Err(DdsError::BadParameter(
+            "malformed CDR data for this dynamic type".into(),
+        ));
+    }
+    let actual_size = usize::try_from(actual_size)
+        .map_err(|_| DdsError::BadParameter("normalized CDR size is too large".into()))?;
+    if actual_size > normalized.len() {
+        return Err(DdsError::BadParameter(
+            "normalizer returned an invalid CDR size".into(),
+        ));
+    }
+    normalized.truncate(actual_size);
+    Ok(normalized)
+}
 
 /// Serialize a `DynamicData` value to CDR bytes using the topic descriptor
 /// obtained from a dynamic type registration.
@@ -347,104 +599,27 @@ pub fn dynamic_data_to_cdr(
     data: &crate::DynamicData,
     descriptor: &TopicDescriptor,
 ) -> DdsResult<Vec<u8>> {
-    use cyclonedds_rust_sys::*;
-    use std::ffi::c_void;
-
-    let size = descriptor.size() as usize;
-    let align = std::cmp::max(descriptor.align() as usize, 1);
-
-    let layout = std::alloc::Layout::from_size_align(size, align)
-        .map_err(|_| DdsError::BadParameter("invalid type layout for dynamic data".into()))?;
-
-    // Build CDR stream descriptor from topic descriptor ops
-    let ops = descriptor.ops();
-    let keys = descriptor.key_descriptors();
-
-    // A key name carrying an interior NUL is bad input, not a bug — report it
-    // like every other name in this crate rather than panicking. Note this runs
-    // *before* the native buffer is allocated: an early return here must not
-    // leak it, and the raw pointer has no Drop to do that for us.
-    let key_names: Vec<std::ffi::CString> = keys
-        .iter()
-        .map(|k| {
-            std::ffi::CString::new(k.name.as_str())
-                .map_err(|_| DdsError::BadParameter("key name contains null".into()))
-        })
-        .collect::<DdsResult<_>>()?;
-
-    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
-    if buf.is_null() {
-        return Err(DdsError::OutOfMemory);
+    validate_data_for_native(data, descriptor.ops())?;
+    let stream_descriptor = DynamicCdrDescriptor::new(descriptor)?;
+    let mut native = DynamicNativeSample::new(descriptor)?;
+    write_data_to_native(data, native.as_mut_bytes(), descriptor.ops())?;
+    let mut output = DynamicOutputStream::new();
+    // SAFETY: [Category 8 — FFI boundary] the RAII guards keep the initialized
+    // descriptor, native sample, and output stream alive and uniquely owned.
+    let wrote = unsafe {
+        dds_stream_write_sample(
+            output.as_mut_ptr(),
+            &dds_cdrstream_default_allocator,
+            native.as_ptr(),
+            stream_descriptor.as_ptr(),
+        )
+    };
+    if !wrote {
+        return Err(DdsError::Unsupported(
+            "CDR serialization of dynamic data failed".into(),
+        ));
     }
-
-    // Write the DynamicValue into the native buffer
-    write_value_to_native(data.value(), buf, ops, 0);
-    let c_keys: Vec<dds_key_descriptor> = keys
-        .iter()
-        .enumerate()
-        .map(|(i, k)| dds_key_descriptor {
-            m_name: key_names[i].as_ptr(),
-            m_offset: k.offset,
-            m_idx: k.index,
-        })
-        .collect();
-
-    unsafe {
-        let mut cdr_desc: dds_cdrstream_desc = std::mem::zeroed();
-        dds_cdrstream_desc_init(
-            &mut cdr_desc,
-            &dds_cdrstream_default_allocator,
-            descriptor.size(),
-            descriptor.align(),
-            descriptor.flagset(),
-            ops.as_ptr(),
-            if c_keys.is_empty() {
-                std::ptr::null()
-            } else {
-                c_keys.as_ptr()
-            },
-            c_keys.len() as u32,
-        );
-
-        let mut os: dds_ostream_t = std::mem::zeroed();
-        dds_ostream_init(
-            &mut os,
-            &dds_cdrstream_default_allocator,
-            0,
-            1, // XCDR1
-        );
-
-        let ok = dds_stream_write_sample(
-            &mut os,
-            &dds_cdrstream_default_allocator,
-            buf as *const c_void,
-            &cdr_desc,
-        );
-
-        let result = if ok {
-            let len = os.m_index as usize;
-            let mut bytes = vec![0u8; len];
-            std::ptr::copy_nonoverlapping(os.m_buffer, bytes.as_mut_ptr(), len);
-            Ok(bytes)
-        } else {
-            Err(DdsError::Unsupported(
-                "CDR serialization of dynamic data failed".into(),
-            ))
-        };
-
-        dds_ostream_fini(&mut os, &dds_cdrstream_default_allocator);
-        dds_cdrstream_desc_fini(&mut cdr_desc, &dds_cdrstream_default_allocator);
-
-        // Free the native sample (dds_stream_free_sample handles any heap allocations)
-        dds_stream_free_sample(
-            buf as *mut c_void,
-            &dds_cdrstream_default_allocator,
-            ops.as_ptr(),
-        );
-        std::alloc::dealloc(buf, layout);
-
-        result
-    }
+    output.to_vec()
 }
 
 /// Deserialize CDR bytes into a `DynamicData` value using the given schema
@@ -457,90 +632,23 @@ pub fn cdr_to_dynamic_data(
     schema: &crate::DynamicTypeSchema,
     descriptor: &TopicDescriptor,
 ) -> DdsResult<crate::DynamicData> {
-    use cyclonedds_rust_sys::*;
-    use std::ffi::c_void;
-
-    let size = descriptor.size() as usize;
-    let align = std::cmp::max(descriptor.align() as usize, 1);
-
-    let layout = std::alloc::Layout::from_size_align(size, align)
-        .map_err(|_| DdsError::BadParameter("invalid type layout for dynamic data".into()))?;
-
-    let ops = descriptor.ops();
-    let keys = descriptor.key_descriptors();
-
-    // A key name carrying an interior NUL is bad input, not a bug — report it
-    // like every other name in this crate rather than panicking. Note this runs
-    // *before* the native buffer is allocated: an early return here must not
-    // leak it, and the raw pointer has no Drop to do that for us.
-    let key_names: Vec<std::ffi::CString> = keys
-        .iter()
-        .map(|k| {
-            std::ffi::CString::new(k.name.as_str())
-                .map_err(|_| DdsError::BadParameter("key name contains null".into()))
-        })
-        .collect::<DdsResult<_>>()?;
-
-    let buf = unsafe { std::alloc::alloc_zeroed(layout) };
-    if buf.is_null() {
-        return Err(DdsError::OutOfMemory);
-    }
-    let c_keys: Vec<dds_key_descriptor> = keys
-        .iter()
-        .enumerate()
-        .map(|(i, k)| dds_key_descriptor {
-            m_name: key_names[i].as_ptr(),
-            m_offset: k.offset,
-            m_idx: k.index,
-        })
-        .collect();
-
+    let stream_descriptor = DynamicCdrDescriptor::new(descriptor)?;
+    let normalized = normalize_dynamic_cdr(cdr_data, &stream_descriptor)?;
+    let mut input = DynamicInputStream::new(&normalized)?;
+    let mut native = DynamicNativeSample::new(descriptor)?;
+    // SAFETY: [Category 8 — FFI boundary] normalization proved the borrowed
+    // stream is well formed for this live descriptor; the unique zeroed native
+    // sample is large and aligned according to the same topic descriptor.
     unsafe {
-        let mut cdr_desc: dds_cdrstream_desc = std::mem::zeroed();
-        dds_cdrstream_desc_init(
-            &mut cdr_desc,
-            &dds_cdrstream_default_allocator,
-            descriptor.size(),
-            descriptor.align(),
-            descriptor.flagset(),
-            ops.as_ptr(),
-            if c_keys.is_empty() {
-                std::ptr::null()
-            } else {
-                c_keys.as_ptr()
-            },
-            c_keys.len() as u32,
-        );
-
-        let mut is: dds_istream_t = std::mem::zeroed();
-        dds_istream_init(
-            &mut is,
-            cdr_data.len() as u32,
-            cdr_data.as_ptr() as *const c_void,
-            1, // XCDR1
-        );
-
         dds_stream_read_sample(
-            &mut is,
-            buf as *mut c_void,
+            input.as_mut_ptr(),
+            native.as_mut_ptr(),
             &dds_cdrstream_default_allocator,
-            &cdr_desc,
+            stream_descriptor.as_ptr(),
         );
-
-        // Extract values from the native buffer into a DynamicValue
-        let value = read_value_from_native_public(buf, schema, ops, 0);
-
-        dds_stream_free_sample(
-            buf as *mut c_void,
-            &dds_cdrstream_default_allocator,
-            ops.as_ptr(),
-        );
-        std::alloc::dealloc(buf, layout);
-        dds_cdrstream_desc_fini(&mut cdr_desc, &dds_cdrstream_default_allocator);
-        dds_istream_fini(&mut is);
-
-        crate::DynamicData::from_value(schema, value)
     }
+    let value = read_value_from_native(native.as_mut_bytes(), schema, descriptor.ops(), 0)?;
+    crate::DynamicData::from_value(schema, value)
 }
 
 // ---------------------------------------------------------------------------
@@ -549,26 +657,34 @@ pub fn cdr_to_dynamic_data(
 
 /// Write a `DynamicValue` into a native sample buffer at the given base offset,
 /// following the ops array to determine field positions.
-pub(crate) fn write_value_to_native(
-    value: &crate::DynamicValue,
+pub(crate) fn write_data_to_native(
+    data: &crate::DynamicData,
     base: *mut u8,
     ops: &[u32],
-    ops_start: usize,
-) {
+) -> DdsResult<()> {
     use crate::dynamic_value::DynamicValue as DV;
     use crate::topic::*;
 
-    let struct_fields = match value {
+    validate_data_for_native(data, ops)?;
+
+    let struct_fields = match data.value() {
         DV::Struct(fields) => fields,
-        _ => return,
+        _ => {
+            return Err(DdsError::BadParameter(
+                "dynamic native value must be a struct".into(),
+            ))
+        }
+    };
+    let schema_fields = match data.schema() {
+        crate::DynamicTypeSchema::Struct { fields, .. } => fields,
+        _ => {
+            return Err(DdsError::BadParameter(
+                "dynamic native schema must be a struct".into(),
+            ))
+        }
     };
 
-    let mut i = ops_start;
-    // Field names must be assigned by ordinal, matching the schema builder and
-    // the reader. Deriving them from the word offset (`(i - ops_start) / 2`)
-    // assumed every instruction is 2 words wide, so a single 3-word field --
-    // a bounded string, say -- skewed every later name and the values silently
-    // failed to match the schema.
+    let mut i = 0usize;
     let mut field_index = 0usize;
     while i < ops.len() {
         let op = ops[i];
@@ -582,14 +698,27 @@ pub(crate) fn write_value_to_native(
                 } else {
                     0
                 };
+                // SAFETY: the CycloneDDS descriptor guarantees each field offset
+                // lies within the native sample allocation associated with `base`.
                 let dst = unsafe { base.add(offset) };
 
-                let field_name = format!("field_{field_index}");
-                let field_val = struct_fields.get(&field_name);
-
-                if let Some(val) = field_val {
-                    write_primitive_to_native(dst, val, primary, op);
-                }
+                let field_schema = schema_fields.get(field_index).ok_or_else(|| {
+                    DdsError::BadParameter(
+                        "native descriptor has more fields than the dynamic schema".into(),
+                    )
+                })?;
+                let field_val = struct_fields.get(&field_schema.name).ok_or_else(|| {
+                    DdsError::BadParameter(format!(
+                        "missing required dynamic field '{}'",
+                        field_schema.name
+                    ))
+                })?;
+                let capacity = if primary == TYPE_BST {
+                    Some(bounded_string_capacity(ops, i)?)
+                } else {
+                    None
+                };
+                write_primitive_to_native(dst, field_val, primary, capacity)?;
                 field_index += 1;
 
                 // Advance
@@ -603,6 +732,140 @@ pub(crate) fn write_value_to_native(
             }
         }
     }
+
+    if field_index != schema_fields.len() {
+        return Err(DdsError::BadParameter(
+            "dynamic schema has more fields than the native descriptor".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn validate_data_for_native(data: &crate::DynamicData, ops: &[u32]) -> DdsResult<()> {
+    use crate::dynamic_value::DynamicValue as DV;
+    use crate::topic::*;
+
+    data.validate()?;
+    let fields = match data.value() {
+        DV::Struct(fields) => fields,
+        _ => {
+            return Err(DdsError::BadParameter(
+                "dynamic native value must be a struct".into(),
+            ))
+        }
+    };
+    let schema_fields = match data.schema() {
+        crate::DynamicTypeSchema::Struct { fields, .. } => fields,
+        _ => {
+            return Err(DdsError::BadParameter(
+                "dynamic native schema must be a struct".into(),
+            ))
+        }
+    };
+    let mut names = std::collections::BTreeSet::new();
+    let mut member_ids = std::collections::BTreeSet::new();
+    for field in schema_fields {
+        if !names.insert(field.name.as_str()) {
+            return Err(DdsError::BadParameter(format!(
+                "duplicate dynamic field name '{}'",
+                field.name
+            )));
+        }
+        if !member_ids.insert(field.member_id) {
+            return Err(DdsError::BadParameter(format!(
+                "duplicate dynamic member id {}",
+                field.member_id
+            )));
+        }
+    }
+    if fields.len() != schema_fields.len() {
+        return Err(DdsError::BadParameter(format!(
+            "dynamic value has {} fields but schema requires {}",
+            fields.len(),
+            schema_fields.len()
+        )));
+    }
+
+    let mut i = 0usize;
+    let mut field_index = 0usize;
+    while i < ops.len() {
+        let op = ops[i];
+        match op & DDS_OP_MASK {
+            OP_ADR => {
+                let primary = op & DDS_OP_TYPE_MASK;
+                let field_schema = schema_fields.get(field_index).ok_or_else(|| {
+                    DdsError::BadParameter(
+                        "native descriptor has more fields than the dynamic schema".into(),
+                    )
+                })?;
+                let value = fields.get(&field_schema.name).ok_or_else(|| {
+                    DdsError::BadParameter(format!(
+                        "missing required dynamic field '{}'",
+                        field_schema.name
+                    ))
+                })?;
+                match (primary, value) {
+                    (TYPE_STR, DV::String(string)) => {
+                        std::ffi::CString::new(string.as_str()).map_err(|_| {
+                            DdsError::BadParameter("string contains an interior null".into())
+                        })?;
+                    }
+                    (TYPE_BST, DV::String(string)) => {
+                        let capacity = bounded_string_capacity(ops, i)?;
+                        let bound = capacity.checked_sub(1).ok_or_else(|| {
+                            DdsError::BadParameter(
+                                "bounded string capacity must include a terminator".into(),
+                            )
+                        })?;
+                        if string.len() > bound {
+                            return Err(DdsError::BadParameter(format!(
+                                "string length {} exceeds bound {}",
+                                string.len(),
+                                bound
+                            )));
+                        }
+                        if string.as_bytes().contains(&0) {
+                            return Err(DdsError::BadParameter(
+                                "string contains an interior null".into(),
+                            ));
+                        }
+                    }
+                    (TYPE_STR | TYPE_BST, _) => {
+                        return Err(DdsError::BadParameter(format!(
+                            "dynamic field '{}' is not a string",
+                            field_schema.name
+                        )))
+                    }
+                    _ => {}
+                }
+                field_index += 1;
+                i += crate::xtypes::adr_step(ops, i);
+            }
+            OP_RTS | OP_DLC => i += 1,
+            _ => i += 1,
+        }
+    }
+    if field_index != schema_fields.len() {
+        return Err(DdsError::BadParameter(
+            "dynamic schema has more fields than the native descriptor".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn bounded_string_capacity(ops: &[u32], op_index: usize) -> DdsResult<usize> {
+    let capacity = *ops.get(op_index + 2).ok_or_else(|| {
+        DdsError::BadParameter("bounded string descriptor is missing its capacity".into())
+    })?;
+    let capacity = usize::try_from(capacity)
+        .map_err(|_| DdsError::BadParameter("bounded string capacity is too large".into()))?;
+    if capacity == 0 {
+        return Err(DdsError::BadParameter(
+            "bounded string capacity must include a terminator".into(),
+        ));
+    }
+    Ok(capacity)
 }
 
 /// Write a single primitive value into the native buffer.
@@ -610,74 +873,99 @@ fn write_primitive_to_native(
     dst: *mut u8,
     val: &crate::dynamic_value::DynamicValue,
     primary_type: u32,
-    _op: u32,
-) {
+    bounded_capacity: Option<usize>,
+) -> DdsResult<()> {
     use crate::dynamic_value::DynamicValue as DV;
     use crate::topic::*;
 
-    unsafe {
-        match (primary_type, val) {
-            (TYPE_1BY, DV::Bool(b)) => {
-                let v: u8 = if *b { 1 } else { 0 };
-                std::ptr::write(dst, v);
+    match (primary_type, val) {
+        (TYPE_1BY, DV::Bool(b)) => {
+            let v: u8 = if *b { 1 } else { 0 };
+            // SAFETY: `dst` is the descriptor-provided address for a u8 field.
+            unsafe { std::ptr::write(dst, v) };
+        }
+        (TYPE_1BY, DV::Int8(v)) => {
+            // SAFETY: `dst` is the descriptor-provided address for an i8 field.
+            unsafe { std::ptr::write(dst.cast::<i8>(), *v) };
+        }
+        (TYPE_1BY, DV::UInt8(v)) => {
+            // SAFETY: `dst` is the descriptor-provided address for a u8 field.
+            unsafe { std::ptr::write(dst, *v) };
+        }
+        (TYPE_1BY, DV::Byte(v)) => {
+            // SAFETY: `dst` is the descriptor-provided address for a byte field.
+            unsafe { std::ptr::write(dst, *v) };
+        }
+        (TYPE_2BY, DV::Int16(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this i16 field.
+            unsafe { std::ptr::write(dst.cast::<i16>(), *v) };
+        }
+        (TYPE_2BY, DV::UInt16(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this u16 field.
+            unsafe { std::ptr::write(dst.cast::<u16>(), *v) };
+        }
+        (TYPE_4BY, DV::Int32(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this i32 field.
+            unsafe { std::ptr::write(dst.cast::<i32>(), *v) };
+        }
+        (TYPE_4BY, DV::UInt32(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this u32 field.
+            unsafe { std::ptr::write(dst.cast::<u32>(), *v) };
+        }
+        (TYPE_4BY, DV::Float32(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this f32 field.
+            unsafe { std::ptr::write(dst.cast::<f32>(), *v) };
+        }
+        (TYPE_4BY, DV::Enum { value }) => {
+            // SAFETY: the descriptor aligns `dst` for this enum's i32 storage.
+            unsafe { std::ptr::write(dst.cast::<i32>(), *value) };
+        }
+        (TYPE_8BY, DV::Int64(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this i64 field.
+            unsafe { std::ptr::write(dst.cast::<i64>(), *v) };
+        }
+        (TYPE_8BY, DV::UInt64(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this u64 field.
+            unsafe { std::ptr::write(dst.cast::<u64>(), *v) };
+        }
+        (TYPE_8BY, DV::Float64(v)) => {
+            // SAFETY: the descriptor aligns `dst` for this f64 field.
+            unsafe { std::ptr::write(dst.cast::<f64>(), *v) };
+        }
+        (TYPE_STR, DV::String(s)) => {
+            // DDS string fields store a char* in the native buffer.
+            // We need the pointer to outlive this function, so we leak it.
+            // This is acceptable because dds_stream_free_sample will clean up
+            // the native sample's heap allocations.
+            let leaked = std::ffi::CString::new(s.as_str())
+                .map_err(|_| DdsError::BadParameter("string contains an interior null".into()))?;
+            // SAFETY: `dst` is aligned pointer storage and CycloneDDS takes
+            // ownership of this CString through `dds_stream_free_sample`.
+            unsafe { std::ptr::write(dst.cast::<*const i8>(), leaked.into_raw()) };
+        }
+        (TYPE_BST, DV::String(s)) => {
+            let bytes = s.as_bytes();
+            let capacity = bounded_capacity.ok_or_else(|| {
+                DdsError::BadParameter("bounded string capacity is missing".into())
+            })?;
+            if bytes.len() >= capacity {
+                return Err(DdsError::BadParameter(format!(
+                    "string length {} exceeds bound {}",
+                    bytes.len(),
+                    capacity - 1
+                )));
             }
-            (TYPE_1BY, DV::Int8(v)) => {
-                std::ptr::write(dst as *mut i8, *v);
-            }
-            (TYPE_1BY, DV::UInt8(v)) => {
-                std::ptr::write(dst, *v);
-            }
-            (TYPE_1BY, DV::Byte(v)) => {
-                std::ptr::write(dst, *v);
-            }
-            (TYPE_2BY, DV::Int16(v)) => {
-                std::ptr::write(dst as *mut i16, *v);
-            }
-            (TYPE_2BY, DV::UInt16(v)) => {
-                std::ptr::write(dst as *mut u16, *v);
-            }
-            (TYPE_4BY, DV::Int32(v)) => {
-                std::ptr::write(dst as *mut i32, *v);
-            }
-            (TYPE_4BY, DV::UInt32(v)) => {
-                std::ptr::write(dst as *mut u32, *v);
-            }
-            (TYPE_4BY, DV::Float32(v)) => {
-                std::ptr::write(dst as *mut f32, *v);
-            }
-            (TYPE_4BY, DV::Enum { value }) => {
-                std::ptr::write(dst as *mut i32, *value);
-            }
-            (TYPE_8BY, DV::Int64(v)) => {
-                std::ptr::write(dst as *mut i64, *v);
-            }
-            (TYPE_8BY, DV::UInt64(v)) => {
-                std::ptr::write(dst as *mut u64, *v);
-            }
-            (TYPE_8BY, DV::Float64(v)) => {
-                std::ptr::write(dst as *mut f64, *v);
-            }
-            (TYPE_STR, DV::String(s)) => {
-                // DDS string fields store a char* in the native buffer.
-                // We need the pointer to outlive this function, so we leak it.
-                // This is acceptable because dds_stream_free_sample will clean up
-                // the native sample's heap allocations.
-                let leaked = std::ffi::CString::new(s.as_str()).unwrap_or_default();
-                std::ptr::write(dst as *mut *const i8, leaked.into_raw());
-            }
-            (TYPE_BST, DV::String(s)) => {
-                // Bounded string: stored inline as char array up to the bound.
-                // For simplicity, copy the bytes directly.
-                let bytes = s.as_bytes();
-                let len = bytes.len().min(255); // leave room for null terminator
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, len);
-                *dst.add(len) = 0; // null terminator
-            }
-            _ => {
-                // For types we don't handle, leave the zero-initialized buffer
-            }
+            // SAFETY: validation proved `bytes.len() < capacity`; the
+            // descriptor allocates exactly `capacity` bytes at `dst`.
+            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len()) };
+            // SAFETY: the same bound proof leaves `bytes.len()` in-capacity.
+            unsafe { std::ptr::write(dst.add(bytes.len()), 0) };
+        }
+        _ => {
+            // For types we don't handle, leave the zero-initialized buffer
         }
     }
+    Ok(())
 }
 
 /// Read a `DynamicValue` from a native sample buffer, using the schema
@@ -688,13 +976,22 @@ pub(crate) fn read_value_from_native_public(
     ops: &[u32],
     ops_start: usize,
 ) -> crate::DynamicValue {
+    read_value_from_native(base, schema, ops, ops_start).unwrap_or(crate::DynamicValue::Bool(false))
+}
+
+fn read_value_from_native(
+    base: *mut u8,
+    schema: &crate::DynamicTypeSchema,
+    ops: &[u32],
+    ops_start: usize,
+) -> DdsResult<crate::DynamicValue> {
     use crate::dynamic_value::DynamicValue as DV;
     use crate::topic::*;
     use std::collections::BTreeMap;
 
     let fields_schema = match schema {
         crate::DynamicTypeSchema::Struct { fields, .. } => fields,
-        _ => return schema.default_value(),
+        _ => return Ok(schema.default_value()),
     };
 
     let mut values = BTreeMap::new();
@@ -713,10 +1010,17 @@ pub(crate) fn read_value_from_native_public(
                 } else {
                     0
                 };
+                // SAFETY: the CycloneDDS descriptor guarantees each field offset
+                // lies within the native sample allocation associated with `base`.
                 let src = unsafe { base.add(offset) };
 
                 let field_schema = fields_schema.get(field_idx);
-                let val = read_primitive_from_native(src, primary, op, field_schema);
+                let capacity = if primary == TYPE_BST {
+                    Some(bounded_string_capacity(ops, i)?)
+                } else {
+                    None
+                };
+                let val = read_primitive_from_native(src, primary, op, field_schema, capacity)?;
 
                 let name = field_schema
                     .map(|f| f.name.clone())
@@ -736,7 +1040,14 @@ pub(crate) fn read_value_from_native_public(
         }
     }
 
-    DV::Struct(values)
+    Ok(DV::Struct(values))
+}
+
+fn decode_bounded_string(bytes: &[u8]) -> DdsResult<String> {
+    let terminator = bytes.iter().position(|byte| *byte == 0).ok_or_else(|| {
+        DdsError::BadParameter("bounded native string is not null-terminated".into())
+    })?;
+    Ok(String::from_utf8_lossy(&bytes[..terminator]).into_owned())
 }
 
 /// Read a single primitive value from the native buffer.
@@ -745,11 +1056,12 @@ fn read_primitive_from_native(
     primary_type: u32,
     op: u32,
     field_schema: Option<&crate::dynamic_value::DynamicFieldSchema>,
-) -> crate::dynamic_value::DynamicValue {
+    bounded_capacity: Option<usize>,
+) -> DdsResult<crate::dynamic_value::DynamicValue> {
     use crate::dynamic_value::DynamicValue as DV;
     use crate::topic::*;
 
-    unsafe {
+    let value = unsafe {
         match primary_type {
             TYPE_1BY => {
                 let v = std::ptr::read(src as *const u8);
@@ -828,16 +1140,18 @@ fn read_primitive_from_native(
                 }
             }
             TYPE_BST => {
-                // Bounded string stored inline
-                DV::String(
-                    CStr::from_ptr(src as *const i8)
-                        .to_string_lossy()
-                        .into_owned(),
-                )
+                let capacity = bounded_capacity.ok_or_else(|| {
+                    DdsError::BadParameter("bounded string capacity is missing".into())
+                })?;
+                // SAFETY: the descriptor allocates `capacity` bytes at `src`;
+                // the slice is scanned only within that allocation.
+                let bytes = std::slice::from_raw_parts(src.cast_const(), capacity);
+                DV::String(decode_bounded_string(bytes)?)
             }
             _ => DV::Null,
         }
-    }
+    };
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -845,6 +1159,269 @@ mod tests {
     use super::*;
     use crate::dynamic_type::DynamicPrimitiveKind;
     use crate::dynamic_value::{DynamicTypeSchema, DynamicValue};
+
+    fn dynamic_field(name: &str, member_id: u32, kind: DynamicPrimitiveKind) -> DynamicFieldSchema {
+        DynamicFieldSchema {
+            name: name.to_string(),
+            member_id,
+            value: DynamicTypeSchema::Primitive(kind),
+            optional: false,
+            key: false,
+            external: false,
+            must_understand: false,
+            hash_id_name: None,
+        }
+    }
+
+    fn bounded_string_schema(bound: u32) -> DynamicTypeSchema {
+        DynamicTypeSchema::Struct {
+            name: "BoundedString".to_string(),
+            base: None,
+            fields: vec![DynamicFieldSchema {
+                name: "field_0".to_string(),
+                member_id: 0,
+                value: DynamicTypeSchema::String { bound: Some(bound) },
+                optional: false,
+                key: false,
+                external: false,
+                must_understand: false,
+                hash_id_name: None,
+            }],
+            extensibility: None,
+            autoid: None,
+            nested: false,
+        }
+    }
+
+    #[test]
+    fn public_dynamic_data_accepts_string_at_declared_bound() {
+        // Given: the public DynamicData API with an IDL string<4> schema.
+        let mut data = crate::DynamicData::new(&bounded_string_schema(4));
+
+        // When: a four-byte value is assigned.
+        let result = data.set_string("field_0", "four");
+
+        // Then: the exact-bound value is accepted unchanged.
+        assert!(result.is_ok());
+        assert_eq!(data.get_string("field_0").unwrap(), "four");
+    }
+
+    #[test]
+    fn descriptor_capacity_maps_to_idl_string_bound() {
+        // Given: CycloneDDS TYPE_BST encodes string<4> as five native bytes.
+        let ops = [crate::topic::OP_ADR | crate::topic::TYPE_BST, 0, 5];
+
+        // When: the descriptor op stream is converted to a public schema.
+        let fields = parse_ops_to_fields(&ops, 5).unwrap();
+
+        // Then: the public bound excludes the required NUL byte.
+        assert_eq!(
+            fields[0].value,
+            DynamicTypeSchema::String { bound: Some(4) }
+        );
+    }
+
+    #[test]
+    fn descriptor_bound_rejects_five_byte_public_value() {
+        // Given: a schema derived from a TYPE_BST capacity of five bytes.
+        let ops = [crate::topic::OP_ADR | crate::topic::TYPE_BST, 0, 5];
+        let fields = parse_ops_to_fields(&ops, 5).unwrap();
+        let schema = DynamicTypeSchema::Struct {
+            name: "BoundedString".to_string(),
+            base: None,
+            fields,
+            extensibility: None,
+            autoid: None,
+            nested: false,
+        };
+        let mut data = crate::DynamicData::new(&schema);
+
+        // When: a five-byte value is assigned through the public setter.
+        let result = data.set_string("field_0", "12345");
+
+        // Then: validation returns the typed BadParameter error.
+        assert!(matches!(result, Err(DdsError::BadParameter(_))));
+    }
+
+    #[test]
+    fn zero_capacity_bounded_string_descriptor_is_rejected() {
+        // Given: a malformed TYPE_BST descriptor with no room for a NUL.
+        let ops = [crate::topic::OP_ADR | crate::topic::TYPE_BST, 0, 0];
+
+        // When: the op stream is parsed.
+        let result = parse_ops_to_fields(&ops, 0);
+
+        // Then: checked bound conversion rejects it instead of underflowing.
+        assert!(matches!(result, Err(DdsError::BadParameter(_))));
+    }
+
+    #[test]
+    fn bounded_native_read_rejects_missing_terminator() {
+        // Given: all four bytes in a TYPE_BST native capacity are non-NUL.
+        let native = *b"abcd";
+
+        // When: the bounded native reader scans only that capacity.
+        let result = decode_bounded_string(&native);
+
+        // Then: it rejects the malformed field without reading past the array.
+        assert!(matches!(result, Err(DdsError::BadParameter(_))));
+    }
+
+    #[test]
+    fn malformed_bounded_native_value_is_not_replaced_with_valid_default() {
+        // Given: a non-terminated native string and its string<3> public schema.
+        let mut native = *b"abcd";
+        let ops = [crate::topic::OP_ADR | crate::topic::TYPE_BST, 0, 4];
+        let schema = bounded_string_schema(3);
+
+        // When: the subscription-facing native reader encounters malformed data.
+        let value = read_value_from_native_public(native.as_mut_ptr(), &schema, &ops, 0);
+
+        // Then: the value is invalid and cannot pass DynamicData construction.
+        assert_eq!(value, DynamicValue::Bool(false));
+        assert!(crate::DynamicData::from_value(&schema, value).is_err());
+    }
+
+    #[test]
+    fn bounded_native_write_accepts_exact_bound_without_overflow() {
+        // Given: a string<4> descriptor and guard byte after its capacity.
+        let ops = [crate::topic::OP_ADR | crate::topic::TYPE_BST, 0, 5];
+        let mut native = [0xa5; 6];
+        let schema = bounded_string_schema(4);
+        let data = crate::DynamicData::from_value(
+            &schema,
+            DynamicValue::Struct(std::collections::BTreeMap::from([(
+                "field_0".to_string(),
+                DynamicValue::String("four".to_string()),
+            )])),
+        )
+        .unwrap();
+
+        // When: the exact-bound value is written to native storage.
+        let result = write_data_to_native(&data, native.as_mut_ptr(), &ops);
+
+        // Then: the in-capacity NUL is written and the guard remains untouched.
+        assert!(result.is_ok());
+        assert_eq!(&native[..5], b"four\0");
+        assert_eq!(native[5], 0xa5);
+    }
+
+    #[test]
+    fn bounded_native_write_rejects_overlength_before_writing() {
+        // Given: a string<4> descriptor, overlength value, and sentinel storage.
+        let ops = [crate::topic::OP_ADR | crate::topic::TYPE_BST, 0, 5];
+        let mut native = [0xa5; 6];
+        let schema = bounded_string_schema(5);
+        let data = crate::DynamicData::from_value(
+            &schema,
+            DynamicValue::Struct(std::collections::BTreeMap::from([(
+                "field_0".to_string(),
+                DynamicValue::String("12345".to_string()),
+            )])),
+        )
+        .unwrap();
+
+        // When: native conversion validates the descriptor capacity.
+        let result = write_data_to_native(&data, native.as_mut_ptr(), &ops);
+
+        // Then: it returns a typed error before changing any native byte.
+        assert!(matches!(result, Err(DdsError::BadParameter(_))));
+        assert_eq!(native, [0xa5; 6]);
+    }
+
+    #[test]
+    fn native_mapping_rejects_duplicate_schema_names() {
+        // Given: two schema members that cannot be represented distinctly by name.
+        let schema = DynamicTypeSchema::Struct {
+            name: "DuplicateNames".to_string(),
+            base: None,
+            fields: vec![
+                dynamic_field("same", 3, DynamicPrimitiveKind::Int32),
+                dynamic_field("same", 9, DynamicPrimitiveKind::Int32),
+            ],
+            extensibility: Some(crate::DynamicTypeExtensibility::Final),
+            autoid: None,
+            nested: false,
+        };
+        let data = crate::DynamicData::new(&schema);
+        let ops = [
+            crate::topic::OP_ADR | crate::topic::TYPE_4BY,
+            0,
+            crate::topic::OP_ADR | crate::topic::TYPE_4BY,
+            4,
+        ];
+
+        // When: the schema crosses the native mapping boundary.
+        let result = validate_data_for_native(&data, &ops);
+
+        // Then: ambiguous member identity is a typed input error.
+        assert!(matches!(result, Err(DdsError::BadParameter(_))));
+    }
+
+    #[test]
+    fn native_mapping_rejects_duplicate_member_ids() {
+        // Given: distinct names assigned the same DDS member identity.
+        let schema = DynamicTypeSchema::Struct {
+            name: "DuplicateIds".to_string(),
+            base: None,
+            fields: vec![
+                dynamic_field("left", 7, DynamicPrimitiveKind::Int32),
+                dynamic_field("right", 7, DynamicPrimitiveKind::Int32),
+            ],
+            extensibility: Some(crate::DynamicTypeExtensibility::Final),
+            autoid: None,
+            nested: false,
+        };
+        let data = crate::DynamicData::new(&schema);
+        let ops = [
+            crate::topic::OP_ADR | crate::topic::TYPE_4BY,
+            0,
+            crate::topic::OP_ADR | crate::topic::TYPE_4BY,
+            4,
+        ];
+
+        // When: the schema crosses the native mapping boundary.
+        let result = validate_data_for_native(&data, &ops);
+
+        // Then: duplicate DDS identity is a typed input error.
+        assert!(matches!(result, Err(DdsError::BadParameter(_))));
+    }
+
+    #[test]
+    fn native_mapping_uses_schema_names_and_declaration_order() {
+        // Given: custom names and non-sequential IDs with distinct native values.
+        let schema = DynamicTypeSchema::Struct {
+            name: "CustomNames".to_string(),
+            base: None,
+            fields: vec![
+                dynamic_field("telemetry_code", 31, DynamicPrimitiveKind::Int32),
+                dynamic_field("voltage", 7, DynamicPrimitiveKind::Float64),
+            ],
+            extensibility: Some(crate::DynamicTypeExtensibility::Final),
+            autoid: None,
+            nested: false,
+        };
+        let mut data = crate::DynamicData::new(&schema);
+        data.set_i32("telemetry_code", 41_337).unwrap();
+        data.set_f64("voltage", 12.75).unwrap();
+        let ops = [
+            crate::topic::OP_ADR | crate::topic::TYPE_4BY | crate::topic::OP_FLAG_SGN,
+            0,
+            crate::topic::OP_ADR | crate::topic::TYPE_8BY | crate::topic::OP_FLAG_FP,
+            8,
+        ];
+        let mut native = [0u64; 2];
+
+        // When: schema-directed traversal writes the native layout.
+        write_data_to_native(&data, native.as_mut_ptr().cast(), &ops).unwrap();
+
+        // Then: each declaration-order slot contains its named value.
+        assert_eq!(
+            i32::from_ne_bytes(native[0].to_ne_bytes()[..4].try_into().unwrap()),
+            41_337
+        );
+        assert_eq!(f64::from_bits(native[1]), 12.75);
+    }
 
     #[test]
     fn dynamic_data_get_set_primitives() {

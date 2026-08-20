@@ -8,7 +8,7 @@
 // Regenerate with `scripts/capture-abi-snapshot.sh` after a native build on
 // this target. Do not edit by hand — every constant here is a measurement.
 //
-// Source: CycloneDDS 11.0.0 (cyclonedds-src), rustc 1.85.0.
+// Source: CycloneDDS 11.0.1 (cyclonedds-src), rustc 1.85.0.
 pub const PROBE_DDS_SAMPLE_INFO_SIZE: usize = 64;
 pub const PROBE_OFF_SAMPLE_STATE: usize = 0;
 pub const PROBE_OFF_VIEW_STATE: usize = 4;
