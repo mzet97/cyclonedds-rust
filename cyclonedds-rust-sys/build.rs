@@ -328,9 +328,13 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
     let enable_security = env::var_os("CARGO_FEATURE_SECURITY").is_some();
     let stamp = build_dir.join(".cargo_features_stamp");
     let security_libs_present = || {
-        ["dds_security_auth", "dds_security_crypto", "dds_security_ac"]
-            .iter()
-            .all(|name| find_security_library(build_dir, name).is_some())
+        [
+            "dds_security_auth",
+            "dds_security_crypto",
+            "dds_security_ac",
+        ]
+        .iter()
+        .all(|name| find_security_library(build_dir, name).is_some())
     };
     let stamp_content = format!(
         "security={}\nsecurity_libs_present={}\n",
@@ -341,9 +345,7 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
     // Check if library exists, feature stamp matches, and (when security is
     // enabled) the dynamic security plugin libraries are present.
     // If anything changed we must reconfigure/rebuild.
-    if find_ddsc_library(build_dir).is_some()
-        && (!enable_security || security_libs_present())
-    {
+    if find_ddsc_library(build_dir).is_some() && (!enable_security || security_libs_present()) {
         if let Ok(existing) = std::fs::read_to_string(&stamp) {
             if existing == stamp_content {
                 return;
@@ -408,7 +410,11 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
         // The security plugins are loaded dynamically by CycloneDDS at runtime.
         // Without building them here, participants configured with DDS Security
         // fail to load the authentication/crypto/access-control shared libraries.
-        for target in ["dds_security_auth", "dds_security_crypto", "dds_security_ac"] {
+        for target in [
+            "dds_security_auth",
+            "dds_security_crypto",
+            "dds_security_ac",
+        ] {
             run(
                 Command::new("cmake")
                     .arg("--build")
