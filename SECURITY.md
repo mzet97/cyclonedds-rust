@@ -64,4 +64,11 @@ This project supports DDS Security via the `security` feature flag:
 cyclonedds = { version = "3.0.0-alpha.3", features = ["security"] }
 ```
 
+When the `security` feature is enabled, `cyclonedds-rust-sys` configures and
+builds the bundled CycloneDDS with `ENABLE_SECURITY=ON` and compiles the
+authentication, cryptography and access-control plugin libraries
+(`dds_security_auth`, `dds_security_crypto`, `dds_security_ac`) that CycloneDDS
+loads at runtime. OpenSSL development headers must be available on the build
+machine.
+
 See [docs/security-guide.md](docs/security-guide.md) and [docs/security-production.md](docs/security-production.md) for configuration details.
