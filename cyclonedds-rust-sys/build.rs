@@ -327,11 +327,25 @@ fn resolve_cyclonedds_build_dir(source_dir: &Path, out_dir: &Path) -> PathBuf {
 fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
     let enable_security = env::var_os("CARGO_FEATURE_SECURITY").is_some();
     let stamp = build_dir.join(".cargo_features_stamp");
-    let stamp_content = format!("security={}\n", enable_security);
+    let security_libs_present = || {
+        [
+            "dds_security_auth",
+            "dds_security_crypto",
+            "dds_security_ac",
+        ]
+        .iter()
+        .all(|name| find_security_library(build_dir, name).is_some())
+    };
+    let stamp_content = format!(
+        "security={}\nsecurity_libs_present={}\n",
+        enable_security,
+        security_libs_present()
+    );
 
-    // Check if library exists and feature stamp matches current configuration.
-    // If features changed (e.g., security toggled), we must reconfigure/rebuild.
-    if find_ddsc_library(build_dir).is_some() {
+    // Check if library exists, feature stamp matches, and (when security is
+    // enabled) the dynamic security plugin libraries are present.
+    // If anything changed we must reconfigure/rebuild.
+    if find_ddsc_library(build_dir).is_some() && (!enable_security || security_libs_present()) {
         if let Ok(existing) = std::fs::read_to_string(&stamp) {
             if existing == stamp_content {
                 return;
@@ -392,6 +406,28 @@ fn ensure_cyclonedds_build_ready(source_dir: &Path, build_dir: &Path) {
         "build bundled CycloneDDS",
     );
 
+    if enable_security {
+        // The security plugins are loaded dynamically by CycloneDDS at runtime.
+        // Without building them here, participants configured with DDS Security
+        // fail to load the authentication/crypto/access-control shared libraries.
+        for target in [
+            "dds_security_auth",
+            "dds_security_crypto",
+            "dds_security_ac",
+        ] {
+            run(
+                Command::new("cmake")
+                    .arg("--build")
+                    .arg(build_dir)
+                    .arg("--target")
+                    .arg(target)
+                    .arg("--config")
+                    .arg("Release"),
+                &format!("build CycloneDDS security plugin {target}"),
+            );
+        }
+    }
+
     assert!(
         find_ddsc_library(build_dir).is_some(),
         "CycloneDDS build finished but no ddsc library was found under {}",
@@ -430,6 +466,25 @@ fn find_ddsc_library(build_dir: &Path) -> Option<(PathBuf, &'static str)> {
                     return Some((path.parent()?.to_path_buf(), "static"));
                 }
                 _ => {}
+            }
+        }
+    }
+    None
+}
+
+fn find_security_library(build_dir: &Path, name: &str) -> Option<PathBuf> {
+    let lib_name = format!("lib{}.so", name);
+    let mut stack = vec![build_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = std::fs::read_dir(&dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.file_name()?.to_str()? == lib_name {
+                return Some(path);
             }
         }
     }
