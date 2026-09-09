@@ -268,6 +268,18 @@ pub unsafe trait DdsType: Sized + Send + 'static {
     /// `reader.take()` unwind on the caller's thread. An undecodable sample is
     /// now a discarded error instead.
     unsafe fn clone_out(ptr: *const Self) -> DdsResult<Self> {
+        if ptr.is_null() {
+            return Err(DdsError::BadParameter(format!(
+                "DdsType clone_out: null pointer for {}",
+                Self::type_name()
+            )));
+        }
+        if (ptr as usize) % std::mem::align_of::<Self>() != 0 {
+            return Err(DdsError::BadParameter(format!(
+                "DdsType clone_out: unaligned pointer for {}",
+                Self::type_name()
+            )));
+        }
         Ok(std::ptr::read(ptr))
     }
     fn write_to_native<'a>(&'a self, _arena: &'a mut WriteArena) -> DdsResult<*const c_void> {

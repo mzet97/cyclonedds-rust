@@ -342,6 +342,12 @@ impl<T: DdsType> DataWriter<T> {
             if sample_ptr.is_null() {
                 return Err(crate::DdsError::OutOfResources);
             }
+            if (sample_ptr as usize) % std::mem::align_of::<T::Native>() != 0 {
+                return Err(crate::DdsError::BadParameter(format!(
+                    "request_loan returned unaligned sample pointer for {}",
+                    T::type_name()
+                )));
+            }
             // Zero-initialize exactly `size_of::<T::Native>()` bytes — this is
             // what CycloneDDS actually allocated (topic m_size ==
             // T::descriptor_size() == size_of::<T::Native>() by construction)

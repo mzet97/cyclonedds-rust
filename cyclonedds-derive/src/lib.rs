@@ -910,7 +910,24 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
     };
 
     let clone_ptr = quote! {
-        let __raw = &*(ptr as *const #native_name);
+        let __raw_ptr = ptr as *const #native_name;
+        if __raw_ptr.is_null() {
+            return ::std::result::Result::Err(cyclonedds::DdsError::BadParameter(
+                ::std::format!(
+                    "DdsType clone_out: null pointer for {}",
+                    #type_name_str,
+                ),
+            ));
+        }
+        if (__raw_ptr as usize) % ::std::mem::align_of::<#native_name>() != 0 {
+            return ::std::result::Result::Err(cyclonedds::DdsError::BadParameter(
+                ::std::format!(
+                    "DdsType clone_out: unaligned pointer for {}",
+                    #type_name_str,
+                ),
+            ));
+        }
+        let __raw = &*__raw_ptr;
     };
 
     let expanded = quote! {
@@ -1523,7 +1540,24 @@ fn derive_union_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             }
 
             unsafe fn clone_out(ptr: *const Self) -> cyclonedds::DdsResult<Self> {
-                let __native = &*(ptr as *const #native_name);
+                let __native_ptr = ptr as *const #native_name;
+                if __native_ptr.is_null() {
+                    return ::std::result::Result::Err(cyclonedds::DdsError::BadParameter(
+                        ::std::format!(
+                            "DdsUnion clone_out: null pointer for {}",
+                            #type_name_str,
+                        ),
+                    ));
+                }
+                if (__native_ptr as usize) % ::std::mem::align_of::<#native_name>() != 0 {
+                    return ::std::result::Result::Err(cyclonedds::DdsError::BadParameter(
+                        ::std::format!(
+                            "DdsUnion clone_out: unaligned pointer for {}",
+                            #type_name_str,
+                        ),
+                    ));
+                }
+                let __native = &*__native_ptr;
                 let __disc = __native.__disc as u32;
                 match __disc {
                     #(#clone_out_arms)*
@@ -1766,7 +1800,24 @@ fn derive_bitmask_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
             }
 
             unsafe fn clone_out(ptr: *const Self) -> cyclonedds::DdsResult<Self> {
-                let __native = &*(ptr as *const #native_name);
+                let __native_ptr = ptr as *const #native_name;
+                if __native_ptr.is_null() {
+                    return ::std::result::Result::Err(cyclonedds::DdsError::BadParameter(
+                        ::std::format!(
+                            "DdsBitmask clone_out: null pointer for {}",
+                            #type_name_str,
+                        ),
+                    ));
+                }
+                if (__native_ptr as usize) % ::std::mem::align_of::<#native_name>() != 0 {
+                    return ::std::result::Result::Err(cyclonedds::DdsError::BadParameter(
+                        ::std::format!(
+                            "DdsBitmask clone_out: unaligned pointer for {}",
+                            #type_name_str,
+                        ),
+                    ));
+                }
+                let __native = &*__native_ptr;
                 let bits = __native.__bits as u64;
                 Ok(Self {
                     #(#from_bits_fields)*
