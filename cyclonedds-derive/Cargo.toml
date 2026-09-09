@@ -19,6 +19,6 @@ all-features = true
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", features = ["full", "parsing"] }
+syn = { version = "3", features = ["full", "parsing"] }
 quote = "1"
 proc-macro2 = "1"
