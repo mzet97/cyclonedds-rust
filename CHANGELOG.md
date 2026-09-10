@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Harden unsafe pointer handling at FFI boundaries: `DdsType::clone_out`
+  (trait default plus struct/union/bitmask derive paths) and
+  `DataWriter::request_loan` now reject null or misaligned pointers with
+  `DdsError::BadParameter` instead of dereferencing them.
+
 ## [3.0.0-alpha.3] - 2026-08-18
 
 ### Fixed
