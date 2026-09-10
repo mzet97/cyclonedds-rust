@@ -1,0 +1,101 @@
+/// DDS bridge guest/host contract, WASI Preview 2 style.
+///
+/// Package `tese:dds-bridge@0.1.0`, proto v0. The guest is untrusted
+/// browser/Wasm code: it only ever sees CDR frames and versioned control
+/// JSON, never native DDS handles. The host owns every DDS entity and
+/// enforces subscriptions, QoS subset, and bounded queues.
+///
+/// Mirrors `dds-wasm-guest/src/lib.rs`: `WitEchoSample` there is the Rust
+/// projection of `echo-sample` here. Any change to these records bumps the
+/// package version and the `PROTO_VERSION` gate on both sides.
+package tese:dds-bridge@0.1.0;
+
+/// Shared value types: the IDL struct `WasmEcho { @key id, text, values }`
+/// plus the gateway QoS subset.
+interface types {
+    /// One `WasmEcho` sample. `id` is the DDS key.
+    record echo-sample {
+        id: s32,
+        text: string,
+        values: list<s32>,
+    }
+
+    enum reliability {
+        best-effort,
+        reliable,
+    }
+
+    enum durability {
+        volatile,
+        transient-local,
+    }
+
+    record qos {
+        reliability: reliability,
+        durability: durability,
+    }
+
+    /// Binary data frame: proto v0, CDR-LE payload, per-topic sequence.
+    record data-frame {
+        proto: u16,
+        topic: string,
+        cdr: list<u8>,
+        seq: u32,
+    }
+
+    variant guest-error {
+        invalid-frame(string),
+        unknown-topic(string),
+        unsupported-qos(string),
+        unsupported-proto(string),
+        queue-full,
+        not-connected,
+    }
+}
+
+/// What the Wasm guest exports: pure frame codec + its own dispatcher
+/// (subscriptions, bounded outbox). No sockets, no DDS handles.
+interface guest {
+    use types.{echo-sample, data-frame, guest-error, qos};
+
+    /// Encode one sample into a wire frame, assigning the next `seq`.
+    encode-frame: func(topic: string, sample: echo-sample) -> result<data-frame, guest-error>;
+
+    /// Accept one inbound wire frame; `ok(none)` when filtered out by the
+    /// guest subscription set (dropped, counted, never an error).
+    handle-frame: func(frame: data-frame) -> result<option<echo-sample>, guest-error>;
+
+    /// Handle one control JSON message (`hello`/`register`/`subscribe`/
+    /// `unsubscribe`/`bye`/`ack`); returns the reply JSON, if any.
+    handle-control: func(json: string) -> result<option<string>, guest-error>;
+
+    /// Guest outbox depth and lifetime drop count (explicit overflow).
+    outbox-stats: func() -> tuple<u32, u64>;
+}
+
+/// What the native host provides: the only path from guest bytes to DDS.
+interface host {
+    use types.{echo-sample, data-frame, guest-error};
+
+    /// Publish one guest sample into the DDS domain (host re-validates
+    /// topic, QoS, and CDR before touching any entity).
+    publish: func(topic: string, sample: echo-sample) -> result<_, guest-error>;
+
+    /// Poll inbound frames addressed to the guest's subscriptions. Bounded:
+    /// at most `max` frames; excess stays queued host-side and surfaces in
+    /// `dropped-overflow`, never blocks the caller.
+    poll: func(max: u32) -> tuple<list<data-frame>, u64>;
+}
+
+/// The Wasm module: exports the guest, imports only the host.
+world wasm-guest {
+    export guest;
+    import host;
+}
+
+/// The native reference host: drives the guest in-process in tests, and
+/// under a real component runtime (`wasmtime`) in production. The sandbox
+/// boundary is this WIT surface — see `docs/wasm/PHASE_D_E_F.md`.
+world native-host {
+    export host;
+}

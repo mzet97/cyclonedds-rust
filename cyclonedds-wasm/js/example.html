@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>cyclonedds-wasm echo example (Phase H)</title>
+</head>
+<body>
+  <h1>cyclonedds-wasm echo</h1>
+  <pre id="log"></pre>
+  <script type="module">
+    import init, { WasmClient, u64_to_bigint, bigint_to_u64 } from './pkg/cyclonedds_wasm.js';
+
+    const log = (m) => { document.getElementById('log').textContent += m + '\n'; };
+
+    await init();
+    log('wasm initialized');
+
+    // 64-bit keys cross as BigInt, never Number.
+    const key = bigint_to_u64(u64_to_bigint(9007199254740993n));
+    log('bigint roundtrip: ' + key.toString());
+
+    const client = await WasmClient.connect('ws://127.0.0.1:8080/dds', 5000);
+    log('connected');
+    client.on_echo((s) => log(`echo: ${s.topic} id=${s.id} text=${s.text} seq=${s.seq}`));
+    client.send_echo('WasmEcho', 7, 'hello from browser', [1, 2, 3]);
+    log('sent');
+
+    // Idempotent disconnect after 5s.
+    setTimeout(() => { client.close(); client.close(); log('closed'); }, 5000);
+  </script>
+</body>
+</html>

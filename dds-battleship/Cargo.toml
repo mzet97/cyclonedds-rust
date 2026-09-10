@@ -1,0 +1,46 @@
+[package]
+name = "dds-battleship"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors = ["Matheus Zeitune <matheus.zeitune.developer@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/mzet97/cyclonedds-rust"
+description = "Batalha naval PvP no browser (Rust+WASM) sobre CycloneDDS via gateway WebSocket"
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Host-only: the standalone gateway binary links the native bridge.
+# Never on wasm32 (cyclonedds-rust-sys cannot compile there).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dds-wasm-bridge = { path = "../dds-wasm-bridge", version = "0.1" }
+
+# Browser-only: the WASM client. Never linked on host.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+cyclonedds-wasm = { path = "../cyclonedds-wasm", version = "0.1" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "console",
+    "Document",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlElement",
+    "HtmlInputElement",
+    "Location",
+    "MouseEvent",
+    "Node",
+    "Window",
+] }
+
+[[bin]]
+name = "battleship-gateway"
+path = "src/bin/gateway.rs"

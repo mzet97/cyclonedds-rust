@@ -135,22 +135,22 @@ impl DdsError {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub fn err_nr(code: i32) -> i32 {
     cyclonedds_rust_sys::dds_err_nr(code)
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub fn err_line(code: i32) -> u32 {
     cyclonedds_rust_sys::dds_err_line(code)
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub fn err_file_id(code: i32) -> u32 {
     cyclonedds_rust_sys::dds_err_file_id(code)
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub fn check(ret: i32) -> DdsResult<()> {
     if ret >= 0 {
         Ok(())
@@ -159,7 +159,7 @@ pub fn check(ret: i32) -> DdsResult<()> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub fn check_entity(ret: i32) -> DdsResult<i32> {
     if ret >= 0 {
         Ok(ret)
@@ -168,7 +168,7 @@ pub fn check_entity(ret: i32) -> DdsResult<i32> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[cfg(test)]
 mod tests {
     use super::{err_file_id, err_line, err_nr, DdsError};

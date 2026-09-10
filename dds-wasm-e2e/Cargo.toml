@@ -1,0 +1,16 @@
+[package]
+name = "dds-wasm-e2e"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "End-to-end test project for the browser-gateway profile: live gateway scenarios over TCP (TEST_PLAN 1-11, host-runnable)"
+
+[dependencies]
+dds-wasm-bridge = { path = "../dds-wasm-bridge", version = "0.1" }
+cyclonedds-proto = { path = "../cyclonedds-proto", version = "0.1" }
+cyclonedds = { path = "../cyclonedds", version = "3.0.0" }
+
+[lib]
+name = "dds_wasm_e2e"
+path = "src/lib.rs"

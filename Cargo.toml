@@ -12,6 +12,12 @@ members = [
     "cyclonedds-bench",
     "cargo-cyclonedds",
     "cyclonedds-wasm",
+    "cyclonedds-proto",
+    "dds-wasm-consumer",
+    "dds-wasm-e2e",
+    "dds-wasm-bridge",
+    "dds-wasm-guest",
+    "dds-battleship",
 ]
 resolver = "2"
 
@@ -33,3 +39,5 @@ cyclonedds = { path = "cyclonedds", version = "3.0.0" }
 cyclonedds-derive = { path = "cyclonedds-derive", version = "3.0.0" }
 cyclonedds-build = { path = "cyclonedds-build", version = "3.0.0" }
 criterion = "0.5"
+# Test-only: fd-exhaustion fault injection (dds-wasm-bridge/tests).
+libc = "0.2"

@@ -31,10 +31,15 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"]
 console-subscriber = { version = "0.5", optional = true }
 
 [features]
-default = ["std", "async"]
-std = ["dep:cyclonedds-rust-sys", "dep:thiserror"]
-async = ["std", "tokio", "async-stream", "futures-core", "futures-util"]
-security = ["cyclonedds-rust-sys/security", "std"]
+# Backend separation (Phase B): `std` is pure Rust and must NOT pull the
+# native `libddsc` C library. `native` selects the libddsc backend
+# (`cyclonedds-rust-sys`). `default` keeps the historical surface
+# (std + native + async) so existing users are unaffected.
+default = ["std", "native", "async"]
+std = ["dep:thiserror"]
+native = ["dep:cyclonedds-rust-sys", "std"]
+async = ["native", "tokio", "async-stream", "futures-core", "futures-util"]
+security = ["cyclonedds-rust-sys/security", "native"]
 tracing = ["dep:tracing"]
 serde = ["dep:postcard", "dep:serde"]
 opentelemetry = ["dep:tracing-subscriber", "tracing"]

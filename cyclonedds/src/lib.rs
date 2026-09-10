@@ -9,6 +9,8 @@ pub mod no_std_types;
 #[cfg(not(feature = "std"))]
 pub use no_std_types::*;
 
+// Derive macros are pure proc-macros (portable type contracts): they stay
+// on `std` and must keep working without the native backend.
 #[cfg(feature = "std")]
 pub use cyclonedds_derive::DdsBitmask as DdsBitmaskDerive;
 #[cfg(feature = "std")]
@@ -18,140 +20,144 @@ pub use cyclonedds_derive::DdsType as DdsTypeDerive;
 #[cfg(feature = "std")]
 pub use cyclonedds_derive::DdsUnion as DdsUnionDerive;
 
-#[cfg(all(feature = "async", feature = "std"))]
+// Everything below needs the native `libddsc` backend
+// (`cyclonedds-rust-sys`): it is gated on `native`, never on `std` alone,
+// so a web/WASI consumer with `default-features = false, features = ["std"]`
+// cannot accidentally link native DDS.
+#[cfg(all(feature = "async", feature = "native"))]
 #[allow(missing_docs)]
 pub mod r#async;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[allow(missing_docs)]
 mod builtin;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[allow(missing_docs)]
 mod content_filtered_topic;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[allow(missing_docs)]
 mod dynamic_type;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[allow(missing_docs)]
 mod dynamic_value;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[allow(missing_docs)]
 mod entity;
 #[allow(missing_docs)]
 mod error;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[allow(missing_docs)]
 mod listener;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub mod log;
 #[cfg(all(
     any(feature = "opentelemetry", feature = "tokio-console"),
-    feature = "std"
+    feature = "native"
 ))]
 pub mod observability;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod participant;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod participant_pool;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod publisher;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod qos;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod qos_provider;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod reader;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod request_reply;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub mod sample;
-#[cfg(all(feature = "security", feature = "std"))]
+#[cfg(all(feature = "security", feature = "native"))]
 pub mod security;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod sequence;
-#[cfg(all(feature = "serde", feature = "std"))]
+#[cfg(all(feature = "serde", feature = "native"))]
 mod serde_sample;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod serialization;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod statistics;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod status;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod string;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod subscriber;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod topic;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod type_discovery;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod waitset;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 #[doc(hidden)]
 pub mod write_arena;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod writer;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 mod xtypes;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use builtin::{
     BuiltinEndpointSample, BuiltinParticipantSample, BuiltinTopicSample,
     BUILTIN_TOPIC_DCPSPARTICIPANT, BUILTIN_TOPIC_DCPSPUBLICATION, BUILTIN_TOPIC_DCPSSUBSCRIPTION,
     BUILTIN_TOPIC_DCPSTOPIC, DDS_MIN_PSEUDO_HANDLE,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use content_filtered_topic::{
     ContentFilteredTopic, FilterParams, TopicFilterExt, TopicParameterizedFilterExt,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use dynamic_type::{
     DynamicEnumLiteralValue, DynamicMemberBuilder, DynamicPrimitiveKind, DynamicType,
     DynamicTypeAutoId, DynamicTypeBuilder, DynamicTypeExtensibility, DynamicTypeSpec,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use dynamic_value::{
     DynamicBitmaskFieldSchema, DynamicData, DynamicEnumLiteralSchema, DynamicFieldSchema,
     DynamicTypeSchema, DynamicUnionCaseSchema, DynamicValue,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use entity::DdsEntity;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use error::{err_file_id, err_line, err_nr};
 pub use error::{DdsError, DdsResult};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use listener::{Listener, ListenerBuilder};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use participant::DomainParticipant;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use participant_pool::{DiscoveredParticipant, DiscoveredTopic, ParticipantPool};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use publisher::Publisher;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use qos::{
     DataRepresentation, DestinationOrder, Durability, DurabilityServicePolicy, History,
     IgnoreLocalKind, Liveliness, Ownership, PresentationAccessScope, PresentationPolicy, Qos,
     QosBuilder, ReaderDataLifecyclePolicy, Reliability, TypeConsistency, TypeConsistencyPolicy,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use qos_provider::{QosKind, QosProvider};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use reader::DataReader;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use request_reply::{Replier, RequestReply, Requester};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use sample::{Loan, Sample};
-#[cfg(all(feature = "security", feature = "std"))]
+#[cfg(all(feature = "security", feature = "native"))]
 pub use security::SecurityConfig;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use sequence::{DdsBoundedSequence, DdsSequence, DdsSequenceElement};
-#[cfg(all(feature = "serde", feature = "std"))]
+#[cfg(all(feature = "serde", feature = "native"))]
 pub use serde_sample::{SerdeSample, SerdeTypeName};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use serialization::{CdrDeserializer, CdrEncoding, CdrSample, CdrSerializer};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use statistics::{StatisticEntryRef, StatisticKind, StatisticValue, Statistics};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use status::{
     EntityStatus, InconsistentTopicStatus, LivelinessChangedStatus, LivelinessLostStatus,
     OfferedDeadlineMissedStatus, OfferedIncompatibleQosStatus, PublicationMatchedStatus,
@@ -163,11 +169,11 @@ pub use status::{
     STATUS_REQUESTED_INCOMPATIBLE_QOS, STATUS_SAMPLE_LOST, STATUS_SAMPLE_REJECTED,
     STATUS_SUBSCRIPTION_MATCHED,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use string::DdsString;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use subscriber::Subscriber;
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use topic::{
     adr, adr_bst, adr_key, rebase_ops, DdsEnumType, DdsNativeValue, DdsType, DdsUnionType,
     DiscriminantType, KeyDescriptor, Topic, TopicKeyDescriptor, UntypedTopic, DDS_OP_MASK_CONST,
@@ -177,17 +183,17 @@ pub use topic::{
     SUBTYPE_BST, SUBTYPE_ENU, SUBTYPE_SEQ, SUBTYPE_STR, SUBTYPE_STU, TYPE_1BY, TYPE_2BY, TYPE_4BY,
     TYPE_8BY, TYPE_ARR, TYPE_BSQ, TYPE_BST, TYPE_ENU, TYPE_EXT, TYPE_SEQ, TYPE_STR, TYPE_UNI,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use type_discovery::{
     cdr_to_dynamic_data, discover_all_publication_types, discover_all_subscription_types,
     discover_type_from_endpoint, discover_type_from_publication, discover_type_from_subscription,
     discover_type_from_type_info, dynamic_data_to_cdr, DiscoveredType,
 };
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use waitset::{GuardCondition, QcGuard, QueryCondition, ReadCondition, WaitSet};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use writer::{DataWriter, WriteLoan};
-#[cfg(feature = "std")]
+#[cfg(feature = "native")]
 pub use xtypes::{
     FindScope, MatchedEndpoint, MemberDescriptor, OwnedSertype, OwnedTypeId, SertypeHandle,
     TopicDescriptor, TypeDescriptor, TypeExtensibility, TypeIdKind, TypeIdRef, TypeIncludeDeps,
