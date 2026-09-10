@@ -13,14 +13,24 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// Loopback interface name is OS-specific (`lo0` on macOS).
+#[cfg(target_os = "macos")]
+const LO_IF: &str = "lo0";
+#[cfg(not(target_os = "macos"))]
+const LO_IF: &str = "lo";
+
+/// Loopback-pinned CYCLONEDDS_URI for this OS.
+fn lo_uri() -> String {
+    format!(
+        r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="{LO_IF}"/></Interfaces></General></Domain></CycloneDDS>"#
+    )
+}
+
 /// Pin loopback DDS once per process (mirrors the bridge suites).
 pub fn ensure_loopback_dds() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        std::env::set_var(
-            "CYCLONEDDS_URI",
-            r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo"/></Interfaces></General></Domain></CycloneDDS>"#,
-        );
+        std::env::set_var("CYCLONEDDS_URI", crate::lo_uri());
     });
 }
 

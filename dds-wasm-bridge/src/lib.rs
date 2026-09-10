@@ -1206,9 +1206,16 @@ mod tests {
         // once the participant exists, so pin loopback to reach it.
         // When binding with it, then the gateway must fail fast with a
         // typed error instead of entering FFI.
+        let lo = if cfg!(target_os = "macos") {
+            "lo0"
+        } else {
+            "lo"
+        };
         std::env::set_var(
             "CYCLONEDDS_URI",
-            r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo"/></Interfaces></General></Domain></CycloneDDS>"#,
+            format!(
+                r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="{lo}"/></Interfaces></General></Domain></CycloneDDS>"#
+            ),
         );
         let big = format!("T{}", "x".repeat(8 * 1024 * 1024));
         let res = WasmBridge::bind(BridgeConfig {

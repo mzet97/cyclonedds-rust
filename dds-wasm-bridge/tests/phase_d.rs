@@ -11,12 +11,21 @@ use dds_wasm_bridge::{
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+/// Loopback interface name is OS-specific (`lo0` on macOS, where plain
+/// `lo` matches nothing and every participant creation fails).
+#[cfg(target_os = "macos")]
+const LO_IF: &str = "lo0";
+#[cfg(not(target_os = "macos"))]
+const LO_IF: &str = "lo";
+
 fn ensure_loopback_dds() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         std::env::set_var(
             "CYCLONEDDS_URI",
-            r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo"/></Interfaces></General></Domain></CycloneDDS>"#,
+            format!(
+                r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="{LO_IF}"/></Interfaces></General></Domain></CycloneDDS>"#
+            ),
         );
     });
 }
