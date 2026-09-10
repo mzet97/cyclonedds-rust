@@ -31,6 +31,8 @@ benchmark_results/
 results/
 *.csv
 *.json
+# ...except golden test fixtures, which CI needs.
+!cyclonedds-proto/tests/fixtures/*.json
 
 # Temporary / scratch
 /tmp/
@@ -60,3 +62,6 @@ book/
 .omx/*
 .sisyphus/*
 openspec/*
+
+# Artefato gerado pelo wasm-bindgen (run.sh reconstrói).
+dds-battleship/site/pkg/

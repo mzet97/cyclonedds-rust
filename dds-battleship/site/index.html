@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batalha Naval DDS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Batalha Naval <span class="dds">via DDS</span></h1>
+  <div id="conn">conectando…</div>
+</header>
+
+<main>
+  <section id="setup" aria-label="Saguão">
+    <h2 id="setup-title">Entre num jogo</h2>
+    <div class="row">
+      <label>Nome <input id="name" maxlength="20" placeholder="Seu nome" autocomplete="off"></label>
+      <button id="create-btn" type="button">Criar jogo</button>
+    </div>
+    <h3>Jogos abertos</h3>
+    <ul id="lobby-list"></ul>
+  </section>
+
+  <section id="arena" aria-label="Tabuleiros">
+    <div class="boards">
+      <div class="board-block">
+        <h2>Suas águas</h2>
+        <div id="my-board" class="grid" role="grid" aria-label="Suas águas"></div>
+        <div class="row">
+          <button id="random-btn" type="button">Aleatório</button>
+          <button id="dir-btn" type="button">Direção: horizontal</button>
+        </div>
+      </div>
+      <div class="board-block">
+        <h2>Águas inimigas</h2>
+        <div id="foe-board" class="grid" role="grid" aria-label="Águas inimigas"></div>
+        <div class="row">
+          <button id="again-btn" type="button">Novo jogo</button>
+        </div>
+      </div>
+    </div>
+    <div id="status" role="status">Carregando…</div>
+  </section>
+
+  <aside aria-label="Diário de bordo">
+    <h2>Diário de bordo</h2>
+    <div id="log"></div>
+  </aside>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

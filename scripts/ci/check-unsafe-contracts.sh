@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Byte-order sort: dictionary-order locales disagree on punctuation and
+# would flip the baseline between runners.
+export LC_ALL=C
 
 root="$(git rev-parse --show-toplevel)"
 baseline="$root/scripts/ci/unsafe-inventory.txt"

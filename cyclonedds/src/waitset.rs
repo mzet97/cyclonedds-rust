@@ -474,7 +474,7 @@ impl OwnedHandle for GuardCondition {
 // trampoline consulta apenas o registry + TLS, então handles sintéticos
 // bastam para exercitar a lógica endurecida).
 // ---------------------------------------------------------------------------
-#[cfg(all(test, feature = "std"))]
+#[cfg(all(test, feature = "native"))]
 mod qc_tests {
     use super::*;
 

@@ -49,3 +49,5 @@
 63 cyclonedds/src/xtypes.rs
 2 cyclonedds/tests/integration_test.rs
 7 dds-demo-test/src/comprehensive_test.rs
+1 dds-wasm-bridge/src/lib.rs
+5 dds-wasm-bridge/tests/fd_exhaustion.rs

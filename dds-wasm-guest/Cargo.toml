@@ -1,0 +1,12 @@
+[package]
+name = "dds-wasm-guest"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors.workspace = true
+license.workspace = true
+description = "WASI guest-side dispatcher for tese:dds-bridge@0.1.0 (Phase F). Portable: cyclonedds-proto only, never the native backend."
+repository.workspace = true
+
+[dependencies]
+cyclonedds-proto = { path = "../cyclonedds-proto", version = "0.1" }

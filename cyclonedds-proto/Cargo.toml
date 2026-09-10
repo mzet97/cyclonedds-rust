@@ -1,0 +1,21 @@
+[package]
+name = "cyclonedds-proto"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors.workspace = true
+license.workspace = true
+description = "Portable bridge-protocol contracts (proto v0) shared by native, gateway, WASI and engine backends. No native DDS dependency."
+repository.workspace = true
+
+[features]
+default = ["std"]
+std = ["serde/std", "serde_json/std", "alloc"]
+alloc = []
+
+[dependencies]
+serde = { version = "1", features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+serde_json = { version = "1" }

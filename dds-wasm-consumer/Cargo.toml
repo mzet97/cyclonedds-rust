@@ -1,0 +1,17 @@
+[package]
+name = "dds-wasm-consumer"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors.workspace = true
+license.workspace = true
+description = "Minimal web consumer proving the gateway client links without the native DDS backend (no cyclonedds-rust-sys in its dependency graph)."
+repository.workspace = true
+
+# NOTE: deliberately NO dependency on `cyclonedds` (native backend) nor on
+# `cyclonedds-rust-sys`. Web target must stay free of libddsc.
+[dependencies]
+cyclonedds-wasm = { path = "../cyclonedds-wasm", version = "0.2" }
+cyclonedds-proto = { path = "../cyclonedds-proto", version = "0.1" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
