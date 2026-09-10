@@ -151,7 +151,9 @@ impl WasmClient {
             let settled = settled.clone();
             let pending = pending.clone();
             let timer_id = timer_id.clone();
-            let onopen = Closure::once(move || {
+            // `once_into_js` (no `forget`): the one-shot allocation is
+            // reclaimed after it fires instead of leaking per connect.
+            let onopen: JsValue = Closure::once_into_js(move || {
                 if !pending.get() || settled.get() {
                     return;
                 }
@@ -170,8 +172,7 @@ impl WasmClient {
                 };
                 let _ = resolve.call1(&JsValue::NULL, &JsValue::from(client));
             });
-            ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-            onopen.forget(); // one-shot connect handler.
+            ws.set_onopen(Some(onopen.unchecked_ref::<Function>()));
         }
 
         // error / close-before-open -> reject(typed string)
@@ -198,13 +199,13 @@ impl WasmClient {
                 }
             });
             let fail_err = fail.clone();
-            let onerror =
-                Closure::once(move |e: ErrorEvent| fail_err(format!("WebSocket error: {e:?}")));
-            ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-            onerror.forget();
-            let onclose = Closure::once(move |_: CloseEvent| fail(ERR_CLOSED.to_string()));
-            ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
-            onclose.forget();
+            let onerror: JsValue = Closure::once_into_js(move |e: ErrorEvent| {
+                fail_err(format!("WebSocket error: {e:?}"))
+            });
+            ws.set_onerror(Some(onerror.unchecked_ref::<Function>()));
+            let onclose: JsValue =
+                Closure::once_into_js(move |_: CloseEvent| fail(ERR_CLOSED.to_string()));
+            ws.set_onclose(Some(onclose.unchecked_ref::<Function>()));
         }
 
         promise

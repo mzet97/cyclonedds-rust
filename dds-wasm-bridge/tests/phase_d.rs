@@ -92,7 +92,7 @@ fn expect_ack(client: &mut BridgeClient, seq: u32) {
     let text = std::str::from_utf8(&payload).expect("ack is JSON");
     match Control::from_json(text).expect("control parses") {
         Control::Ack { seq: got, .. } => assert_eq!(got, seq, "ack seq"),
-        other => panic!("expected ack, got {other:?}"),
+        other => panic!("expected ack, got {:?}", std::mem::discriminant(&other)),
     }
 }
 

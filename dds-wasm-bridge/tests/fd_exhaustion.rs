@@ -149,7 +149,12 @@ fn attempt(tag: &str) -> Result<(), String> {
     let mut buf = [0u8; 1];
     match victim.read(&mut buf) {
         Ok(0) => {}
-        other => return Err(format!("victim must see EOF, got {other:?}")),
+        other => {
+            return Err(format!(
+                "victim must see EOF, got {:?}",
+                std::mem::discriminant(&other)
+            ))
+        }
     }
     eprintln!("fd_probe: {tag} victim saw EOF");
     drop(guard); // unstuff + restore the limit before the liveness proof.

@@ -296,7 +296,10 @@ fn gateway_qos_subset_rejects_reliable_and_transient_local() {
     ] {
         match check_qos(&qos) {
             Err(ProtoError::Unsupported(_)) => {}
-            other => panic!("must fail loud with Unsupported, got {other:?}"),
+            other => panic!(
+                "must fail loud with Unsupported, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
     // Unknown wire variants fail closed at parse time, not as defaults.

@@ -48,7 +48,7 @@ fn recv_packet_times_out_on_a_quiet_socket() {
     let mut client = connect(&bridge);
     match client.recv_packet(Duration::from_millis(150)) {
         Err(BridgeError::Timeout) => {}
-        other => panic!("expected Timeout, got {other:?}"),
+        other => panic!("expected Timeout, got {:?}", std::mem::discriminant(&other)),
     }
 }
 
@@ -117,7 +117,10 @@ fn recv_echo_cancel_wins_over_a_quiet_socket() {
     let mut errors = Vec::new();
     match client.recv_echo_cancel(T, &mut errors, &cancel) {
         Err(BridgeError::Cancelled) => {}
-        other => panic!("expected Cancelled, got {other:?}"),
+        other => panic!(
+            "expected Cancelled, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }
 
@@ -129,7 +132,7 @@ fn recv_echo_cancel_times_out_without_cancel() {
     let mut errors = Vec::new();
     match client.recv_echo_cancel(Duration::from_millis(200), &mut errors, &cancel) {
         Err(BridgeError::Timeout) => {}
-        other => panic!("expected Timeout, got {other:?}"),
+        other => panic!("expected Timeout, got {:?}", std::mem::discriminant(&other)),
     }
 }
 
@@ -151,7 +154,10 @@ fn recv_echo_rejects_non_cdr_shapes_from_a_rogue_server() {
     let mut errors = Vec::new();
     match client.recv_echo(T, &mut errors) {
         Err(BridgeError::UnexpectedShape(_)) => {}
-        other => panic!("expected UnexpectedShape, got {other:?}"),
+        other => panic!(
+            "expected UnexpectedShape, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 
     // Same via the cancellable wait.
@@ -170,7 +176,7 @@ fn recv_echo_rejects_non_cdr_shapes_from_a_rogue_server() {
     let cancel = CancelFlag::new();
     match client.recv_echo_cancel(T, &mut errors, &cancel) {
         Err(BridgeError::Proto(_)) => {}
-        other => panic!("expected Proto, got {other:?}"),
+        other => panic!("expected Proto, got {:?}", std::mem::discriminant(&other)),
     }
     assert_eq!(errors, vec![("stale".to_string(), "d".to_string())]);
 }
@@ -190,7 +196,7 @@ fn connect_with_retry_fails_loud_on_a_dead_port() {
         Duration::from_millis(5),
     ) {
         Err(BridgeError::Io(_)) => {}
-        other => panic!("expected Io, got {other:?}"),
+        other => panic!("expected Io, got {:?}", std::mem::discriminant(&other)),
     }
 }
 
@@ -229,7 +235,7 @@ fn recv_echo_times_out_on_a_quiet_server() {
     let mut errors = Vec::new();
     match client.recv_echo(Duration::from_millis(200), &mut errors) {
         Err(BridgeError::Timeout) => {}
-        other => panic!("expected Timeout, got {other:?}"),
+        other => panic!("expected Timeout, got {:?}", std::mem::discriminant(&other)),
     }
     assert!(errors.is_empty());
 }
@@ -254,7 +260,10 @@ fn recv_echo_cancel_surfaces_socket_and_shape_errors() {
     let mut errors = Vec::new();
     match client.recv_echo_cancel(T, &mut errors, &cancel) {
         Err(BridgeError::Disconnected) | Err(BridgeError::Timeout) => {}
-        other => panic!("expected a socket error, got {other:?}"),
+        other => panic!(
+            "expected a socket error, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 
     // Non-CDR flags and garbage CDR through the cancellable wait.
@@ -272,7 +281,10 @@ fn recv_echo_cancel_surfaces_socket_and_shape_errors() {
     let mut errors = Vec::new();
     match client.recv_echo_cancel(T, &mut errors, &cancel) {
         Err(BridgeError::UnexpectedShape(_)) => {}
-        other => panic!("expected UnexpectedShape, got {other:?}"),
+        other => panic!(
+            "expected UnexpectedShape, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 
     let bad_cdr = DataFrame {
@@ -289,7 +301,7 @@ fn recv_echo_cancel_surfaces_socket_and_shape_errors() {
     let mut errors = Vec::new();
     match client.recv_echo_cancel(T, &mut errors, &cancel) {
         Err(BridgeError::Proto(_)) => {}
-        other => panic!("expected Proto, got {other:?}"),
+        other => panic!("expected Proto, got {:?}", std::mem::discriminant(&other)),
     }
 }
 
@@ -338,7 +350,10 @@ fn recv_echo_deadline_arm_triggers_on_a_flooding_server() {
     let mut errors = Vec::new();
     match client.recv_echo(Duration::from_millis(300), &mut errors) {
         Err(BridgeError::Timeout) => {}
-        other => panic!("expected deadline Timeout, got {other:?}"),
+        other => panic!(
+            "expected deadline Timeout, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
     assert!(!errors.is_empty(), "flooded errors must be collected");
 }

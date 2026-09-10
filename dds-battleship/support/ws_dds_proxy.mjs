@@ -73,13 +73,18 @@ function wsReader(sock, onMessage, onClose) {
 }
 
 // ---- TCP side: length-prefixed stream ----
+const MAX_FRAME = 8 * 1024 * 1024 + 64;
 function tcpReader(sock, onFrame) {
   let buf = Buffer.alloc(0);
   sock.on('data', (chunk) => {
     buf = Buffer.concat([buf, chunk]);
     while (buf.length >= 4) {
       const n = buf.readUInt32LE(0);
-      if (n > 8 * 1024 * 1024 + 64 || buf.length < 4 + n) return;
+      // Oversize prefix: drop the connection now. Returning without
+      // consuming would wedge on the same prefix forever while the
+      // buffer grows unbounded (DoS).
+      if (n > MAX_FRAME) { sock.destroy(); return; }
+      if (buf.length < 4 + n) return;
       onFrame(buf.subarray(4, 4 + n));
       buf = buf.subarray(4 + n);
     }

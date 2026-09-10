@@ -61,6 +61,9 @@ fn main() {
         Err(cyclonedds_wasm::WasmDdsError::NotConnected) => {
             println!("host write -> NotConnected: OK (transport gap is typed)")
         }
-        other => panic!("expected NotConnected, got {other:?}"),
+        other => panic!(
+            "expected NotConnected, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }

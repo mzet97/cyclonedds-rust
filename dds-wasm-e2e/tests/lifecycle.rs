@@ -25,7 +25,7 @@ fn hello_and_register_are_acknowledged_reliable_is_refused() {
     assert!(dds_wasm_bridge::parse_error_reply(&reply).is_none());
     match Control::from_json(std::str::from_utf8(&reply).unwrap()).unwrap() {
         Control::Ack { seq, .. } => assert_eq!(seq, 0),
-        other => panic!("expected ack, got {other:?}"),
+        other => panic!("expected ack, got {:?}", std::mem::discriminant(&other)),
     }
 
     let reg = Control::Register {
@@ -108,7 +108,10 @@ fn unsubscribe_stops_delivery_while_client_stays_connected() {
     let mut errors = Vec::new();
     match client.recv_echo(Duration::from_millis(600), &mut errors) {
         Err(dds_wasm_bridge::BridgeError::Timeout) => {}
-        other => panic!("unsubscribed client must time out, got {other:?}"),
+        other => panic!(
+            "unsubscribed client must time out, got {:?}",
+            std::mem::discriminant(&other)
+        ),
     }
 }
 
