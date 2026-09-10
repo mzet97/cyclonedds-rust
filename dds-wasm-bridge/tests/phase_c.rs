@@ -80,6 +80,28 @@ fn wait_peer(reader: &cyclonedds::DataReader<WasmEcho>, want: &EchoMsg, timeout:
     false
 }
 
+/// Prove the server accepted and serves this connection before asserting
+/// anything else: TCP `connect` returns at handshake (kernel backlog), not
+/// at server accept. Without this, the first real assertion observes a
+/// half-born connection on a slow accept loop instead of a served one.
+fn hello_ack(client: &mut dds_wasm_bridge::BridgeClient) {
+    use cyclonedds_proto::Control;
+    client
+        .send_control(&Control::Hello {
+            proto: cyclonedds_proto::PROTO_VERSION,
+            client: "phase-c-probe".into(),
+        })
+        .expect("probe hello send");
+    let payload = client
+        .recv_packet(Duration::from_secs(10))
+        .expect("probe hello ack");
+    let text = std::str::from_utf8(&payload).expect("probe ack utf-8");
+    assert!(
+        matches!(Control::from_json(text), Ok(Control::Ack { .. })),
+        "probe hello must be acked, got {text:?}"
+    );
+}
+
 fn bind_default(topic: &str) -> std::sync::Arc<WasmBridge> {
     ensure_loopback_dds();
     WasmBridge::bind(BridgeConfig {
@@ -127,6 +149,7 @@ fn browser_to_dds_cdr_binary() {
     std::thread::sleep(Duration::from_millis(800));
 
     let mut client = BridgeClient::connect(bridge.addr()).unwrap();
+    hello_ack(&mut client);
     let msg = sample();
     client.send_echo(&topic, &msg).unwrap();
 
@@ -159,6 +182,7 @@ fn dds_to_browser_cdr_binary() {
     let bridge = bind_default(&topic);
     let peer = make_peer(&topic);
     let mut client = BridgeClient::connect(bridge.addr()).unwrap();
+    hello_ack(&mut client);
     std::thread::sleep(Duration::from_millis(800));
 
     let msg = EchoMsg {
@@ -190,6 +214,7 @@ fn legacy_json_rejected_by_default_then_binary_still_flows() {
     let bridge = bind_default(&topic);
     let peer = make_peer(&topic);
     let mut client = BridgeClient::connect(bridge.addr()).unwrap();
+    hello_ack(&mut client);
     std::thread::sleep(Duration::from_millis(500));
 
     let msg = sample();
@@ -232,6 +257,7 @@ fn legacy_json_accepted_in_explicit_compat_and_forwarded_as_cdr() {
     .expect("compat gateway bind");
     let peer = make_peer(&topic);
     let mut client = BridgeClient::connect(bridge.addr()).unwrap();
+    hello_ack(&mut client);
     std::thread::sleep(Duration::from_millis(800));
 
     let msg = sample();
@@ -276,6 +302,7 @@ fn truncated_frame_and_unknown_topic_are_typed_errors_then_idle_times_out() {
     let bridge = bind_default(&topic);
     let _peer = make_peer(&topic);
     let mut client = BridgeClient::connect(bridge.addr()).unwrap();
+    hello_ack(&mut client);
     std::thread::sleep(Duration::from_millis(300));
 
     // Truncated DataFrame (length prefix says frame, bytes stop early).

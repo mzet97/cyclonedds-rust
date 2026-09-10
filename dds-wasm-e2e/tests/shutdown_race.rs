@@ -97,10 +97,19 @@ fn flood_and_close(topic: &str, legacy: bool) {
             })
         })
         .collect();
-    // Close mid-burst: both feeds still saturate every kernel buffer at
-    // this point (legacy packets are ~200KB, binary ~200KB CDR), so all
-    // dispatchers sit inside the read→publish window when the owner drops.
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    // Precondition with a deadline: the burst must really publish before we
+    // close. On a loaded runner 50ms may see only arrivals (frames_in > 0,
+    // samples_in == 0) because close() wins the race before the first
+    // publish lands. The race under test needs in-flight publishes when
+    // close() drops the owner, so wait for the first publish, then close
+    // while the feeders (32 conns x 10 x ~200KB) still saturate everything.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while bridge.stats().samples_in == 0 {
+        if std::time::Instant::now() > deadline {
+            panic!("burst never published: {:?}", bridge.stats());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     bridge.close();
     for f in feeders {
         let _ = f.join();

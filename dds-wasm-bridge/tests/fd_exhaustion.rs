@@ -149,12 +149,22 @@ fn attempt(tag: &str) -> Result<(), String> {
     }
     drop(guard); // unstuff + restore the limit before the liveness proof.
 
-    // And the gateway still serves: hello on the witness gets an ack.
-    send_packet(
-        &mut witness,
-        br#"{"proto":0,"kind":"hello","client":"fd-witness"}"#,
-    );
-    let reply = recv_packet(&mut witness, Duration::from_secs(5)).ok_or("no ack")?;
+    // And the gateway still serves: hello on the witness gets an ack. Poll
+    // with a deadline: post-exhaustion recovery time (threads re-arming
+    // after EMFILE) is platform-dependent; the invariant is eventual
+    // service on the SAME pre-exhaustion socket, not instant service.
+    let hello = br#"{"proto":0,"kind":"hello","client":"fd-witness"}"#;
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let reply = loop {
+        send_packet(&mut witness, hello);
+        match recv_packet(&mut witness, Duration::from_secs(2)) {
+            Some(reply) => break reply,
+            None if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            None => return Err("witness never recovered after exhaustion".into()),
+        }
+    };
     if dds_wasm_bridge::parse_error_reply(&reply).is_some() {
         return Err("hello got an error reply".into());
     }
