@@ -325,7 +325,10 @@ fn recv_echo_deadline_arm_triggers_on_a_flooding_server() {
         };
         let pkt = error_packet("stale");
         let len = (pkt.len() as u32).to_le_bytes();
-        for _ in 0..100_000 {
+        // Unbounded flood: a fixed packet count races the client deadline
+        // (fast machine drains everything and sees EOF before it fires).
+        // The server only stops when the client leaves (write fails).
+        loop {
             if sock.write_all(&len).is_err() || sock.write_all(&pkt).is_err() {
                 return;
             }
