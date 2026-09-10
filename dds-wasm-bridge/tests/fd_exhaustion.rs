@@ -7,13 +7,26 @@
 //! disturb every test sharing a process; here the only sockets are the
 //! gateway's own, pinned to loopback.
 
+//! Unix-only: `RLIMIT_NOFILE` + `/dev/null` stuffing do not exist on Windows.
+#![cfg(unix)]
+
 use dds_wasm_bridge::{BridgeConfig, WasmBridge};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const LO_URI: &str = r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo"/></Interfaces></General></Domain></CycloneDDS>"#;
+/// Loopback interface name is OS-specific (`lo0` on macOS).
+#[cfg(target_os = "macos")]
+const LO_IF: &str = "lo0";
+#[cfg(not(target_os = "macos"))]
+const LO_IF: &str = "lo";
+
+fn lo_uri() -> String {
+    format!(
+        r#"<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="{LO_IF}"/></Interfaces></General></Domain></CycloneDDS>"#
+    )
+}
 
 /// Lowers `RLIMIT_NOFILE` and stuffs every remaining slot with
 /// `/dev/null`. Restores the limit and releases the stuffing on drop, so
@@ -102,13 +115,18 @@ fn unique_topic(tag: &str) -> String {
 
 fn attempt(tag: &str) -> Result<(), String> {
     // Given a live gateway plus one healthy witness connection.
-    std::env::set_var("CYCLONEDDS_URI", LO_URI);
+    std::env::set_var("CYCLONEDDS_URI", lo_uri());
     let bridge = WasmBridge::bind(BridgeConfig {
         topic: unique_topic(tag),
         ..BridgeConfig::default()
     })
     .map_err(|e| format!("bind: {e}"))?;
     let mut witness = TcpStream::connect(bridge.addr()).map_err(|e| format!("witness: {e}"))?;
+    send_packet(
+        &mut witness,
+        br#"{"proto":0,"kind":"hello","client":"fd-witness-pre"}"#,
+    );
+    recv_packet(&mut witness, Duration::from_secs(5)).ok_or("witness not served")?;
 
     // When the fd table is exhausted, a new client still completes its
     // TCP handshake (kernel backlog) but the server cannot clone a pump

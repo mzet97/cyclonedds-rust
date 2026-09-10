@@ -5,7 +5,7 @@
 //! long`, keys included) MUST cross the wasm boundary as a JS `BigInt`,
 //! never as `Number`. This module owns the portable half of that contract:
 //! exact decimal-string conversions shared by the wasm32 `BigInt` exports
-//! ([`crate::js`]) and by host tests.
+//! (`js`, wasm32-only) and by host tests.
 //!
 //! Mapping (both directions, total, never panics):
 //!
