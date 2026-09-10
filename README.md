@@ -345,7 +345,7 @@ The `cyclonedds-wasm` crate provides a DDS-compatible API for WebAssembly:
 
 ```toml
 [dependencies]
-cyclonedds-wasm = "0.1"
+cyclonedds-wasm = "0.2"
 ```
 
 ```rust
