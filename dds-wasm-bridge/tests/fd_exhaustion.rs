@@ -26,14 +26,17 @@ struct FdStuffGuard {
 impl FdStuffGuard {
     fn engage() -> Result<Self, String> {
         let mut saved = std::mem::MaybeUninit::<libc::rlimit>::uninit();
+        // SAFETY: RLIMIT_NOFILE is valid; as_mut_ptr of a live MaybeUninit is writable.
         if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, saved.as_mut_ptr()) } != 0 {
             return Err("getrlimit(RLIMIT_NOFILE) failed".into());
         }
+        // SAFETY: getrlimit returned 0, so the struct was initialized.
         let saved = unsafe { saved.assume_init() };
         let low = libc::rlimit {
             rlim_cur: 256,
             rlim_max: saved.rlim_max,
         };
+        // SAFETY: rlim_cur (256) <= rlim_max just read; lowering the soft limit is allowed.
         if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &low) } != 0 {
             return Err("setrlimit(RLIMIT_NOFILE) failed".into());
         }
@@ -45,6 +48,7 @@ impl FdStuffGuard {
             }
         }
         if stuffed.len() < 2 {
+            // SAFETY: restoring the saved limit; &saved borrows a live local.
             unsafe {
                 libc::setrlimit(libc::RLIMIT_NOFILE, &saved);
             }
@@ -61,6 +65,7 @@ impl FdStuffGuard {
 impl Drop for FdStuffGuard {
     fn drop(&mut self) {
         self.stuffed.clear();
+        // SAFETY: restoring the saved limit; stuffed fds were closed first.
         unsafe {
             libc::setrlimit(libc::RLIMIT_NOFILE, &self.saved);
         }

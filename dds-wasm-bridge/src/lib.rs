@@ -1397,6 +1397,8 @@ mod tests {
         // aliasing the same native layout.
         let ptr = msg.write_to_native(&mut arena).unwrap();
         assert!(!ptr.is_null());
+        // SAFETY: ptr is non-null (asserted) and aliases the arena-owned native
+        // value of the same layout, alive for this scope.
         let viewed = unsafe { &*(ptr as *const <WasmEcho as DdsType>::Native) };
         assert_eq!(viewed.id, 1);
         assert_eq!(viewed.text.to_string_lossy(), "t");

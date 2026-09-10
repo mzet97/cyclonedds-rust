@@ -31,6 +31,8 @@ benchmark_results/
 results/
 *.csv
 *.json
+# ...except golden test fixtures, which CI needs.
+!cyclonedds-proto/tests/fixtures/*.json
 
 # Temporary / scratch
 /tmp/
