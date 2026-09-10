@@ -121,17 +121,21 @@ fn attempt(tag: &str) -> Result<(), String> {
         ..BridgeConfig::default()
     })
     .map_err(|e| format!("bind: {e}"))?;
+    eprintln!("fd_probe: bound {tag} at {}", bridge.addr());
     let mut witness = TcpStream::connect(bridge.addr()).map_err(|e| format!("witness: {e}"))?;
+    eprintln!("fd_probe: {tag} witness connected");
     send_packet(
         &mut witness,
         br#"{"proto":0,"kind":"hello","client":"fd-witness-pre"}"#,
     );
     recv_packet(&mut witness, Duration::from_secs(5)).ok_or("witness not served")?;
+    eprintln!("fd_probe: {tag} witness served (pre-hello acked)");
 
     // When the fd table is exhausted, a new client still completes its
     // TCP handshake (kernel backlog) but the server cannot clone a pump
     // socket for it.
     let mut guard = FdStuffGuard::engage()?;
+    eprintln!("fd_probe: {tag} table stuffed");
     guard.free_one(); // exactly one slot: the victim's own socket.
     let mut victim =
         TcpStream::connect(bridge.addr()).map_err(|e| format!("victim connect: {e}"))?;
@@ -147,7 +151,9 @@ fn attempt(tag: &str) -> Result<(), String> {
         Ok(0) => {}
         other => return Err(format!("victim must see EOF, got {other:?}")),
     }
+    eprintln!("fd_probe: {tag} victim saw EOF");
     drop(guard); // unstuff + restore the limit before the liveness proof.
+    eprintln!("fd_probe: {tag} guard dropped");
 
     // And the gateway still serves: hello on the witness gets an ack. Poll
     // with a deadline: post-exhaustion recovery time (threads re-arming

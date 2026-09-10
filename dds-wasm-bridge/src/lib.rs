@@ -709,6 +709,14 @@ fn serve_conn(
     registry: Registry,
     conns: &Arc<Mutex<HashMap<u64, TcpStream>>>,
 ) {
+    // Accepted sockets inherit the listener's non-blocking mode on Windows
+    // (Linux clears it on accept). The reader/pump loops below assume
+    // blocking IO: on a non-blocking socket the first empty read surfaces
+    // WouldBlock, which the reader maps to an exit, dropping every
+    // connection right after serving its first packet(s).
+    if sock.set_nonblocking(false).is_err() {
+        return;
+    }
     let served: HashSet<String> = config.topics().into_iter().collect();
     let queue_cap = config.queue_cap.max(1);
     let legacy_json = config.legacy_json;
