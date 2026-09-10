@@ -4,7 +4,7 @@ use std::time::Duration;
 
 #[test]
 fn topic_filter_replacement_then_clear_allows_pubsub() {
-    let participant = DomainParticipant::new(232).unwrap();
+    let participant = DomainParticipant::new(0).unwrap();
     let topic = participant
         .create_topic::<TestMessage>(&unique_topic("topic_filter_lifecycle"))
         .unwrap();
@@ -92,7 +92,7 @@ fn topic_filter_replacement_then_clear_allows_pubsub() {
 
 #[test]
 fn rejected_write_loans_are_returned_to_the_writer_pool() {
-    let participant = DomainParticipant::new(231).unwrap();
+    let participant = DomainParticipant::new(0).unwrap();
     let topic = participant
         .create_topic::<TestMessage>(&unique_topic("topic_filter_write_loan"))
         .unwrap();
