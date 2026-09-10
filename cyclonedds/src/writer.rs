@@ -9,6 +9,7 @@ use crate::{
 use cyclonedds_rust_sys::*;
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use std::ptr::NonNull;
 use std::sync::Arc;
 
 /// A typed DDS DataWriter that publishes samples of type `T`.
@@ -356,7 +357,8 @@ impl<T: DdsType> DataWriter<T> {
             // zero-valid primitives).
             std::ptr::write_bytes(sample_ptr as *mut u8, 0, std::mem::size_of::<T::Native>());
             Ok(WriteLoan {
-                sample: sample_ptr as *mut T::Native,
+                sample: NonNull::new(sample_ptr as *mut T::Native)
+                    .ok_or(crate::DdsError::OutOfResources)?,
                 writer: Arc::clone(&self.inner),
                 written: false,
                 _marker: PhantomData,
@@ -484,7 +486,7 @@ impl<T: DdsType> OwnedHandle for DataWriter<T> {
 /// `DdsString`) are dropped correctly, and the loan is returned to DDS (the
 /// sample is *not* published).
 pub struct WriteLoan<T: DdsType> {
-    sample: *mut T::Native,
+    sample: NonNull<T::Native>,
     writer: Arc<OwnedEntity>,
     written: bool,
     _marker: PhantomData<T>,
@@ -503,7 +505,7 @@ impl<T: DdsType> WriteLoan<T> {
     /// The caller must preserve all invariants of `T::Native`, including
     /// pointer provenance for optional members and valid enum discriminants.
     pub unsafe fn get_mut(&mut self) -> &mut T::Native {
-        unsafe { &mut *self.sample }
+        unsafe { self.sample.as_mut() }
     }
 
     /// Consume the loan and publish the sample.
@@ -514,7 +516,7 @@ impl<T: DdsType> WriteLoan<T> {
     pub fn write(mut loan: Self) -> DdsResult<()> {
         loan.written = true;
         unsafe {
-            let ret = dds_write(loan.writer.handle(), loan.sample as *const c_void);
+            let ret = dds_write(loan.writer.handle(), loan.sample.as_ptr() as *const c_void);
             check(ret)
         }
     }
@@ -522,7 +524,7 @@ impl<T: DdsType> WriteLoan<T> {
 
 impl<T: DdsType> Drop for WriteLoan<T> {
     fn drop(&mut self) {
-        if !self.written && !self.sample.is_null() {
+        if !self.written {
             unsafe {
                 // Run T::Native's destructor first: any DdsString/DdsSequence
                 // field the caller already populated before abandoning the
@@ -530,10 +532,10 @@ impl<T: DdsType> Drop for WriteLoan<T> {
                 // freed here (a no-op for still-zeroed fields, since
                 // DdsString/DdsSequence's Drop checks for the null/unreleased
                 // state). Skipping this would leak.
-                std::ptr::drop_in_place(self.sample);
+                std::ptr::drop_in_place(self.sample.as_ptr());
                 // Return the loan buffer itself.  dds_return_loan expects
                 // a *mut *mut c_void array.
-                let mut ptr = self.sample as *mut c_void;
+                let mut ptr = self.sample.as_ptr() as *mut c_void;
                 let _ = dds_return_loan(self.writer.handle(), &mut ptr, 1);
             }
         }
