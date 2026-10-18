@@ -6,8 +6,8 @@ Only the latest release is supported with security fixes.
 
 | Version         | Supported |
 |-----------------|-----------|
-| 3.0.0-alpha.3   | Yes       |
-| < 3.0.0-alpha.3 | No        |
+| 3.0.2           | Yes       |
+| < 3.0.2         | No        |
 
 ## Reporting a vulnerability
 
@@ -61,7 +61,7 @@ This project supports DDS Security via the `security` feature flag:
 
 ```toml
 [dependencies]
-cyclonedds = { version = "3.0.0-alpha.3", features = ["security"] }
+cyclonedds = { version = "3.0.2", features = ["security"] }
 ```
 
 When the `security` feature is enabled, `cyclonedds-rust-sys` configures and

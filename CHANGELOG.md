@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-10-18
+
 ### Fixed
 
 - Harden unsafe pointer handling at FFI boundaries: `DdsType::clone_out`
@@ -24,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cyclonedds-rust-sys` allows the `suspicious_runtime_symbol_definitions`
   lint on its generated bindings so newer Clippy toolchains stay green
   under `-D warnings`.
+
+### Dependencies
+
+- syn 3.0.6, thiserror 2.0.21, clap 4.6.7, libc 0.2.190.
+- GitHub Actions: codeql-action 4.38.1 (init+analyze), docker/build-push-action 7.4.0, sbom-action 0.24.2, actions group updates.
+- bindgen 0.73.2 was evaluated and not adopted: it does not compile against the syn 2+3 dependency graph (see PR #48).
 
 ## [3.0.0-alpha.3] - 2026-08-18
 
