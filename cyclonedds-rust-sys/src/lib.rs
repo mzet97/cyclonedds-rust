@@ -8,6 +8,15 @@
 #![allow(missing_docs)]
 #![allow(rustdoc::broken_intra_doc_links)]
 #![allow(rustdoc::invalid_html_tags)]
+// Newer toolchains lint the bindgen-declared `malloc`/`realloc` signatures in
+// the generated bindings (`c_ulong` where `usize` is expected). They are FFI
+// declarations only -- never definitions, never `#[no_mangle]` -- so the
+// correct disposition is a scoped allow on the generated module, matching
+// the `clippy::all` allow above. `unknown_lints` keeps older toolchains
+// (which do not know this lint yet) warning-free under `-D warnings`.
+#![allow(unknown_lints)]
+#![allow(suspicious_runtime_symbol_definitions)]
+#![allow(clippy::suspicious_runtime_symbol_definitions)]
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
