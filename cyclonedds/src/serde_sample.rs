@@ -167,7 +167,20 @@ where
     }
 
     unsafe fn clone_out(ptr: *const Self) -> DdsResult<Self> {
-        let native = &*(ptr as *const SerdeSampleNative);
+        let native_ptr = ptr as *const SerdeSampleNative;
+        if native_ptr.is_null() {
+            return Err(crate::DdsError::BadParameter(format!(
+                "SerdeSample clone_out: null pointer for {}",
+                Self::type_name()
+            )));
+        }
+        if (native_ptr as usize) % std::mem::align_of::<SerdeSampleNative>() != 0 {
+            return Err(crate::DdsError::BadParameter(format!(
+                "SerdeSample clone_out: unaligned pointer for {}",
+                Self::type_name()
+            )));
+        }
+        let native = &*native_ptr;
         Ok(SerdeSample {
             payload: native.payload.to_vec(),
             _marker: std::marker::PhantomData,
