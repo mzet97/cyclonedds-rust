@@ -88,6 +88,16 @@ unsafe impl DdsType for BuiltinParticipantSample {
     }
 
     unsafe fn clone_out(ptr: *const Self) -> crate::DdsResult<Self> {
+        if ptr.is_null() {
+            return Err(DdsError::BadParameter(
+                "DdsType clone_out: null pointer for DCPSParticipant".to_string(),
+            ));
+        }
+        if (ptr as usize) % std::mem::align_of::<Self>() != 0 {
+            return Err(DdsError::BadParameter(
+                "DdsType clone_out: unaligned pointer for DCPSParticipant".to_string(),
+            ));
+        }
         let src = &*ptr;
         Ok(src.clone())
     }
@@ -205,6 +215,16 @@ unsafe impl DdsType for BuiltinTopicSample {
     }
 
     unsafe fn clone_out(ptr: *const Self) -> crate::DdsResult<Self> {
+        if ptr.is_null() {
+            return Err(DdsError::BadParameter(
+                "DdsType clone_out: null pointer for DCPSTopic".to_string(),
+            ));
+        }
+        if (ptr as usize) % std::mem::align_of::<Self>() != 0 {
+            return Err(DdsError::BadParameter(
+                "DdsType clone_out: unaligned pointer for DCPSTopic".to_string(),
+            ));
+        }
         let src = &*ptr;
         Ok(src.clone())
     }
@@ -465,6 +485,16 @@ unsafe impl DdsType for BuiltinEndpointSample {
     }
 
     unsafe fn clone_out(ptr: *const Self) -> crate::DdsResult<Self> {
+        if ptr.is_null() {
+            return Err(DdsError::BadParameter(
+                "DdsType clone_out: null pointer for BuiltinEndpointSample".to_string(),
+            ));
+        }
+        if (ptr as usize) % std::mem::align_of::<Self>() != 0 {
+            return Err(DdsError::BadParameter(
+                "DdsType clone_out: unaligned pointer for BuiltinEndpointSample".to_string(),
+            ));
+        }
         let src = &*ptr;
         Ok(src.clone())
     }

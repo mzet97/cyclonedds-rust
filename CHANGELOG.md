@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (trait default plus struct/union/bitmask derive paths) and
   `DataWriter::request_loan` now reject null or misaligned pointers with
   `DdsError::BadParameter` instead of dereferencing them.
+- The hand-written `clone_out` implementations for the built-in topic
+  types (`BuiltinParticipantSample`, `BuiltinTopicSample`,
+  `BuiltinEndpointSample`) and `SerdeSample<T>` now apply the same
+  null/misaligned pointer guard, returning `DdsError::BadParameter`
+  instead of dereferencing an invalid sample pointer.
 
 ## [3.0.0-alpha.3] - 2026-08-18
 
