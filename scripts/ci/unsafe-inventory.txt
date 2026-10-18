@@ -7,6 +7,7 @@
 1 cyclonedds-test-suite/examples/interop_pub.rs
 1 cyclonedds-test-suite/examples/interop_sub.rs
 2 cyclonedds-test-suite/src/lib.rs
+4 cyclonedds-test-suite/tests/clone_out_invalid_pointer.rs
 1 cyclonedds-test-suite/tests/dynamic_cdr_roundtrip.rs
 1 cyclonedds-test-suite/tests/parent_ownership.rs
 1 cyclonedds-test-suite/tests/parse_type_walk.rs
