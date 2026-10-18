@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   null/misaligned pointer guard, returning `DdsError::BadParameter`
   instead of dereferencing an invalid sample pointer.
 
+### Changed
+
+- `cyclonedds-rust-sys` allows the `suspicious_runtime_symbol_definitions`
+  lint on its generated bindings so newer Clippy toolchains stay green
+  under `-D warnings`.
+
 ## [3.0.0-alpha.3] - 2026-08-18
 
 ### Fixed
