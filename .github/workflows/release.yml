@@ -76,7 +76,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
+        uses: aquasecurity/trivy-action@6abccf398f78b4c337599c0656f933d91efb91a0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
           severity: CRITICAL,HIGH
