@@ -22,7 +22,7 @@ jobs:
       - name: Install MSRV Rust
         uses: dtolnay/rust-toolchain@bc540ba06a4ccee415bb241490e0b25ee8e7d315
       - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           key: msrv-1.85-${{ hashFiles('Cargo.lock') }}
           cache-targets: false
